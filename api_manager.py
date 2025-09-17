@@ -1,6 +1,7 @@
 import requests
 import logging
 import time
+import requests
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -57,7 +58,7 @@ class APIManager:
                 "id": str(order_data['id']),  # id=工单id
                 "f_emd69kip4gk": str(order_data['model']),  # 型号=编号
                 "f_ifa9xxyrmft": order_data.get('name', ''),  # 名称=产品名称
-                "f_jxzzjg7egqm": order_data.get('creator', ''),  # 负责人=发起人
+                "f_jxzzjg7egqm": order_data.get('requester', ''),  # 负责人=需求人
                 "f_utqw1679w43": order_data.get('status', ''),
                 "f_iis2qlzmmko": int(time.time()),  # 开始时间=工单创建时间-时间戳
                 "f_ay6dm3j0pfz": order_data.get('project_type_name', ''),  # 项目类型=项目类型名称

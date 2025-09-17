@@ -210,7 +210,7 @@ class DatabaseManager:
                     placeholders = ','.join(['%s'] * len(user_departments))
                     query = f"""
                         SELECT wo.id, d.name as department, wo.model, wo.name, 
-                               wo.creator, wo.type, wo.status, wo.created_at, 
+                               wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
@@ -223,7 +223,7 @@ class DatabaseManager:
                 else:
                     cursor.execute("""
                         SELECT wo.id, d.name as department, wo.model, wo.name, 
-                               wo.creator, wo.type, wo.status, wo.created_at, 
+                               wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
@@ -425,16 +425,18 @@ class DatabaseManager:
                 # 插入工单数据
                 query = """
                     INSERT INTO mcs_by_takuya_work_orders 
-                    (id, department_id, model, name, creator, type, status, project_type_id, project_content_id, remarks) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (id, department_id, model, name, creator, requester, type, status, project_type_id, project_content_id, remarks) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 order_type = order_data.get('type', '常规')
+                requester = order_data.get('requester', '')
                 cursor.execute(query, (
                     order_data['id'],
                     dept_id,
                     order_data['model'],
                     order_data['name'],
                     order_data['creator'],
+                    requester,
                     order_type,
                     '拍摄中',
                     project_type_id,
@@ -532,7 +534,7 @@ class DatabaseManager:
         try:
             with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
                 cursor.execute("""
-                    SELECT role, action_type, details, timestamp
+                    SELECT role, user_name, action_type, details, timestamp
                     FROM mcs_by_takuya_logs
                     WHERE details LIKE %s
                     ORDER BY timestamp DESC
@@ -880,10 +882,11 @@ class DatabaseManager:
                 # 添加工单
                 query = """
                     INSERT INTO mcs_by_takuya_work_orders 
-                    (id, department_id, model, name, creator, type, status, project_type_id, project_content_id, remarks) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (id, department_id, model, name, creator, requester, type, status, project_type_id, project_content_id, remarks) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 order_type = order_data.get('type', '常规')
+                requester = order_data.get('requester', '')
                 # 支持两种字段名：project_type_id和projecttype_id
                 project_type_id = order_data.get('project_type_id')
                 if project_type_id is None:
@@ -902,6 +905,7 @@ class DatabaseManager:
                     order_data['model'],
                     order_data['name'],
                     order_data['creator'],
+                    requester,
                     order_type,
                     '拍摄中',
                     project_type_id,

@@ -322,6 +322,40 @@ class CreateWorkOrderDialog(QDialog):
         # 添加项目内容选择
         self.project_content_field = QComboBox()
         self.project_content_field.setPlaceholderText("请选择项目内容")
+        # 添加需求人字段
+        self.requester_field = QLineEdit()
+        self.requester_field.setStyleSheet("""
+            QLineEdit {
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px 12px;
+                color: #FFFFFF;
+                font-size: 14px;
+                min-height: 20px;
+            }
+            QLineEdit:focus {
+                border-color: #0078d4;
+                background-color: #4c4c4c;
+            }
+        """)
+        # 如果提供了用户名，自动填充到需求人字段
+        if self.user_name:
+            self.requester_field.setText(self.user_name)
+        else:
+            self.requester_field.setText("")
+            self.requester_field.setPlaceholderText("请输入需求人")
+        
+        # 添加选择需求人的按钮
+        self.select_requester_btn = QPushButton("选择")
+        self.select_requester_btn.setMaximumWidth(60)
+        self.select_requester_btn.clicked.connect(self.select_requester)
+        
+        # 创建需求人布局，包含输入框和按钮
+        self.requester_layout = QHBoxLayout()
+        self.requester_layout.addWidget(self.requester_field)
+        self.requester_layout.addWidget(self.select_requester_btn)
+        
         # 添加备注字段
         self.remarks_field = QLineEdit()
         self.remarks_field.setPlaceholderText("请输入备注信息")
@@ -331,6 +365,7 @@ class CreateWorkOrderDialog(QDialog):
         basic_layout.addRow("型号:", self.model_field)
         basic_layout.addRow("名称:", self.name_field)
         basic_layout.addRow("发起人:", self.creator_field)
+        basic_layout.addRow("需求人:", self.requester_layout)
         basic_layout.addRow("项目类型:", self.project_type_field)
         basic_layout.addRow("项目内容:", self.project_content_field)
         basic_layout.addRow("备注:", self.remarks_field)
@@ -423,6 +458,11 @@ class CreateWorkOrderDialog(QDialog):
             QMessageBox.warning(self, "验证失败", "请输入发起人")
             return False
 
+        # 验证需求人
+        if not self.requester_field.text().strip():
+            QMessageBox.warning(self, "验证失败", "请输入需求人")
+            return False
+
         # 验证项目类型
         if self.project_type_field.currentIndex() <= 0:
             QMessageBox.warning(self, "验证失败", "请选择项目类型")
@@ -442,12 +482,79 @@ class CreateWorkOrderDialog(QDialog):
             "model": self.model_field.text().strip(),
             "name": self.name_field.text().strip(),
             "creator": self.creator_field.text().strip(),
+            "requester": self.requester_field.text().strip(),
             "project_type_id": self.project_type_field.currentData(),
             "project_type_name": self.project_type_field.currentText(),
             "project_content_id": self.project_content_field.currentData(),
             "project_content_name": self.project_content_field.currentText(),
             "remarks": self.remarks_field.text().strip()
         }
+    
+    def select_requester(self):
+        """打开用户选择对话框，让用户选择需求人"""
+        # 获取所有用户列表
+        users = db_manager.get_users()
+        if not users:
+            QMessageBox.warning(self, "提示", "没有找到可用的用户")
+            return
+        
+        # 创建用户选择对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle("选择需求人")
+        dialog.resize(300, 400)
+        layout = QVBoxLayout(dialog)
+        
+        # 添加搜索框
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("搜索:"))
+        search_edit = QLineEdit()
+        search_edit.setPlaceholderText("输入用户名或IP搜索")
+        search_layout.addWidget(search_edit)
+        layout.addLayout(search_layout)
+        
+        # 创建用户列表
+        user_list = QListWidget()
+        
+        # 存储原始用户列表用于搜索过滤
+        all_users = users.copy()
+        
+        # 初始化用户列表
+        def populate_user_list(filter_text=""):
+            user_list.clear()
+            for user in all_users:
+                user_text = f"{user['name']} ({user['ip']})"
+                # 搜索过滤逻辑，不区分大小写
+                if not filter_text or \
+                   filter_text.lower() in user['name'].lower() or \
+                   filter_text.lower() in user['ip'].lower():
+                    user_item = QListWidgetItem(user_text)
+                    user_item.setData(Qt.UserRole, user['name'])
+                    user_list.addItem(user_item)
+        
+        # 初始填充用户列表
+        populate_user_list()
+        
+        # 连接搜索信号
+        search_edit.textChanged.connect(populate_user_list)
+        
+        layout.addWidget(user_list)
+        
+        # 创建按钮
+        button_layout = QHBoxLayout()
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(dialog.reject)
+        select_btn = QPushButton("确定")
+        select_btn.clicked.connect(dialog.accept)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(select_btn)
+        layout.addLayout(button_layout)
+        
+        # 处理选择结果
+        if dialog.exec() == QDialog.Accepted:
+            selected_items = user_list.selectedItems()
+            if selected_items:
+                self.requester_field.setText(selected_items[0].data(Qt.UserRole))
 class MainWindow(QMainWindow):
     def __init__(self, role, departments, is_admin=False, parent=None, logout_callback=None, user_name=None):
         # 检查版本
@@ -3949,25 +4056,34 @@ class MainWindow(QMainWindow):
             self.creator_filter.setCurrentIndex(index)
     def setup_work_orders_table(self):
         self.model.clear()
-        self.model.setHorizontalHeaderLabels(['ID', '产线', '型号', '名称', '发起人', '状态'])
+        self.model.setHorizontalHeaderLabels(['ID', '产线', '型号', '名称', '发起人', '需求人', '状态'])
         self.table_view.setModel(self.model)
         # 使用当前筛选后的数据，如果没有则从数据库获取用户所属部门的工单
         if not hasattr(self, 'work_orders_data') or self.work_orders_data is None:
             self.work_orders_data = db_manager.get_work_orders(self.departments)
         for order in self.work_orders_data:
-            items = [QStandardItem(str(order.get(k, ''))) for k in ['id', 'department', 'model', 'name', 'creator', 'status']]
+            # 对需求人字段进行特殊处理，None值显示为"没有设置"
+            items = []
+            for k in ['id', 'department', 'model', 'name', 'creator', 'requester', 'status']:
+                value = order.get(k, '')
+                # 当字段是requester且值为None或空字符串时，显示"没有设置"
+                if k == 'requester' and (value is None or value == ''):
+                    items.append(QStandardItem("没有设置"))
+                else:
+                    items.append(QStandardItem(str(value)))
             items[0].setData(order, Qt.UserRole)
             self.model.appendRow(items)
         self.table_view.setColumnWidth(0, 160)
         self.table_view.setColumnWidth(1, 150)
         self.table_view.setColumnWidth(2, 120)
         self.table_view.setColumnWidth(4, 100)
-        self.table_view.setColumnWidth(5, 180)
+        self.table_view.setColumnWidth(5, 100)
+        self.table_view.setColumnWidth(6, 180)
         self.table_view.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table_view.setEditTriggers(QTableView.NoEditTriggers)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         # 设置状态列自定义委托
-        self.table_view.setItemDelegateForColumn(5, StatusProgressDelegate(self.table_view))
+        self.table_view.setItemDelegateForColumn(6, StatusProgressDelegate(self.table_view))
         self.expanded_row = None
     def on_work_order_row_double_clicked(self, index):
         row = index.row()
@@ -4033,6 +4149,7 @@ class MainWindow(QMainWindow):
             .log-action { color: #fff; font-weight: bold; }
             .log-details { color: #b0bec5; font-size: 13px; }
             .log-time { color: #90caf9; font-size: 12px; margin-left: 10px; }
+            .log-user-name { color: #ffab40; font-weight: bold; }
         """)
         main_layout = QVBoxLayout(dialog)
         # 上方：工单基本信息
@@ -4051,6 +4168,7 @@ class MainWindow(QMainWindow):
         add_info("型号", order_data.get('model', ''))
         add_info("名称", order_data.get('name', ''))
         add_info("发起人", order_data.get('creator', ''))
+        add_info("需求人", order_data.get('requester', ''))
         add_info("状态", order_data.get('status', ''))
         add_info("创建时间", order_data.get('created_at', ''))
         add_info("更新时间", order_data.get('updated_at', ''))
@@ -4094,16 +4212,44 @@ class MainWindow(QMainWindow):
                 log_box_layout = QVBoxLayout(log_box)
                 log_box_layout.setContentsMargins(0, 0, 0, 0)
                 log_box_layout.setSpacing(2)
-                # 第一行：角色 操作 时间（时间紧跟操作）
+                # 第一行：根据用户权限显示不同格式
                 row1 = QHBoxLayout()
-                role = QLabel(log.get('role', ''))
-                role.setProperty('class', 'log-role')
+                
+                # 获取日志数据
+                role_text = log.get('role', '')
+                user_name = log.get('user_name', '')
+                
+                if self.is_admin:
+                    # 管理员登录：显示用户姓名 角色 操作 时间（时间紧跟操作）
+                    # 显示用户姓名
+                    if user_name:
+                        user_name_label = QLabel(user_name)
+                        user_name_label.setProperty('class', 'log-user-name')
+                        row1.addWidget(user_name_label)
+                        row1.addSpacing(10)
+                    
+                    # 显示角色
+                    role_label = QLabel(role_text)
+                    role_label.setProperty('class', 'log-role')
+                    row1.addWidget(role_label)
+                    row1.addSpacing(10)
+                else:
+                    # 非管理员登录：显示角色 操作 时间（时间紧跟操作）
+                    # 只显示角色名称部分，不显示用户姓名
+                    if ' ' in role_text:
+                        role_name = role_text.split(' ')[0]
+                    else:
+                        role_name = role_text
+                    role_label = QLabel(role_name)
+                    role_label.setProperty('class', 'log-role')
+                    row1.addWidget(role_label)
+                    row1.addSpacing(10)
+                
+                # 显示操作和时间（两种情况下都显示）
                 action = QLabel(log.get('action_type', ''))
                 action.setProperty('class', 'log-action')
                 time = QLabel(str(log.get('timestamp', '')))
                 time.setProperty('class', 'log-time')
-                row1.addWidget(role)
-                row1.addSpacing(10)
                 row1.addWidget(action)
                 row1.addWidget(time)
                 row1.addStretch()
