@@ -823,6 +823,12 @@ class MainWindow(QMainWindow):
             edit_button = QPushButton("编辑")
             edit_button.clicked.connect(self.handle_edit_selected_order)
             controls_layout.addWidget(edit_button)
+            
+            # 新增工单按钮（放在编辑按钮旁边）
+            add_order_button = QPushButton("新增工单")
+            add_order_button.clicked.connect(self.open_create_work_order_dialog)
+            controls_layout.addWidget(add_order_button)
+            
             delete_button = QPushButton("删除工单")
             def on_delete_order():
                 selected = self.table_view.selectionModel().selectedRows()
@@ -1399,12 +1405,217 @@ class MainWindow(QMainWindow):
         name_edit.setPlaceholderText("请输入产品名称")
         creator_edit = QLineEdit(order_data['creator'])
         creator_edit.setPlaceholderText("请输入发起人")
+        # 添加选择发起人的按钮
+        select_creator_btn = QPushButton("选择")
+        select_creator_btn.setMaximumWidth(60)
+        
+        # 创建发起人布局，包含输入框和按钮
+        creator_layout = QHBoxLayout()
+        creator_layout.addWidget(creator_edit)
+        creator_layout.addWidget(select_creator_btn)
+        
+        # 定义选择发起人函数
+        def select_creator():
+            """打开用户选择对话框，让用户选择发起人"""
+            # 获取所有用户列表
+            users = db_manager.get_users()
+            if not users:
+                QMessageBox.warning(dialog, "提示", "没有找到可用的用户")
+                return
+            
+            # 创建用户选择对话框
+            user_dialog = QDialog(dialog)
+            user_dialog.setWindowTitle("选择发起人")
+            user_dialog.resize(300, 400)
+            layout = QVBoxLayout(user_dialog)
+            
+            # 添加搜索框
+            search_layout = QHBoxLayout()
+            search_layout.addWidget(QLabel("搜索:"))
+            search_edit = QLineEdit()
+            search_edit.setPlaceholderText("输入用户名或IP搜索")
+            search_layout.addWidget(search_edit)
+            layout.addLayout(search_layout)
+            
+            # 创建用户列表
+            user_list = QListWidget()
+            
+            # 存储原始用户列表用于搜索过滤
+            all_users = users.copy()
+            
+            # 初始化用户列表
+            def populate_user_list(filter_text=""):
+                user_list.clear()
+                for user in all_users:
+                    user_text = f"{user['name']} ({user['ip']})"
+                    # 搜索过滤逻辑，不区分大小写
+                    if not filter_text or \
+                       filter_text.lower() in user['name'].lower() or \
+                       filter_text.lower() in user['ip'].lower():
+                        user_item = QListWidgetItem(user_text)
+                        user_item.setData(Qt.UserRole, user['name'])
+                        user_list.addItem(user_item)
+            
+            # 初始填充用户列表
+            populate_user_list()
+            
+            # 连接搜索信号
+            search_edit.textChanged.connect(populate_user_list)
+            
+            layout.addWidget(user_list)
+            
+            # 创建按钮
+            button_layout = QHBoxLayout()
+            cancel_btn = QPushButton("取消")
+            cancel_btn.clicked.connect(user_dialog.reject)
+            select_btn = QPushButton("确定")
+            select_btn.clicked.connect(user_dialog.accept)
+            
+            button_layout.addWidget(cancel_btn)
+            button_layout.addWidget(select_btn)
+            layout.addLayout(button_layout)
+            
+            # 处理选择结果
+            if user_dialog.exec() == QDialog.Accepted:
+                selected_items = user_list.selectedItems()
+                if selected_items:
+                    creator_edit.setText(selected_items[0].data(Qt.UserRole))
+        
+        # 连接选择按钮信号
+        select_creator_btn.clicked.connect(select_creator)
         # 添加字段到布局
         basic_layout.addRow("工单ID:", id_label)
         basic_layout.addRow("产线/部门:", dept_combo)
         basic_layout.addRow("型号:", model_edit)
         basic_layout.addRow("名称:", name_edit)
-        basic_layout.addRow("发起人:", creator_edit)
+        basic_layout.addRow("发起人:", creator_layout)
+        
+        # 添加更多可编辑字段
+        # 需求人字段
+        requester_edit = QLineEdit(order_data.get('requester', ''))
+        requester_edit.setPlaceholderText("请输入需求人")
+        
+        # 添加选择需求人的按钮
+        select_requester_btn = QPushButton("选择")
+        select_requester_btn.setMaximumWidth(60)
+        
+        # 创建需求人布局，包含输入框和按钮
+        requester_layout = QHBoxLayout()
+        requester_layout.addWidget(requester_edit)
+        requester_layout.addWidget(select_requester_btn)
+        
+        # 定义选择需求人函数
+        def select_requester():
+            """打开用户选择对话框，让用户选择需求人"""
+            # 获取所有用户列表
+            users = db_manager.get_users()
+            if not users:
+                QMessageBox.warning(dialog, "提示", "没有找到可用的用户")
+                return
+            
+            # 创建用户选择对话框
+            user_dialog = QDialog(dialog)
+            user_dialog.setWindowTitle("选择需求人")
+            user_dialog.resize(300, 400)
+            layout = QVBoxLayout(user_dialog)
+            
+            # 添加搜索框
+            search_layout = QHBoxLayout()
+            search_layout.addWidget(QLabel("搜索:"))
+            search_edit = QLineEdit()
+            search_edit.setPlaceholderText("输入用户名或IP搜索")
+            search_layout.addWidget(search_edit)
+            layout.addLayout(search_layout)
+            
+            # 创建用户列表
+            user_list = QListWidget()
+            
+            # 存储原始用户列表用于搜索过滤
+            all_users = users.copy()
+            
+            # 初始化用户列表
+            def populate_user_list(filter_text=""):
+                user_list.clear()
+                for user in all_users:
+                    user_text = f"{user['name']} ({user['ip']})"
+                    # 搜索过滤逻辑，不区分大小写
+                    if not filter_text or \
+                       filter_text.lower() in user['name'].lower() or \
+                       filter_text.lower() in user['ip'].lower():
+                        user_item = QListWidgetItem(user_text)
+                        user_item.setData(Qt.UserRole, user['name'])
+                        user_list.addItem(user_item)
+            
+            # 初始填充用户列表
+            populate_user_list()
+            
+            # 连接搜索信号
+            search_edit.textChanged.connect(populate_user_list)
+            
+            layout.addWidget(user_list)
+            
+            # 创建按钮
+            button_layout = QHBoxLayout()
+            cancel_btn = QPushButton("取消")
+            cancel_btn.clicked.connect(user_dialog.reject)
+            select_btn = QPushButton("确定")
+            select_btn.clicked.connect(user_dialog.accept)
+            
+            button_layout.addWidget(cancel_btn)
+            button_layout.addWidget(select_btn)
+            layout.addLayout(button_layout)
+            
+            # 处理选择结果
+            if user_dialog.exec() == QDialog.Accepted:
+                selected_items = user_list.selectedItems()
+                if selected_items:
+                    requester_edit.setText(selected_items[0].data(Qt.UserRole))
+        
+        # 连接选择按钮信号
+        select_requester_btn.clicked.connect(select_requester)
+        
+        # 项目类型选择
+        project_type_combo = QComboBox()
+        project_types = db_manager.get_project_types()
+        project_type_combo.addItem("请选择项目类型", None)
+        project_type_id = None
+        for pt in project_types:
+            project_type_combo.addItem(pt['name'], pt['id'])
+            if 'project_type_id' in order_data and order_data['project_type_id'] == pt['id']:
+                project_type_combo.setCurrentIndex(project_type_combo.count() - 1)
+                project_type_id = pt['id']
+        
+        # 项目内容选择
+        project_content_combo = QComboBox()
+        project_content_combo.addItem("请选择项目内容", None)
+        if project_type_id:
+            project_contents = db_manager.get_project_contents_by_type(project_type_id)
+            for pc in project_contents:
+                project_content_combo.addItem(pc['name'], pc['id'])
+                if 'project_content_id' in order_data and order_data['project_content_id'] == pc['id']:
+                    project_content_combo.setCurrentIndex(project_content_combo.count() - 1)
+        
+        # 项目类型变化时更新项目内容
+        def on_project_type_changed():
+            type_id = project_type_combo.currentData()
+            project_content_combo.clear()
+            project_content_combo.addItem("请选择项目内容", None)
+            if type_id:
+                project_contents = db_manager.get_project_contents_by_type(type_id)
+                for pc in project_contents:
+                    project_content_combo.addItem(pc['name'], pc['id'])
+        
+        project_type_combo.currentIndexChanged.connect(on_project_type_changed)
+        
+        # 备注字段
+        remarks_edit = QLineEdit(order_data.get('remarks', ''))
+        remarks_edit.setPlaceholderText("请输入备注信息")
+        
+        # 添加新增字段到布局
+        basic_layout.addRow("需求人:", requester_layout)
+        basic_layout.addRow("项目类型:", project_type_combo)
+        basic_layout.addRow("项目内容:", project_content_combo)
+        basic_layout.addRow("备注:", remarks_edit)
         form_layout.addWidget(basic_group)
         # 提示信息
         info_label = QLabel("💡 提示：型号、名称、发起人为必填项，修改后点击确定保存更改")
@@ -1432,6 +1643,12 @@ class MainWindow(QMainWindow):
             new_model = model_edit.text().strip()
             new_name = name_edit.text().strip()
             new_creator = creator_edit.text().strip()
+            new_requester = requester_edit.text().strip()
+            new_project_type = project_type_combo.currentText()
+            new_project_content = project_content_combo.currentText()
+            new_project_type_id = project_type_combo.currentData()
+            new_project_content_id = project_content_combo.currentData()
+            new_remarks = remarks_edit.text().strip()
             if not new_model or not new_name or not new_creator:
                 QMessageBox.warning(dialog, "错误", "型号、名称、发起人不能为空")
                 return
@@ -1469,7 +1686,10 @@ class MainWindow(QMainWindow):
                     check_msgs.append(f"{old_path} → {new_path}")
             if not check_msgs:
                 # 没有需要移动/重命名的路径，直接保存
-                if db_manager.update_work_order_full(order_data['id'], new_dept, new_model, new_name, new_creator):
+                if db_manager.update_work_order_full(
+                order_data['id'], new_dept, new_model, new_name, new_creator,
+                new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
+            ):
                     self.log_action("编辑工单", f"ID={order_data['id']}（无路径变更）")
                     self.refresh_work_orders()
                     dialog.accept()
@@ -1506,7 +1726,10 @@ class MainWindow(QMainWindow):
                 else:
                     move_results.append(f"{old_path} → {new_path}：不存在")
             # 保存工单信息
-            if db_manager.update_work_order_full(order_data['id'], new_dept, new_model, new_name, new_creator):
+            if db_manager.update_work_order_full(
+                order_data['id'], new_dept, new_model, new_name, new_creator,
+                new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
+            ):
                 self.log_action("编辑工单", f"ID={order_data['id']}，产线/型号/名称变更")
                 # 只显示已操作的路径结果
                 result_msg = "\n".join([r for r in move_results if "已移动/重命名" in r or "失败" in r])
