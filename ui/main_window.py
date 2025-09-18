@@ -10,6 +10,10 @@ from PySide6.QtWidgets import (QMainWindow, QTableView, QVBoxLayout, QHBoxLayout
                              QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
+import sys
+import os
+# 添加项目根目录到Python搜索路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import db_manager
 from .task_manager import Task, TaskManagerDialog
 import datetime
