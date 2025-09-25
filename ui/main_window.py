@@ -30,6 +30,9 @@ import hashlib
 import base64
 import urllib.parse
 
+# 导入配置模块
+from config import APP_VERSION, DB_CONFIG, NOTIFICATION_TYPE
+
 ADMIN_PASSWORD = "Db65109032"
 # 全局路径前缀适配
 if platform.system() == 'Windows':
@@ -155,6 +158,93 @@ def send_dingtalk_markdown(title, text, department=None):
         print(f"钉钉推送成功 - 产线: {department or 'default'}")
     except Exception as e:
         print(f"钉钉推送失败 - 产线: {department or 'default'}, 错误: {e}")
+
+
+# 企业微信机器人配置 - 按产线分拆
+WECHAT_WORK_BOTS = {
+    # 默认机器人（当产线未配置时使用）
+    "default": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=default_key"
+    },
+    # 01标签机械
+    "01标签机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
+    },
+    # 02标签材料
+    "02标签材料": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_02"
+    },
+    # 03软包机械
+    "03软包机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_03"
+    },
+    # 04塑料机械
+    "04塑料机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_04"
+    },
+    # 05纸容器机械
+    "05纸容器机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_05"
+    },
+    # 06硬包机械
+    "06硬包机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_06"
+    },
+    # 07农用机械
+    "07农用机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_07"
+    },
+    # 08包装机械
+    "08包装机械": {
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_08"
+    },
+}
+
+def send_wechat_work_markdown(title, text, department=None):
+    """
+    发送企业微信消息，支持按产线选择不同的机器人
+    
+    Args:
+        title: 消息标题
+        text: 消息内容
+        department: 产线/部门名称，用于选择对应的机器人
+    """
+    # 根据产线选择机器人配置
+    if department and department in WECHAT_WORK_BOTS:
+        bot_config = WECHAT_WORK_BOTS[department]
+    else:
+        bot_config = WECHAT_WORK_BOTS["default"]
+    
+    webhook = bot_config["webhook"]
+    
+    # 企业微信消息格式
+    data = {
+        "msgtype": "markdown",
+        "markdown": {
+            "content": f"{title}\n\n{text}"
+        }
+    }
+    headers = {"Content-Type": "application/json"}
+    try:
+        requests.post(webhook, json=data, headers=headers, timeout=3)
+        print(f"企业微信推送成功 - 产线: {department or 'default'}")
+    except Exception as e:
+        print(f"企业微信推送失败 - 产线: {department or 'default'}, 错误: {e}")
+
+def send_notification(title, text, department=None):
+    """
+    统一的通知发送函数，根据配置决定使用哪种通知方式
+    
+    Args:
+        title: 消息标题
+        text: 消息内容
+        department: 产线/部门名称，用于选择对应的机器人
+    """
+    if NOTIFICATION_TYPE in ['dingtalk', 'both']:
+        send_dingtalk_markdown(title, text, department)
+    
+    if NOTIFICATION_TYPE in ['wechat_work', 'both']:
+        send_wechat_work_markdown(title, text, department)
 
 class AdminPasswordDialog(QDialog):
     def __init__(self, parent=None):
@@ -1755,7 +1845,7 @@ class MainWindow(QMainWindow):
                 # 新的重命名提示格式
                 rename_text = f"{order_data['id']} {new_model} {new_name}"
                 push_text = f"工单 {order_data['id']} 信息已修改：\n{change_text}\n\n如已领取素材，请将相关文件夹重命名为：{rename_text}"
-                send_dingtalk_markdown("工单信息变更通知", push_text)
+                send_notification("工单信息变更通知", push_text)
                 QMessageBox.information(dialog, "操作结果", f"工单信息已更新，路径操作结果：\n{result_msg}")
                 self.refresh_work_orders()
                 dialog.accept()
@@ -2053,8 +2143,8 @@ class MainWindow(QMainWindow):
                     msg.exec()
                     if msg.clickedButton() == open_btn:
                         QDesktopServices.openUrl(QUrl.fromLocalFile(upload_dir))
-                    # 发送钉钉通知
-                    send_dingtalk_markdown(
+                    # 发送通知
+                    send_notification(
                         "工单状态变更通知",
                         f"### 工单号：{order_data['id']}\n- 角色：{self.role}\n- 操作：上传素材\n- 状态：拍摄完成\n- 目标路径：{upload_dir}"
                     )
@@ -2093,8 +2183,8 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         # 显示错误消息给用户
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
-                    # 钉钉推送：摄影分发图片
-                    send_dingtalk_markdown(
+                    # 发送通知：摄影分发图片
+                    send_notification(
                         "工单状态变更通知",
                         f"{order_data['id']} {order_data['model']} {order_data['name']}原始图片已分发，请美工同事在工作时间段1小时内登录'工单管理'系统领取原始图片并进行处理！",
                         order_data.get('department')
@@ -2149,8 +2239,8 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         # 显示错误消息给用户
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
-                    # 钉钉推送：摄影分发视频
-                    send_dingtalk_markdown(
+                    # 发送通知：摄影分发视频
+                    send_notification(
                         "工单状态变更通知",
                         f"{order_data['id']} {order_data['model']} {order_data['name']}原始视频已分发，请剪辑同事在工作时间段1小时内登录'工单管理'系统领取原始视频并进行处理！",
                         order_data.get('department')
@@ -2605,9 +2695,9 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     self.refresh_work_orders()
-                    # 钉钉推送：美工分发运营
+                    # 发送通知：美工分发运营
                     department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-                    send_dingtalk_markdown(
+                    send_notification(
                         "工单状态变更通知",
                         f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
                         order_data.get('department')
@@ -2664,9 +2754,9 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     self.refresh_work_orders()
-                    # 钉钉推送：美工分发销售
+                    # 发送通知：美工分发销售
                     department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-                    send_dingtalk_markdown(
+                    send_notification(
                         "工单状态变更通知",
                         f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取图片！",
                         order_data.get('department')
@@ -3037,9 +3127,9 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     self.refresh_work_orders()
-                    # 钉钉推送：剪辑分发运营
+                    # 发送通知：剪辑分发运营
                     department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-                    send_dingtalk_markdown(
+                    send_notification(
                         "工单状态变更通知",
                         f"{order_data['id']} {order_data['model']} {order_data['name']}，剪辑已完成视频处理，成品视频已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
                         order_data.get('department')
@@ -3091,9 +3181,9 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     self.refresh_work_orders()
-                    # 钉钉推送：剪辑分发销售
+                    # 发送通知：剪辑分发销售
                     department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-                    send_dingtalk_markdown(
+                    send_notification(
                         "工单状态变更通知",
                         f"{order_data['id']} {order_data['model']} {order_data['name']}，剪辑已完成视频处理，成品视频已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取视频！",
                         order_data.get('department')
