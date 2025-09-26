@@ -164,39 +164,39 @@ def send_dingtalk_markdown(title, text, department=None):
 WECHAT_WORK_BOTS = {
     # 默认机器人（当产线未配置时使用）
     "default": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=default_key"
+        "webhook": ""
     },
     # 01标签机械
     "01标签机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key="
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=791b78c2-63e2-4795-88d9-62eae5a9dfbe"
     },
     # 02标签材料
     "02标签材料": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_02"
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=c675c3cd-125a-4cc2-bcb4-d24fd6ca06cc"
     },
     # 03软包机械
     "03软包机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_03"
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e9601e62-bcf1-4215-8a9e-034bde2d3709"
     },
     # 04塑料机械
     "04塑料机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_04"
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=41134839-49b8-48a0-bc97-95da269c8bd4"
     },
     # 05纸容器机械
     "05纸容器机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_05"
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=41134839-49b8-48a0-bc97-95da269c8bd4"
     },
     # 06硬包机械
     "06硬包机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_06"
+        "webhook": ""
     },
     # 07农用机械
     "07农用机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_07"
+        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=f26afc32-1298-4335-9014-17d9d0cfbbe7"
     },
     # 08包装机械
     "08包装机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=wechat_key_08"
+        "webhook": ""
     },
 }
 
