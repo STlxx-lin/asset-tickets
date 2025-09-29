@@ -397,7 +397,10 @@ class DatabaseManager:
                 
                 # 如果没有直接提供ID，尝试通过名称获取
                 if project_type_id is None:
+                    # 尝试从多个可能的名称字段获取
                     project_type = order_data.get('project_type', '')
+                    if not project_type:
+                        project_type = order_data.get('project_type_name', '')
                     if project_type:
                         cursor.execute("SELECT id FROM mcs_by_takuya_project_types WHERE name = %s", (project_type,))
                         type_result = cursor.fetchone()
@@ -412,7 +415,10 @@ class DatabaseManager:
                 
                 # 如果没有直接提供ID，尝试通过名称获取
                 if project_content_id is None:
+                    # 尝试从多个可能的名称字段获取
                     project_content = order_data.get('project_content', '')
+                    if not project_content:
+                        project_content = order_data.get('project_content_name', '')
                     if project_content:
                         cursor.execute("SELECT id FROM mcs_by_takuya_project_contents WHERE name = %s", (project_content,))
                         content_result = cursor.fetchone()

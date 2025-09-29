@@ -918,6 +918,39 @@ class MainWindow(QMainWindow):
             edit_button.clicked.connect(self.handle_edit_selected_order)
             controls_layout.addWidget(edit_button)
             
+            # 红色区域显示按钮
+            red_area_button = QPushButton("创建工单反馈")
+            # 设置红色样式
+            red_area_button.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold;")
+            
+            def on_red_area_display():
+                # 获取选中的工单
+                selected = self.table_view.selectionModel().selectedRows()
+                if not selected:
+                    QMessageBox.warning(self, "提示", "请先选中要操作的工单")
+                    return
+                
+                row = selected[0].row()
+                order_item = self.model.item(row, 0)
+                order_data = order_item.data(Qt.UserRole)
+                
+                # 调用API创建工单反馈
+                import sys
+                import os
+                # 添加根目录到Python路径
+                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from api_manager import api_manager
+                response = api_manager.create_work_order(order_data)
+                
+                # 显示操作结果
+                if response['success']:
+                    QMessageBox.information(self, "成功", response['message'])
+                else:
+                    QMessageBox.critical(self, "失败", response.get('error', '未知错误'))
+            
+            red_area_button.clicked.connect(on_red_area_display)
+            controls_layout.addWidget(red_area_button)
+            
             # 新增工单按钮（放在编辑按钮旁边）
             add_order_button = QPushButton("新增工单")
             add_order_button.clicked.connect(self.open_create_work_order_dialog)
