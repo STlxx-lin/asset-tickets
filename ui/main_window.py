@@ -1220,6 +1220,40 @@ class MainWindow(QMainWindow):
         # 用户管理Tab
         users_tab = QWidget()
         users_layout = QVBoxLayout(users_tab)
+        
+        # 添加筛选区域
+        filter_group = QGroupBox("用户筛选")
+        filter_layout = QGridLayout()
+        
+        # 筛选输入框
+        name_filter = QLineEdit()
+        name_filter.setPlaceholderText("输入姓名筛选...")
+        ip_filter = QLineEdit()
+        ip_filter.setPlaceholderText("输入IP筛选...")
+        role_filter = QLineEdit()
+        role_filter.setPlaceholderText("输入角色筛选...")
+        dept_filter = QLineEdit()
+        dept_filter.setPlaceholderText("输入部门筛选...")
+        
+        # 筛选和重置按钮
+        filter_btn = QPushButton("筛选")
+        reset_btn = QPushButton("重置")
+        
+        # 添加到布局
+        filter_layout.addWidget(QLabel("姓名:"), 0, 0)
+        filter_layout.addWidget(name_filter, 0, 1)
+        filter_layout.addWidget(QLabel("IP:"), 0, 2)
+        filter_layout.addWidget(ip_filter, 0, 3)
+        filter_layout.addWidget(QLabel("角色:"), 1, 0)
+        filter_layout.addWidget(role_filter, 1, 1)
+        filter_layout.addWidget(QLabel("部门:"), 1, 2)
+        filter_layout.addWidget(dept_filter, 1, 3)
+        filter_layout.addWidget(filter_btn, 2, 0)
+        filter_layout.addWidget(reset_btn, 2, 1)
+        
+        filter_group.setLayout(filter_layout)
+        users_layout.addWidget(filter_group)
+        
         self.users_table = QTableWidget()
         self.users_table.setColumnCount(5)
         self.users_table.setHorizontalHeaderLabels(["ID", "内网IP", "姓名", "角色", "部门"])
@@ -1233,6 +1267,8 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(1, QHeaderView.Fixed)
         for col in range(2, 5):
             header.setSectionResizeMode(col, QHeaderView.Stretch)
+        # 添加双击事件处理
+        self.users_table.cellDoubleClicked.connect(self.on_user_double_clicked)
         users_layout.addWidget(self.users_table)
         btn_layout = QHBoxLayout()
         add_btn = QPushButton("新增用户")
@@ -1246,14 +1282,34 @@ class MainWindow(QMainWindow):
         tab_widget.addTab(roles_tab, "角色管理")
         tab_widget.addTab(depts_tab, "部门管理")
         tab_widget.addTab(users_tab, "用户管理")
+        
+        # 保存筛选控件的引用
+        self.name_filter = name_filter
+        self.ip_filter = ip_filter
+        self.role_filter = role_filter
+        self.dept_filter = dept_filter
+        self.filter_btn = filter_btn
+        self.reset_btn = reset_btn
+        
+        # 连接筛选和重置按钮的信号
+        filter_btn.clicked.connect(self.filter_users)
+        reset_btn.clicked.connect(self.reset_user_filters)
+        
         self.refresh_users_table()
         add_btn.clicked.connect(self.show_add_user_dialog)
         edit_btn.clicked.connect(self.show_edit_user_dialog)
         del_btn.clicked.connect(self.delete_selected_user)
         return page
 
-    def refresh_users_table(self):
-        users = db_manager.get_users()
+    def on_user_double_clicked(self, row, column):
+        """处理用户表格双击事件，打开编辑对话框"""
+        # 选中双击的行
+        self.users_table.selectRow(row)
+        # 调用编辑用户对话框
+        self.show_edit_user_dialog()
+    
+    def refresh_users_table(self, name_filter=None, ip_filter=None, role_filter=None, dept_filter=None):
+        users = db_manager.get_users(name=name_filter, ip=ip_filter, role=role_filter, department=dept_filter)
         self.users_table.setRowCount(len(users))
         for row, user in enumerate(users):
             self.users_table.setItem(row, 0, QTableWidgetItem(str(user['id'])))
@@ -1261,41 +1317,327 @@ class MainWindow(QMainWindow):
             self.users_table.setItem(row, 2, QTableWidgetItem(user['name']))
             self.users_table.setItem(row, 3, QTableWidgetItem(user['role']))
             self.users_table.setItem(row, 4, QTableWidgetItem(user['department']))
+    
+    def filter_users(self):
+        """根据筛选条件过滤用户列表"""
+        name = self.name_filter.text().strip()
+        ip = self.ip_filter.text().strip()
+        role = self.role_filter.text().strip()
+        dept = self.dept_filter.text().strip()
+        
+        # 如果所有筛选条件都为空，则显示所有用户
+        if not name and not ip and not role and not dept:
+            self.refresh_users_table()
+        else:
+            self.refresh_users_table(name_filter=name, ip_filter=ip, role_filter=role, dept_filter=dept)
+    
+    def reset_user_filters(self):
+        """重置所有筛选条件"""
+        self.name_filter.clear()
+        self.ip_filter.clear()
+        self.role_filter.clear()
+        self.dept_filter.clear()
+        self.refresh_users_table()
 
     def show_add_user_dialog(self):
         dialog = QDialog(self)
         dialog.setWindowTitle("新增用户")
-        layout = QFormLayout(dialog)
+        dialog.setMinimumWidth(700)
+        dialog.setMinimumHeight(500)
+        
+        # 设置弹窗样式，与主系统保持一致
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2E2E2E;
+                color: #FFFFFF;
+            }
+            QGroupBox {
+                border: 1px solid #555555;
+                border-radius: 5px;
+                margin-top: 1ex;
+                font-size: 14px;
+                font-weight: bold;
+                color: #FFFFFF;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 10px;
+                color: #FFFFFF;
+            }
+            QLineEdit, QListWidget, QLabel {
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px 12px;
+                color: #FFFFFF;
+                font-size: 14px;
+                min-height: 20px;
+            }
+            QLineEdit:focus, QListWidget:focus {
+                border-color: #0078d4;
+                background-color: #4c4c4c;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #444444;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+            QLabel {
+                color: #FFFFFF;
+                font-size: 14px;
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton {
+                background-color: #0078d4;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 60px;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+            QPushButton[type="cancel"] {
+                background-color: #555555;
+            }
+            QPushButton[type="cancel"]:hover {
+                background-color: #666666;
+            }
+            QPushButton[type="cancel"]:pressed {
+                background-color: #444444;
+            }
+            QPushButton[type="remove"] {
+                background-color: #d83b01;
+            }
+            QPushButton[type="remove"]:hover {
+                background-color: #e13400;
+            }
+        """)
+        
+        # 主布局
+        main_layout = QVBoxLayout(dialog)
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 用户基本信息区域
+        info_group = QGroupBox("用户基本信息")
+        info_layout = QFormLayout(info_group)
+        
         ip_edit = QLineEdit()
         name_edit = QLineEdit()
-        # 多选角色
-        role_list = QListWidget()
-        role_list.setSelectionMode(QListWidget.MultiSelection)
-        for role in db_manager.get_roles():
-            role_list.addItem(role)
-        # 多选部门
-        dept_list = QListWidget()
-        dept_list.setSelectionMode(QListWidget.MultiSelection)
-        for dept in db_manager.get_departments():
-            dept_list.addItem(dept)
-        layout.addRow("内网IP:", ip_edit)
-        layout.addRow("姓名:", name_edit)
-        layout.addRow("角色(可多选):", role_list)
-        layout.addRow("部门(可多选):", dept_list)
-        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        layout.addWidget(btn_box)
-        btn_box.accepted.connect(dialog.accept)
-        btn_box.rejected.connect(dialog.reject)
-        if dialog.exec() == QDialog.Accepted:
+        
+        info_layout.addRow("内网IP:", ip_edit)
+        info_layout.addRow("姓名:", name_edit)
+        
+        main_layout.addWidget(info_group)
+        
+        # 角色权限区域
+        role_group = QGroupBox("角色权限")
+        role_layout = QHBoxLayout(role_group)
+        
+        # 左侧：已有角色
+        left_role_layout = QVBoxLayout()
+        left_role_layout.addWidget(QLabel("已有角色:"))
+        current_roles_list = QListWidget()
+        current_roles_list.setMaximumHeight(150)
+        left_role_layout.addWidget(current_roles_list)
+        
+        # 角色移除按钮
+        remove_role_btn = QPushButton("移除选中角色")
+        remove_role_btn.setProperty("type", "remove")
+        def remove_selected_role():
+            selected_items = current_roles_list.selectedItems()
+            for item in selected_items:
+                current_roles_list.takeItem(current_roles_list.row(item))
+        remove_role_btn.clicked.connect(remove_selected_role)
+        left_role_layout.addWidget(remove_role_btn)
+        
+        # 右侧：可添加角色
+        right_role_layout = QVBoxLayout()
+        right_role_layout.addWidget(QLabel("可添加角色:"))
+        
+        # 获取所有角色
+        all_roles = db_manager.get_roles()
+        
+        # 创建可添加角色的滚动区域
+        scroll_area_roles = QScrollArea()
+        scroll_area_roles.setWidgetResizable(True)
+        scroll_area_roles.setMaximumHeight(150)
+        scroll_area_roles.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #555555;
+                border-radius: 4px;
+                background-color: #3c3c3c;
+            }
+        """)
+        
+        roles_container = QWidget()
+        roles_container_layout = QVBoxLayout(roles_container)
+        roles_container_layout.setSpacing(5)
+        
+        # 为每个可添加角色创建一个带添加按钮的行
+        for role in all_roles:
+            role_row = QHBoxLayout()
+            role_label = QLabel(role)
+            role_label.setStyleSheet("border: none;")
+            add_role_btn = QPushButton("添加")
+            add_role_btn.setMaximumWidth(60)
+            
+            # 添加角色的函数
+            def add_role_func(r=role):
+                current_roles_list.addItem(r)
+                # 添加后从右侧移除
+                for i in range(roles_container_layout.count()):
+                    widget = roles_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == r:
+                            widget.hide()
+                            widget.deleteLater()
+                            break
+            
+            add_role_btn.clicked.connect(add_role_func)
+            role_row.addWidget(role_label)
+            role_row.addWidget(add_role_btn)
+            role_row.addStretch()
+            
+            role_widget = QWidget()
+            role_widget.setLayout(role_row)
+            roles_container_layout.addWidget(role_widget)
+        
+        scroll_area_roles.setWidget(roles_container)
+        right_role_layout.addWidget(scroll_area_roles)
+        
+        # 添加到角色布局
+        role_layout.addLayout(left_role_layout)
+        role_layout.addLayout(right_role_layout)
+        
+        main_layout.addWidget(role_group)
+        
+        # 部门权限区域
+        dept_group = QGroupBox("部门权限")
+        dept_layout = QHBoxLayout(dept_group)
+        
+        # 左侧：已有部门
+        left_dept_layout = QVBoxLayout()
+        left_dept_layout.addWidget(QLabel("已有部门:"))
+        current_depts_list = QListWidget()
+        current_depts_list.setMaximumHeight(150)
+        left_dept_layout.addWidget(current_depts_list)
+        
+        # 部门移除按钮
+        remove_dept_btn = QPushButton("移除选中部门")
+        remove_dept_btn.setProperty("type", "remove")
+        def remove_selected_dept():
+            selected_items = current_depts_list.selectedItems()
+            for item in selected_items:
+                current_depts_list.takeItem(current_depts_list.row(item))
+        remove_dept_btn.clicked.connect(remove_selected_dept)
+        left_dept_layout.addWidget(remove_dept_btn)
+        
+        # 右侧：可添加部门
+        right_dept_layout = QVBoxLayout()
+        right_dept_layout.addWidget(QLabel("可添加部门:"))
+        
+        # 获取所有部门
+        all_depts = db_manager.get_departments()
+        
+        # 创建可添加部门的滚动区域
+        scroll_area_depts = QScrollArea()
+        scroll_area_depts.setWidgetResizable(True)
+        scroll_area_depts.setMaximumHeight(150)
+        scroll_area_depts.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #555555;
+                border-radius: 4px;
+                background-color: #3c3c3c;
+            }
+        """)
+        
+        depts_container = QWidget()
+        depts_container_layout = QVBoxLayout(depts_container)
+        depts_container_layout.setSpacing(5)
+        
+        # 为每个可添加部门创建一个带添加按钮的行
+        for dept in all_depts:
+            dept_row = QHBoxLayout()
+            dept_label = QLabel(dept)
+            dept_label.setStyleSheet("border: none;")
+            add_dept_btn = QPushButton("添加")
+            add_dept_btn.setMaximumWidth(60)
+            
+            # 添加部门的函数
+            def add_dept_func(d=dept):
+                current_depts_list.addItem(d)
+                # 添加后从右侧移除
+                for i in range(depts_container_layout.count()):
+                    widget = depts_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == d:
+                            widget.hide()
+                            widget.deleteLater()
+                            break
+            
+            add_dept_btn.clicked.connect(add_dept_func)
+            dept_row.addWidget(dept_label)
+            dept_row.addWidget(add_dept_btn)
+            dept_row.addStretch()
+            
+            dept_widget = QWidget()
+            dept_widget.setLayout(dept_row)
+            depts_container_layout.addWidget(dept_widget)
+        
+        scroll_area_depts.setWidget(depts_container)
+        right_dept_layout.addWidget(scroll_area_depts)
+        
+        # 添加到部门布局
+        dept_layout.addLayout(left_dept_layout)
+        dept_layout.addLayout(right_dept_layout)
+        
+        main_layout.addWidget(dept_group)
+        
+        # 按钮区域
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        save_btn = QPushButton("保存")
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setProperty("type", "cancel")
+        
+        btn_layout.addWidget(save_btn)
+        btn_layout.addWidget(cancel_btn)
+        
+        main_layout.addLayout(btn_layout)
+        
+        # 按钮事件
+        def save_user():
             ip = ip_edit.text().strip()
             name = name_edit.text().strip()
-            roles = [item.text() for item in role_list.selectedItems()]
-            depts = [item.text() for item in dept_list.selectedItems()]
+            roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
+            depts = [current_depts_list.item(i).text() for i in range(current_depts_list.count())]
+            
             if ip and name and roles and depts:
                 db_manager.add_user(ip, name, ','.join(roles), ','.join(depts))
                 self.refresh_users_table()
+                dialog.accept()
             else:
-                QMessageBox.warning(self, "提示", "所有字段均为必填项且角色/部门至少选一个！")
+                QMessageBox.warning(dialog, "提示", "所有字段均为必填项且角色/部门至少选一个！")
+        
+        save_btn.clicked.connect(save_user)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        dialog.exec_()
 
     def show_edit_user_dialog(self):
         selected = self.users_table.currentRow()
@@ -1307,45 +1649,315 @@ class MainWindow(QMainWindow):
         name = self.users_table.item(selected, 2).text()
         roles = self.users_table.item(selected, 3).text().split(',')
         depts = self.users_table.item(selected, 4).text().split(',')
+        
+        # 过滤掉空字符串
+        roles = [role for role in roles if role.strip()]
+        depts = [dept for dept in depts if dept.strip()]
+        
         dialog = QDialog(self)
         dialog.setWindowTitle("编辑用户")
-        layout = QFormLayout(dialog)
+        dialog.setMinimumWidth(700)
+        dialog.setMinimumHeight(500)
+        
+        # 设置弹窗样式，与主系统保持一致
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2E2E2E;
+                color: #FFFFFF;
+            }
+            QGroupBox {
+                border: 1px solid #555555;
+                border-radius: 5px;
+                margin-top: 1ex;
+                font-size: 14px;
+                font-weight: bold;
+                color: #FFFFFF;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 10px;
+                color: #FFFFFF;
+            }
+            QLineEdit, QListWidget, QLabel {
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px 12px;
+                color: #FFFFFF;
+                font-size: 14px;
+                min-height: 20px;
+            }
+            QLineEdit:focus, QListWidget:focus {
+                border-color: #0078d4;
+                background-color: #4c4c4c;
+            }
+            QListWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #444444;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+            QLabel {
+                color: #FFFFFF;
+                font-size: 14px;
+                border: none;
+                background-color: transparent;
+            }
+            QPushButton {
+                background-color: #0078d4;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 60px;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+            QPushButton[type="cancel"] {
+                background-color: #555555;
+            }
+            QPushButton[type="cancel"]:hover {
+                background-color: #666666;
+            }
+            QPushButton[type="cancel"]:pressed {
+                background-color: #444444;
+            }
+            QPushButton[type="remove"] {
+                background-color: #d83b01;
+            }
+            QPushButton[type="remove"]:hover {
+                background-color: #e13400;
+            }
+        """)
+        
+        # 主布局
+        main_layout = QVBoxLayout(dialog)
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 用户基本信息区域
+        info_group = QGroupBox("用户基本信息")
+        info_layout = QFormLayout(info_group)
+        
         ip_edit = QLineEdit(ip)
         name_edit = QLineEdit(name)
-        # 多选角色
-        role_list = QListWidget()
-        role_list.setSelectionMode(QListWidget.MultiSelection)
-        for role in db_manager.get_roles():
-            item = QListWidgetItem(role)
-            if role in roles:
-                item.setSelected(True)
-            role_list.addItem(item)
-        # 多选部门
-        dept_list = QListWidget()
-        dept_list.setSelectionMode(QListWidget.MultiSelection)
-        for dept in db_manager.get_departments():
-            item = QListWidgetItem(dept)
-            if dept in depts:
-                item.setSelected(True)
-            dept_list.addItem(item)
-        layout.addRow("内网IP:", ip_edit)
-        layout.addRow("姓名:", name_edit)
-        layout.addRow("角色(可多选):", role_list)
-        layout.addRow("部门(可多选):", dept_list)
-        btn_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        layout.addWidget(btn_box)
-        btn_box.accepted.connect(dialog.accept)
-        btn_box.rejected.connect(dialog.reject)
-        if dialog.exec() == QDialog.Accepted:
+        
+        info_layout.addRow("内网IP:", ip_edit)
+        info_layout.addRow("姓名:", name_edit)
+        
+        main_layout.addWidget(info_group)
+        
+        # 角色权限区域
+        role_group = QGroupBox("角色权限")
+        role_layout = QHBoxLayout(role_group)
+        
+        # 左侧：已有角色
+        left_role_layout = QVBoxLayout()
+        left_role_layout.addWidget(QLabel("已有角色:"))
+        current_roles_list = QListWidget()
+        current_roles_list.setMaximumHeight(150)
+        for role in roles:
+            current_roles_list.addItem(role)
+        left_role_layout.addWidget(current_roles_list)
+        
+        # 角色移除按钮
+        remove_role_btn = QPushButton("移除选中角色")
+        remove_role_btn.setProperty("type", "remove")
+        def remove_selected_role():
+            selected_items = current_roles_list.selectedItems()
+            for item in selected_items:
+                current_roles_list.takeItem(current_roles_list.row(item))
+        remove_role_btn.clicked.connect(remove_selected_role)
+        left_role_layout.addWidget(remove_role_btn)
+        
+        # 右侧：可添加角色
+        right_role_layout = QVBoxLayout()
+        right_role_layout.addWidget(QLabel("可添加角色:"))
+        
+        # 获取所有角色并过滤掉已有的
+        all_roles = db_manager.get_roles()
+        available_roles = [role for role in all_roles if role not in roles]
+        
+        # 创建可添加角色的滚动区域
+        scroll_area_roles = QScrollArea()
+        scroll_area_roles.setWidgetResizable(True)
+        scroll_area_roles.setMaximumHeight(150)
+        scroll_area_roles.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #555555;
+                border-radius: 4px;
+                background-color: #3c3c3c;
+            }
+        """)
+        
+        roles_container = QWidget()
+        roles_container_layout = QVBoxLayout(roles_container)
+        roles_container_layout.setSpacing(5)
+        
+        # 为每个可添加角色创建一个带添加按钮的行
+        for role in available_roles:
+            role_row = QHBoxLayout()
+            role_label = QLabel(role)
+            role_label.setStyleSheet("border: none;")
+            add_role_btn = QPushButton("添加")
+            add_role_btn.setMaximumWidth(60)
+            
+            # 添加角色的函数
+            def add_role_func(r=role):
+                current_roles_list.addItem(r)
+                # 添加后从右侧移除
+                for i in range(roles_container_layout.count()):
+                    widget = roles_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == r:
+                            widget.hide()
+                            widget.deleteLater()
+                            break
+            
+            add_role_btn.clicked.connect(add_role_func)
+            role_row.addWidget(role_label)
+            role_row.addWidget(add_role_btn)
+            role_row.addStretch()
+            
+            role_widget = QWidget()
+            role_widget.setLayout(role_row)
+            roles_container_layout.addWidget(role_widget)
+        
+        scroll_area_roles.setWidget(roles_container)
+        right_role_layout.addWidget(scroll_area_roles)
+        
+        # 添加到角色布局
+        role_layout.addLayout(left_role_layout)
+        role_layout.addLayout(right_role_layout)
+        
+        main_layout.addWidget(role_group)
+        
+        # 部门权限区域
+        dept_group = QGroupBox("部门权限")
+        dept_layout = QHBoxLayout(dept_group)
+        
+        # 左侧：已有部门
+        left_dept_layout = QVBoxLayout()
+        left_dept_layout.addWidget(QLabel("已有部门:"))
+        current_depts_list = QListWidget()
+        current_depts_list.setMaximumHeight(150)
+        for dept in depts:
+            current_depts_list.addItem(dept)
+        left_dept_layout.addWidget(current_depts_list)
+        
+        # 部门移除按钮
+        remove_dept_btn = QPushButton("移除选中部门")
+        remove_dept_btn.setProperty("type", "remove")
+        def remove_selected_dept():
+            selected_items = current_depts_list.selectedItems()
+            for item in selected_items:
+                current_depts_list.takeItem(current_depts_list.row(item))
+        remove_dept_btn.clicked.connect(remove_selected_dept)
+        left_dept_layout.addWidget(remove_dept_btn)
+        
+        # 右侧：可添加部门
+        right_dept_layout = QVBoxLayout()
+        right_dept_layout.addWidget(QLabel("可添加部门:"))
+        
+        # 获取所有部门并过滤掉已有的
+        all_depts = db_manager.get_departments()
+        available_depts = [dept for dept in all_depts if dept not in depts]
+        
+        # 创建可添加部门的滚动区域
+        scroll_area_depts = QScrollArea()
+        scroll_area_depts.setWidgetResizable(True)
+        scroll_area_depts.setMaximumHeight(150)
+        scroll_area_depts.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #555555;
+                border-radius: 4px;
+                background-color: #3c3c3c;
+            }
+        """)
+        
+        depts_container = QWidget()
+        depts_container_layout = QVBoxLayout(depts_container)
+        depts_container_layout.setSpacing(5)
+        
+        # 为每个可添加部门创建一个带添加按钮的行
+        for dept in available_depts:
+            dept_row = QHBoxLayout()
+            dept_label = QLabel(dept)
+            dept_label.setStyleSheet("border: none;")
+            add_dept_btn = QPushButton("添加")
+            add_dept_btn.setMaximumWidth(60)
+            
+            # 添加部门的函数
+            def add_dept_func(d=dept):
+                current_depts_list.addItem(d)
+                # 添加后从右侧移除
+                for i in range(depts_container_layout.count()):
+                    widget = depts_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == d:
+                            widget.hide()
+                            widget.deleteLater()
+                            break
+            
+            add_dept_btn.clicked.connect(add_dept_func)
+            dept_row.addWidget(dept_label)
+            dept_row.addWidget(add_dept_btn)
+            dept_row.addStretch()
+            
+            dept_widget = QWidget()
+            dept_widget.setLayout(dept_row)
+            depts_container_layout.addWidget(dept_widget)
+        
+        scroll_area_depts.setWidget(depts_container)
+        right_dept_layout.addWidget(scroll_area_depts)
+        
+        # 添加到部门布局
+        dept_layout.addLayout(left_dept_layout)
+        dept_layout.addLayout(right_dept_layout)
+        
+        main_layout.addWidget(dept_group)
+        
+        # 按钮区域
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        save_btn = QPushButton("保存")
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setProperty("type", "cancel")
+        
+        btn_layout.addWidget(save_btn)
+        btn_layout.addWidget(cancel_btn)
+        
+        main_layout.addLayout(btn_layout)
+        
+        # 按钮事件
+        def save_user():
             new_ip = ip_edit.text().strip()
             new_name = name_edit.text().strip()
-            new_roles = [item.text() for item in role_list.selectedItems()]
-            new_depts = [item.text() for item in dept_list.selectedItems()]
+            new_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
+            new_depts = [current_depts_list.item(i).text() for i in range(current_depts_list.count())]
+            
             if new_ip and new_name and new_roles and new_depts:
                 db_manager.update_user(user_id, new_ip, new_name, ','.join(new_roles), ','.join(new_depts))
                 self.refresh_users_table()
+                dialog.accept()
             else:
-                QMessageBox.warning(self, "提示", "所有字段均为必填项且角色/部门至少选一个！")
+                QMessageBox.warning(dialog, "提示", "所有字段均为必填项且角色/部门至少选一个！")
+        
+        save_btn.clicked.connect(save_user)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        dialog.exec_()
 
     def delete_selected_user(self):
         selected = self.users_table.currentRow()

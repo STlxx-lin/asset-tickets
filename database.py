@@ -715,12 +715,37 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_users(self) -> List[Dict[str, Any]]:
+    def get_users(self, name: str = None, ip: str = None, role: str = None, department: str = None) -> List[Dict[str, Any]]:
         if not self.connect():
             return []
         try:
             with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                cursor.execute("SELECT id, ip, name, role, department FROM mcs_by_takuya_users ORDER BY id DESC")
+                sql = "SELECT id, ip, name, role, department FROM mcs_by_takuya_users"
+                conditions = []
+                params = []
+                
+                if name:
+                    conditions.append("name LIKE %s")
+                    params.append(f"%{name}%")
+                
+                if ip:
+                    conditions.append("ip LIKE %s")
+                    params.append(f"%{ip}%")
+                
+                if role:
+                    conditions.append("role LIKE %s")
+                    params.append(f"%{role}%")
+                
+                if department:
+                    conditions.append("department LIKE %s")
+                    params.append(f"%{department}%")
+                
+                if conditions:
+                    sql += " WHERE " + " AND ".join(conditions)
+                
+                sql += " ORDER BY id DESC"
+                
+                cursor.execute(sql, params)
                 return cursor.fetchall()
         except Exception as e:
             self.logger.error(f"获取用户失败: {e}")
