@@ -843,6 +843,9 @@ class MainWindow(QMainWindow):
         self.date_end = QDateEdit()
         self.date_start.setCalendarPopup(True)
         self.date_end.setCalendarPopup(True)
+        # 设置日期显示格式为 yyyy-MM-dd
+        self.date_start.setDisplayFormat("yyyy-MM-dd")
+        self.date_end.setDisplayFormat("yyyy-MM-dd")
         today = QDate.currentDate()
         first_day = QDate(today.year(), today.month(), 1)
         self.date_start.setDate(first_day)
@@ -1098,8 +1101,10 @@ class MainWindow(QMainWindow):
         # 时间范围
         self.start_date_filter = QDateEdit()
         self.start_date_filter.setCalendarPopup(True)
+        self.start_date_filter.setDisplayFormat("yyyy-MM-dd")
         self.end_date_filter = QDateEdit()
         self.end_date_filter.setCalendarPopup(True)
+        self.end_date_filter.setDisplayFormat("yyyy-MM-dd")
         today = QDate.currentDate()
         self.start_date_filter.setDate(today.addMonths(-1))
         self.end_date_filter.setDate(today)
