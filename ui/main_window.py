@@ -1499,14 +1499,16 @@ class MainWindow(QMainWindow):
             add_role_btn.setMaximumWidth(60)
             
             # 添加角色的函数
-            def add_role_func(r=role):
-                current_roles_list.addItem(r)
+            def add_role_func():
+                # 确保使用的是当前迭代的角色值（作为字符串）
+                current_role = str(role)
+                current_roles_list.addItem(current_role)
                 # 添加后从右侧移除
                 for i in range(roles_container_layout.count()):
                     widget = roles_container_layout.itemAt(i).widget()
                     if widget and widget.layout():
                         label = widget.layout().itemAt(0).widget()
-                        if label and isinstance(label, QLabel) and label.text() == r:
+                        if label and isinstance(label, QLabel) and label.text() == current_role:
                             widget.hide()
                             widget.deleteLater()
                             break
@@ -1582,14 +1584,16 @@ class MainWindow(QMainWindow):
             add_dept_btn.setMaximumWidth(60)
             
             # 添加部门的函数
-            def add_dept_func(d=dept):
-                current_depts_list.addItem(d)
+            def add_dept_func():
+                # 确保使用的是当前迭代的部门值（作为字符串）
+                current_dept = str(dept)
+                current_depts_list.addItem(current_dept)
                 # 添加后从右侧移除
                 for i in range(depts_container_layout.count()):
                     widget = depts_container_layout.itemAt(i).widget()
                     if widget and widget.layout():
                         label = widget.layout().itemAt(0).widget()
-                        if label and isinstance(label, QLabel) and label.text() == d:
+                        if label and isinstance(label, QLabel) and label.text() == current_dept:
                             widget.hide()
                             widget.deleteLater()
                             break
@@ -1816,14 +1820,16 @@ class MainWindow(QMainWindow):
             add_role_btn.setMaximumWidth(60)
             
             # 添加角色的函数
-            def add_role_func(r=role):
-                current_roles_list.addItem(r)
+            def add_role_func():
+                # 确保使用的是当前迭代的角色值（作为字符串）
+                current_role = str(role)
+                current_roles_list.addItem(current_role)
                 # 添加后从右侧移除
                 for i in range(roles_container_layout.count()):
                     widget = roles_container_layout.itemAt(i).widget()
                     if widget and widget.layout():
                         label = widget.layout().itemAt(0).widget()
-                        if label and isinstance(label, QLabel) and label.text() == r:
+                        if label and isinstance(label, QLabel) and label.text() == current_role:
                             widget.hide()
                             widget.deleteLater()
                             break
