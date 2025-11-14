@@ -1,6 +1,6 @@
 # 配置文件
 # 版本号统一管理
-APP_VERSION = "v1.15"
+APP_VERSION = "v1.15.1"
 
 # 数据库连接配置
 DB_CONFIG = {

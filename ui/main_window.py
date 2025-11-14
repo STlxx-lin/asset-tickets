@@ -649,11 +649,14 @@ class CreateWorkOrderDialog(QDialog):
             selected_items = user_list.selectedItems()
             if selected_items:
                 self.requester_field.setText(selected_items[0].data(Qt.UserRole))
+from packaging import version
+
 class MainWindow(QMainWindow):
     def __init__(self, role, departments, is_admin=False, parent=None, logout_callback=None, user_name=None):
         # 检查版本
         latest_version_info = db_manager.get_latest_version()
-        if latest_version_info and latest_version_info.get('version') != APP_VERSION:
+        # 只有当数据库版本大于当前版本时才显示过期提示
+        if latest_version_info and latest_version_info.get('version') and version.parse(latest_version_info.get('version')) > version.parse(APP_VERSION):
             # 创建自定义对话框
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Critical)
