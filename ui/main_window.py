@@ -652,6 +652,37 @@ class CreateWorkOrderDialog(QDialog):
 from packaging import version
 
 class MainWindow(QMainWindow):
+    def show_error_dialog(self, error_content):
+        """
+        显示自定义错误弹窗
+        :param error_content: 错误内容
+        """
+        # 创建自定义对话框
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setWindowTitle("错误")
+        msg_box.setText(f"{error_content}\n\n点击复制按钮内容发送给管理员")
+        
+        # 添加复制按钮
+        copy_button = QPushButton("复制")
+        msg_box.addButton(copy_button, QMessageBox.ActionRole)
+        
+        # 添加确定按钮
+        ok_button = QPushButton("确定")
+        msg_box.addButton(ok_button, QMessageBox.AcceptRole)
+        
+        # 连接复制按钮信号
+        def on_copy_clicked():
+            clipboard = QApplication.clipboard()
+            clipboard.setText(f"{error_content}")
+            # 可以添加一个短暂的提示
+            QMessageBox.information(None, "提示", "内容已复制到剪贴板")
+        
+        copy_button.clicked.connect(on_copy_clicked)
+        
+        # 执行对话框
+        msg_box.exec()
+    
     def __init__(self, role, departments, is_admin=False, parent=None, logout_callback=None, user_name=None):
         # 检查版本
         latest_version_info = db_manager.get_latest_version()
@@ -952,7 +983,7 @@ class MainWindow(QMainWindow):
                 if response['success']:
                     QMessageBox.information(self, "成功", response['message'])
                 else:
-                    QMessageBox.critical(self, "失败", response.get('error', '未知错误'))
+                    self.show_error_dialog(f"失败: {response.get('error', '未知错误')}")
             
             red_area_button.clicked.connect(on_red_area_display)
             controls_layout.addWidget(red_area_button)
@@ -1022,7 +1053,7 @@ class MainWindow(QMainWindow):
                     self.log_action("删除工单", f"ID={order_id}")
                     self.refresh_work_orders()
                 else:
-                    QMessageBox.critical(self, "失败", "删除工单失败，请重试或联系管理员")
+                    self.show_error_dialog("失败: 删除工单失败，请重试或联系管理员")
             delete_button.clicked.connect(on_delete_order)
             controls_layout.addWidget(delete_button)
         controls_layout.addStretch()
@@ -2764,7 +2795,7 @@ class MainWindow(QMainWindow):
                     os.makedirs(upload_dir, exist_ok=True)
                 except OSError as e:
                     if e.winerror in [5, 1326]:  # 添加错误代码5 (拒绝访问) 的处理
-                        QMessageBox.critical(dialog, "权限错误", "没有素材库访问权限，请联系系统管理员获取相应权限。\n错误详情: {}".format(str(e)))
+                        self.show_error_dialog(f"权限错误: 没有素材库访问权限，请联系系统管理员获取相应权限。\n错误详情: {str(e)}")
                         return
                     else:
                         raise
