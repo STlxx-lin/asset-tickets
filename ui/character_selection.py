@@ -181,7 +181,8 @@ class CharacterSelection(QWidget):
     
     def verify_admin_password(self, dialog, password):
         """验证管理员密码"""
-        if password == "DBJX.8888":  # 管理员密码
+        from config import ADMIN_PASSWORD
+        if password == ADMIN_PASSWORD:  # 管理员密码
             dialog.accept()
             # 以管理员身份进入主窗口
             from ui.main_window import MainWindow

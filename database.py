@@ -211,7 +211,8 @@ class DatabaseManager:
                     query = f"""
                         SELECT wo.id, d.name as department, wo.model, wo.name, 
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
-                               pt.name as project_type, pc.name as project_content
+                               pt.name as project_type, pc.name as project_content,
+                               wo.project_type_id, wo.project_content_id, wo.remarks
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
                         LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
@@ -224,7 +225,8 @@ class DatabaseManager:
                     cursor.execute("""
                         SELECT wo.id, d.name as department, wo.model, wo.name, 
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
-                               pt.name as project_type, pc.name as project_content
+                               pt.name as project_type, pc.name as project_content,
+                               wo.project_type_id, wo.project_content_id, wo.remarks
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
                         LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
