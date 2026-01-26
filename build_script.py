@@ -13,6 +13,14 @@ import argparse
 # 导入版本号
 from config import APP_VERSION
 
+# 解决 Windows 环境下可能的编码问题
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+
 def install_dependencies():
     """安装依赖包"""
     print("正在安装依赖包...")
