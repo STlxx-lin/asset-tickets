@@ -227,3 +227,6 @@ graph TD
 -   **如何添加一个新部门**:
     1.  在 `database.py` 的 `default_departments` 列表中添加新部门名。
     2.  重新运行 `main.py` 以将新部门插入数据库（或手动`INSERT`）。系统会自动在UI中显示。
+
+
+    

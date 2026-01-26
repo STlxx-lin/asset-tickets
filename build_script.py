@@ -3,6 +3,7 @@
 """
 工单管理系统打包脚本
 支持 Windows 和 macOS 平台的单文件可执行程序打包
+python build_script.py --release
 """
 
 import os
@@ -90,10 +91,39 @@ def build_mac(onefile=False):
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
+import shutil
+import re
+
+def increment_version():
+    """读取 config.py，增加版本号，并保存"""
+    config_path = 'config.py'
+    with open(config_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # 匹配 APP_VERSION = "v1.2.3" 或 'v1.2.3'
+    pattern = r'APP_VERSION\s*=\s*["\']v?(\d+)\.(\d+)\.(\d+)["\']'
+    match = re.search(pattern, content)
+    
+    if not match:
+        print("错误: 在 config.py 中未找到符合格式的 APP_VERSION (例如 v1.0.0)")
+        sys.exit(1)
+        
+    major, minor, patch = map(int, match.groups())
+    new_patch = patch + 1
+    new_version = f"v{major}.{minor}.{new_patch}"
+    
+    # 替换内容
+    new_content = re.sub(pattern, f'APP_VERSION = "{new_version}"', content)
+    
+    with open(config_path, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+        
+    print(f"版本号已更新: v{major}.{minor}.{patch} -> {new_version}")
+    return new_version
+
 def release_version():
-    """发布新版本：打标签并推送到远程仓库"""
-    tag_name = APP_VERSION if APP_VERSION.startswith('v') else f'v{APP_VERSION}'
-    print(f"正在准备发布版本: {tag_name}")
+    """发布新版本：自动增加版本号、打标签并推送到远程仓库"""
+    print(f"正在准备发布新版本...")
     
     try:
         # 检查是否安装了 git
@@ -103,21 +133,32 @@ def release_version():
         sys.exit(1)
         
     try:
-        # 1. 打标签
-        print(f"正在创建标签: {tag_name} ...")
-        subprocess.run(["git", "tag", tag_name], check=True)
+        # 1. 自动增加版本号
+        new_version = increment_version()
         
-        # 2. 推送标签
-        print(f"正在推送到远程仓库...")
-        subprocess.run(["git", "push", "origin", tag_name], check=True)
+        # 2. 提交版本号变更
+        print(f"正在提交版本号变更...")
+        subprocess.run(["git", "add", "config.py"], check=True)
+        subprocess.run(["git", "commit", "-m", f"chore: bump version to {new_version}"], check=True)
         
-        print(f"\n成功发布版本 {tag_name}！")
+        # 3. 推送代码变更 (包含 config.py 的修改)
+        print(f"正在推送代码变更...")
+        subprocess.run(["git", "push", "origin", "main"], check=True)
+
+        # 4. 打标签
+        print(f"正在创建标签: {new_version} ...")
+        subprocess.run(["git", "tag", new_version], check=True)
+        
+        # 5. 推送标签
+        print(f"正在推送标签...")
+        subprocess.run(["git", "push", "origin", new_version], check=True)
+        
+        print(f"\n成功发布版本 {new_version}！")
         print("GitHub Actions 将自动开始构建并发布 Release。")
         print(f"查看进度: https://github.com/STlxx-lin/20250914/actions")
         
     except subprocess.CalledProcessError as e:
-        print(f"\n发布失败: {e}")
-        print("如果是标签已存在错误，请先在 config.py 中更新 APP_VERSION 版本号。")
+        print(f"\n发布流程出错: {e}")
         sys.exit(1)
 
 def main():
