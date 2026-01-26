@@ -90,10 +90,46 @@ def build_mac(onefile=False):
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
+def release_version():
+    """发布新版本：打标签并推送到远程仓库"""
+    tag_name = APP_VERSION if APP_VERSION.startswith('v') else f'v{APP_VERSION}'
+    print(f"正在准备发布版本: {tag_name}")
+    
+    try:
+        # 检查是否安装了 git
+        subprocess.run(["git", "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("错误: 未找到 git 命令，请确保已安装 Git。")
+        sys.exit(1)
+        
+    try:
+        # 1. 打标签
+        print(f"正在创建标签: {tag_name} ...")
+        subprocess.run(["git", "tag", tag_name], check=True)
+        
+        # 2. 推送标签
+        print(f"正在推送到远程仓库...")
+        subprocess.run(["git", "push", "origin", tag_name], check=True)
+        
+        print(f"\n成功发布版本 {tag_name}！")
+        print("GitHub Actions 将自动开始构建并发布 Release。")
+        print(f"查看进度: https://github.com/STlxx-lin/20250914/actions")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"\n发布失败: {e}")
+        print("如果是标签已存在错误，请先在 config.py 中更新 APP_VERSION 版本号。")
+        sys.exit(1)
+
 def main():
     parser = argparse.ArgumentParser(description="工单管理系统打包脚本")
     parser.add_argument("--onefile", action="store_true", help="打包成单个可执行文件")
+    parser.add_argument("--release", action="store_true", help="发布新版本(打标签并推送)")
     args = parser.parse_args()
+    
+    # 如果指定了 --release，则执行发布流程并退出
+    if args.release:
+        release_version()
+        return
     
     current_platform = platform.system()
     print(f"当前平台: {current_platform}")
