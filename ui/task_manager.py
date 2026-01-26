@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
-                             QPushButton, QListWidget, QListWidgetItem, QProgressBar, QLabel)
+                             QPushButton, QListWidget, QListWidgetItem, QProgressBar, QLabel, QMessageBox)
 from PySide6.QtCore import QThread, Signal, Qt, QObject, QSize, QTimer
 import os
 import shutil
@@ -36,6 +36,7 @@ class Task(QThread):
         self.op_type = op_type
         self._is_paused = False
         self._is_canceled = False
+        self.errors = []  # 记录错误信息
         
         # 创建状态更新器
         if update_status_func:
@@ -83,7 +84,9 @@ class Task(QThread):
                         shutil.move(src_file, dest_file)
                 processed += 1
             except Exception as e:
-                print(f"处理文件 {fname} 时出错: {e}")
+                msg = f"处理文件 {fname} 时出错: {e}"
+                print(msg)
+                self.errors.append(msg)
                 move_successful = False
                 continue
 
@@ -103,7 +106,9 @@ class Task(QThread):
                     shutil.rmtree(self.src_dir)
                     print(f"已删除源文件夹（包含重复文件）: {self.src_dir}")
             except Exception as e:
-                print(f"删除源文件夹时出错: {e}")
+                msg = f"删除源文件夹时出错: {e}"
+                print(msg)
+                self.errors.append(msg)
 
         if self.status_updater:
             self.status_updater.update_status.emit()
@@ -298,12 +303,34 @@ class TaskManagerDialog(QDialog):
         def on_progress(val):
             progress.setValue(val)
         def on_finished():
+            # 暂时停止自动关闭检测，防止在弹窗时窗口被关闭
+            self.auto_close_timer.stop()
+            if self.delay_close_timer.isActive():
+                self.delay_close_timer.stop()
+
             progress.setValue(100)
-            item.setText(f"{task.name}（已完成）")
             task._finished = True
-            # 更新工单ID标签显示为已完成状态
-            id_label.setText(f"工单号：{work_order_id}（已完成）")
-            id_label.setStyleSheet("font-size: 15px; color: #00ff00; font-weight: bold; padding-bottom: 2px;")
+            
+            if task.errors:
+                item.setText(f"{task.name}（完成有错误）")
+                id_label.setText(f"工单号：{work_order_id}（完成有错误）")
+                id_label.setStyleSheet("font-size: 15px; color: #ff9900; font-weight: bold; padding-bottom: 2px;")
+                
+                # 构造错误信息
+                error_msg = "\n".join(task.errors[:10])
+                if len(task.errors) > 10:
+                    error_msg += f"\n... (还有 {len(task.errors)-10} 个错误)"
+                
+                # 显示错误提示
+                QMessageBox.warning(self, "任务执行出错", f"任务 {task.name} 执行过程中出现错误：\n{error_msg}")
+            else:
+                item.setText(f"{task.name}（已完成）")
+                # 更新工单ID标签显示为已完成状态
+                id_label.setText(f"工单号：{work_order_id}（已完成）")
+                id_label.setStyleSheet("font-size: 15px; color: #00ff00; font-weight: bold; padding-bottom: 2px;")
+            
+            # 恢复自动关闭检测
+            self.auto_close_timer.start()
         def on_canceled():
             item.setText(f"{task.name}（已取消）")
             task._finished = True

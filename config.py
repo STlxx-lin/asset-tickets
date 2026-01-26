@@ -6,7 +6,7 @@ APP_VERSION = "v1.15.3"
 # 可选值：
 # - 'db1': 使用第一个数据库配置（mcs_by_takuya）
 # - 'db2': 使用第二个数据库配置（cs1）
-DB_SWITCH = 'db2'
+DB_SWITCH = 'db1'
 
 # 数据库配置1 - mcs_by_takuya
 DB_CONFIG_1 = {
