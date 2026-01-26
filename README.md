@@ -80,7 +80,21 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## 📂 项目结构
+## � 打包部署
+
+项目包含自动化打包脚本，支持构建 Windows Exe 和 macOS App/DMG。
+
+```bash
+# Windows / macOS 通用
+python build_script.py
+
+# 打包成单文件 (One-file mode)
+python build_script.py --onefile
+```
+
+构建产物将输出到 `dist/` 目录。
+
+## �📂 项目结构
 
 ```
 e:\2025\pyproj/
