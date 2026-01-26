@@ -1,14 +1,16 @@
-name: Build and Package
+name: Build and Release
 
 on:
   push:
     branches: [ "main", "master" ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -35,11 +37,20 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build Application
+    - name: Build Windows
+      if: matrix.os == 'windows-latest'
       env:
         PYTHONIOENCODING: utf-8
       run: |
+        python build_script.py --onefile
+
+    - name: Build macOS
+      if: matrix.os == 'macos-latest'
+      run: |
         python build_script.py
+        # Compress .app to zip for release
+        cd dist
+        zip -r WorkOrderSystem_Mac_App.zip *.app
 
     - name: Upload Artifacts (Windows)
       if: matrix.os == 'windows-latest'
@@ -56,5 +67,16 @@ jobs:
         name: macOS-Build
         path: |
           dist/*.dmg
-          dist/*.app
+          dist/*.zip
         if-no-files-found: error
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/*.exe
+          dist/*.dmg
+          dist/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
