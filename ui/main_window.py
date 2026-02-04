@@ -1111,31 +1111,38 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         # 筛选栏
-        filter_layout = QHBoxLayout()
+        filter_group = QGroupBox("日志筛选")
+        filter_layout = QGridLayout()
+        filter_layout.setSpacing(10)
+
         # 角色
         self.role_filter = QComboBox()
         self.role_filter.addItem("全部角色")
         self.role_filter.addItems(db_manager.get_roles())
-        filter_layout.addWidget(QLabel("角色:"))
-        filter_layout.addWidget(self.role_filter)
+        filter_layout.addWidget(QLabel("角色:"), 0, 0)
+        filter_layout.addWidget(self.role_filter, 0, 1)
+
         # 姓名
         self.name_filter = QComboBox()
         self.name_filter.setEditable(True)
         self.name_filter.addItem("全部姓名")
         self.name_filter.addItems(db_manager.get_user_names())
-        filter_layout.addWidget(QLabel("姓名:"))
-        filter_layout.addWidget(self.name_filter)
+        filter_layout.addWidget(QLabel("姓名:"), 0, 2)
+        filter_layout.addWidget(self.name_filter, 0, 3)
+
         # 操作类型
         self.action_type_filter = QComboBox()
         self.action_type_filter.addItem("全部类型")
         self.action_type_filter.addItems(db_manager.get_action_types())
-        filter_layout.addWidget(QLabel("操作类型:"))
-        filter_layout.addWidget(self.action_type_filter)
+        filter_layout.addWidget(QLabel("操作类型:"), 0, 4)
+        filter_layout.addWidget(self.action_type_filter, 0, 5)
+
         # IP
         self.ip_filter = QLineEdit()
         self.ip_filter.setPlaceholderText("全部IP")
-        filter_layout.addWidget(QLabel("IP地址:"))
-        filter_layout.addWidget(self.ip_filter)
+        filter_layout.addWidget(QLabel("IP地址:"), 0, 6)
+        filter_layout.addWidget(self.ip_filter, 0, 7)
+
         # 时间范围
         self.start_date_filter = QDateEdit()
         self.start_date_filter.setCalendarPopup(True)
@@ -1143,20 +1150,25 @@ class MainWindow(QMainWindow):
         self.end_date_filter = QDateEdit()
         self.end_date_filter.setCalendarPopup(True)
         self.end_date_filter.setDisplayFormat("yyyy-MM-dd")
+        
         # 设置日历部件的最小尺寸
         self.start_date_filter.calendarWidget().setMinimumSize(300, 250)
         self.end_date_filter.calendarWidget().setMinimumSize(300, 250)
+        
         today = QDate.currentDate()
         self.start_date_filter.setDate(today.addMonths(-1))
         self.end_date_filter.setDate(today)
-        filter_layout.addWidget(QLabel("起始日期:"))
-        filter_layout.addWidget(self.start_date_filter)
-        filter_layout.addWidget(QLabel("结束日期:"))
-        filter_layout.addWidget(self.end_date_filter)
+        
+        filter_layout.addWidget(QLabel("起始日期:"), 1, 0)
+        filter_layout.addWidget(self.start_date_filter, 1, 1)
+        filter_layout.addWidget(QLabel("结束日期:"), 1, 2)
+        filter_layout.addWidget(self.end_date_filter, 1, 3)
+
         # 筛选按钮
         filter_btn = QPushButton("筛选")
         filter_btn.clicked.connect(self.setup_logs_table)
         reset_btn = QPushButton("重置")
+        
         def reset_filters():
             self.role_filter.setCurrentIndex(0)
             self.name_filter.setCurrentIndex(0)
@@ -1165,10 +1177,14 @@ class MainWindow(QMainWindow):
             self.start_date_filter.setDate(today.addMonths(-1))
             self.end_date_filter.setDate(today)
             self.setup_logs_table()
+            
         reset_btn.clicked.connect(reset_filters)
-        filter_layout.addWidget(filter_btn)
-        filter_layout.addWidget(reset_btn)
-        layout.addLayout(filter_layout)
+        
+        filter_layout.addWidget(filter_btn, 1, 6)
+        filter_layout.addWidget(reset_btn, 1, 7)
+        
+        filter_group.setLayout(filter_layout)
+        layout.addWidget(filter_group)
         # 分页控制
         self.logs_page_size = 300
         self.logs_page_index = 0
@@ -1330,12 +1346,12 @@ class MainWindow(QMainWindow):
         tab_widget.addTab(users_tab, "用户管理")
         
         # 保存筛选控件的引用
-        self.name_filter = name_filter
-        self.ip_filter = ip_filter
-        self.role_filter = role_filter
-        self.user_dept_filter = dept_filter
-        self.filter_btn = filter_btn
-        self.reset_btn = reset_btn
+        self.settings_name_filter = name_filter
+        self.settings_ip_filter = ip_filter
+        self.settings_role_filter = role_filter
+        self.settings_dept_filter = dept_filter
+        self.settings_filter_btn = filter_btn
+        self.settings_reset_btn = reset_btn
         
         # 连接筛选和重置按钮的信号
         filter_btn.clicked.connect(self.filter_users)
@@ -1366,10 +1382,10 @@ class MainWindow(QMainWindow):
     
     def filter_users(self):
         """根据筛选条件过滤用户列表"""
-        name = self.name_filter.text().strip()
-        ip = self.ip_filter.text().strip()
-        role = self.role_filter.text().strip()
-        dept = self.user_dept_filter.text().strip()
+        name = self.settings_name_filter.text().strip()
+        ip = self.settings_ip_filter.text().strip()
+        role = self.settings_role_filter.text().strip()
+        dept = self.settings_dept_filter.text().strip()
         
         # 如果所有筛选条件都为空，则显示所有用户
         if not name and not ip and not role and not dept:
@@ -1379,10 +1395,10 @@ class MainWindow(QMainWindow):
     
     def reset_user_filters(self):
         """重置所有筛选条件"""
-        self.name_filter.clear()
-        self.ip_filter.clear()
-        self.role_filter.clear()
-        self.user_dept_filter.clear()
+        self.settings_name_filter.clear()
+        self.settings_ip_filter.clear()
+        self.settings_role_filter.clear()
+        self.settings_dept_filter.clear()
         self.refresh_users_table()
 
     def show_add_user_dialog(self):
