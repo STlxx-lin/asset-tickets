@@ -44,7 +44,7 @@ def build():
     if system == "Windows":
         output_name = f"工单管理系统{APP_VERSION}.exe"
     elif system == "Darwin": # macOS
-        output_name = f"工单管理系统{APP_VERSION}_mac.bin"
+        output_name = "WorkOrderSystem"
     else:
         output_name = f"工单管理系统{APP_VERSION}.bin"
 
@@ -82,7 +82,6 @@ def build():
         python_exe, "-m", "nuitka",
         # 编译模式
         "--standalone",      # 独立运行模式
-        "--onefile",         # 打包成单文件
         
         # 自动下载依赖 (如 MinGW64/ccache)
         "--assume-yes-for-downloads",
@@ -102,18 +101,20 @@ def build():
         
         # 优化选项
         "--lto=yes",          # 链接时间优化 (yes=更小但慢, no=快)
-        
-        # 输出文件名
-        f"--output-filename={output_name}",
     ]
 
     # 平台特定选项
     if system == "Windows":
+        cmd.append("--onefile")         # 打包成单文件
+        cmd.append(f"--output-filename={output_name}") # 输出文件名
         cmd.append("--windows-disable-console") # 运行时不显示控制台窗口
     elif system == "Darwin":
-        # macOS 特定选项 (如果需要)
-        # cmd.append("--macos-create-app-bundle") # 如果需要生成 .app 包，可以取消注释
-        pass
+        cmd.append("--macos-create-app-bundle") # 生成 .app 包
+        cmd.append(f"--macos-app-name={output_name}") # 应用名称
+        # macOS 下不使用 --onefile，因为 app bundle 本身就是个文件夹结构
+    else:
+        cmd.append("--onefile")
+        cmd.append(f"--output-filename={output_name}")
 
     # 添加入口脚本
     cmd.append(main_script)
