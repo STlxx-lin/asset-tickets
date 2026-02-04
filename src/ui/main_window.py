@@ -13,8 +13,8 @@ from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
 import sys
 import os
 # 添加项目根目录到Python搜索路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database import db_manager
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.core.database import db_manager
 from .task_manager import Task, TaskManagerDialog
 from .work_order_detail import WorkOrderDetailDialog
 import datetime
@@ -24,7 +24,7 @@ import shutil
 import platform
 import re
 import requests
-from api_manager import api_manager
+from src.core.api_manager import api_manager
 import time
 import hmac
 import hashlib
@@ -32,7 +32,7 @@ import base64
 import urllib.parse
 
 # 导入配置模块
-from config import APP_VERSION, DB_CONFIG, NOTIFICATION_TYPE
+from src.core.config import APP_VERSION, DB_CONFIG, NOTIFICATION_TYPE
 
 ADMIN_PASSWORD = "Db65109032"
 # 全局路径前缀适配
@@ -69,9 +69,6 @@ EDIT_DIST_OPS = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材�
 EDIT_DIST_SALES = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
 OPS_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 SALES_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
-
-# 从配置文件导入版本号
-from config import APP_VERSION
 
 # 钉钉机器人配置 - 按产线分拆
 DINGTALK_BOTS = {

@@ -11,8 +11,11 @@ import sys
 import platform
 import subprocess
 import argparse
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 导入版本号
-from config import APP_VERSION
+from src.core.config import APP_VERSION
 
 # 解决 Windows 环境下可能的编码问题
 if sys.platform.startswith('win'):
@@ -32,7 +35,7 @@ def install_dependencies():
 def build_windows(onefile=False):
     """构建 Windows 版本"""
     print(f"正在构建 Windows 版本 (单文件: {onefile})...")
-    spec_file = "工单管理系统.spec"
+    spec_file = "specs/工单管理系统.spec"
     if onefile:
         # 确保 spec 文件中设置了 onefile=True
         pass  # 已在 spec 文件中设置
@@ -44,7 +47,7 @@ def build_windows(onefile=False):
 def build_mac(onefile=False):
     """构建 macOS 版本，同时生成DMG安装包"""
     print(f"正在构建 macOS 版本 (单文件: {onefile})...")
-    spec_file = "工单管理系统_mac.spec"
+    spec_file = "specs/工单管理系统_mac.spec"
     # 确保在spec文件中设置了正确的onefile参数
     # 这里我们已经在spec文件中直接设置了one_file=True
     # 执行打包命令
@@ -96,7 +99,7 @@ import re
 
 def increment_version():
     """读取 config.py，增加版本号，并保存"""
-    config_path = 'config.py'
+    config_path = 'src/core/config.py'
     with open(config_path, 'r', encoding='utf-8') as f:
         content = f.read()
     

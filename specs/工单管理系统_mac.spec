@@ -5,7 +5,7 @@ import os
 import sys
 # 添加当前目录到Python路径，使用os.getcwd()代替__file__
 sys.path.append(os.getcwd())
-from config import APP_VERSION
+from src.core.config import APP_VERSION
 
 a = Analysis(
     ['main.py'],
@@ -17,9 +17,9 @@ a = Analysis(
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
-        'api_manager',  # 添加项目中的关键模块
-        'database',     # 添加项目中的关键模块
-        'config',       # 添加配置模块
+        'src.core.api_manager',  # 添加项目中的关键模块
+        'src.core.database',     # 添加项目中的关键模块
+        'src.core.config',       # 添加配置模块
         'typing_extensions',  # 修复urllib3相关警告
         'charset_normalizer'  # 修复请求相关警告
     ],

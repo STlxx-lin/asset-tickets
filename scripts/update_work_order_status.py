@@ -1,7 +1,10 @@
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json
-from api_manager import api_manager
+from src.core.api_manager import api_manager
 import logging
+import requests
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

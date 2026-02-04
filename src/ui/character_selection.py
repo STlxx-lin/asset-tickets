@@ -2,12 +2,12 @@ import sys
 from PySide6.QtWidgets import (QWidget, QPushButton, QLabel, QVBoxLayout, 
                              QHBoxLayout, QGroupBox, QRadioButton, QCheckBox, 
                              QGridLayout, QDialog, QLineEdit, QMessageBox)
-from database import db_manager
+from src.core.database import db_manager
 import socket
 from PySide6.QtCore import Qt
 
 # 从配置文件导入版本号
-from config import APP_VERSION
+from src.core.config import APP_VERSION
 
 class CharacterSelection(QWidget):
     def __init__(self):
@@ -181,11 +181,11 @@ class CharacterSelection(QWidget):
     
     def verify_admin_password(self, dialog, password):
         """验证管理员密码"""
-        from config import ADMIN_PASSWORD
+        from src.core.config import ADMIN_PASSWORD
         if password == ADMIN_PASSWORD:  # 管理员密码
             dialog.accept()
             # 以管理员身份进入主窗口
-            from ui.main_window import MainWindow
+            from src.ui.main_window import MainWindow
             self.main_window = MainWindow("管理员", self.departments, is_admin=True, logout_callback=self.show)
             self.main_window.show()
             self.hide()  # 隐藏而不是关闭
@@ -257,7 +257,7 @@ class CharacterSelection(QWidget):
             QMessageBox.warning(self, "提示", "请至少选择一个部门！")
             return
             
-        from ui.main_window import MainWindow
+        from src.ui.main_window import MainWindow
         self.main_window = MainWindow(selected_role, selected_departments, logout_callback=self.show)
         self.main_window.show()
         self.hide()  # 隐藏而不是关闭
@@ -353,7 +353,7 @@ class CharacterSelection(QWidget):
                 if btn.isChecked():
                     role = btn.text()
                     break
-        from ui.main_window import MainWindow
+        from src.ui.main_window import MainWindow
         # 传递选中角色和所有部门
         self.main_window = MainWindow(role, self.user_departments, is_admin=False, logout_callback=self.show, user_name=user_info['name'])
         self.main_window.show()

@@ -2,9 +2,9 @@ import pymysql
 from typing import List, Dict, Any, Optional
 import logging
 import pymysql
-from api_manager import api_manager
+from .api_manager import api_manager
 from datetime import datetime
-from config import DB_CONFIG
+from .config import DB_CONFIG
 
 class DatabaseManager:
     def __init__(self):

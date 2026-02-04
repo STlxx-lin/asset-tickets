@@ -4,7 +4,10 @@ import subprocess
 import shutil
 import time
 import platform
-from config import APP_VERSION
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.core.config import APP_VERSION
 
 def remove_build_artifacts(base_name):
     """
@@ -91,10 +94,8 @@ def build():
         
         # 显式包含模块
         "--include-package=packaging",
-        "--include-package=api_manager",
-        "--include-package=database",
-        "--include-package=config",
-        "--include-package=ui",
+        "--include-package=src.core",
+        "--include-package=src.ui",
         "--include-module=pymysql",
         "--include-module=requests",
         "--include-module=netifaces",

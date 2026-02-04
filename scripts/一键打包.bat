@@ -1,5 +1,6 @@
 @echo off
 setlocal
+cd /d "%~dp0.."
 
 echo [INFO] Searching for official Python installation...
 
@@ -40,7 +41,7 @@ exit /b 1
 echo [INFO] Found Python at: "%PYTHON_EXE%"
 echo [INFO] Starting build process...
 
-"%PYTHON_EXE%" build_nuitka.py
+"%PYTHON_EXE%" scripts\build_nuitka.py
 
 if %ERRORLEVEL% EQU 0 (
     echo.

@@ -1,9 +1,13 @@
 import sys
+import os
+# Add project root to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from PySide6.QtWidgets import QApplication
-from ui.character_selection import CharacterSelection
+from src.ui.character_selection import CharacterSelection
 import os
 
-if __name__ == "__main__":
+def main():
     # 设置环境变量来禁用libpng警告
     os.environ["QT_LOGGING_RULES"] = "qt.imageformats.*=false"
     
@@ -11,4 +15,7 @@ if __name__ == "__main__":
     window = CharacterSelection()
     window.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
 

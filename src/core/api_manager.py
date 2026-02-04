@@ -2,7 +2,7 @@ import requests
 import logging
 import time
 import pymysql
-from config import DB_CONFIG
+from .config import DB_CONFIG
 import traceback
 
 # 配置日志
