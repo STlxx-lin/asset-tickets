@@ -79,6 +79,7 @@ jobs:
         path: |
           *.dmg
           *.zip
+          *.app
         if-no-files-found: error
 
     - name: Create Release
