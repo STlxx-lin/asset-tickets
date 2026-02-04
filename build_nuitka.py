@@ -110,7 +110,9 @@ def build():
         cmd.append("--windows-disable-console") # 运行时不显示控制台窗口
     elif system == "Darwin":
         cmd.append("--macos-create-app-bundle") # 生成 .app 包
-        cmd.append(f"--macos-app-name={output_name}") # 应用名称
+        # 不指定 app-name，让其默认为 main.app，然后手动重命名
+        # 避免 Nuitka 对非 ASCII 字符名称的潜在处理问题
+        # cmd.append(f"--macos-app-name={output_name}") 
         # macOS 下不使用 --onefile，因为 app bundle 本身就是个文件夹结构
     else:
         cmd.append("--onefile")
@@ -129,11 +131,23 @@ def build():
             default_app_name = "main.app"
             target_app_name = f"{output_name}.app"
             
-            if os.path.exists(default_app_name) and default_app_name != target_app_name:
-                print(f"检测到默认应用包 {default_app_name}，正在重命名为 {target_app_name}...")
+            # 查找生成的 .app (可能是 main.app 或者其他)
+            source_app = None
+            if os.path.exists(default_app_name):
+                source_app = default_app_name
+            else:
+                # 尝试查找当前目录下其他的 .app
+                apps = [f for f in os.listdir('.') if f.endswith('.app') and f != target_app_name]
+                if apps:
+                    source_app = apps[0]
+            
+            if source_app and source_app != target_app_name:
+                print(f"检测到应用包 {source_app}，正在重命名为 {target_app_name}...")
                 if os.path.exists(target_app_name):
                     shutil.rmtree(target_app_name)
-                os.rename(default_app_name, target_app_name)
+                os.rename(source_app, target_app_name)
+            elif not os.path.exists(target_app_name):
+                print(f"警告: 未找到生成的 .app 包 (预期: {default_app_name} 或其他)")
                 
             output_display = target_app_name
         else:

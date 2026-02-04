@@ -47,6 +47,9 @@ jobs:
 
     - name: Build macOS
       if: matrix.os == 'macos-latest'
+      env:
+        LC_ALL: en_US.UTF-8
+        LANG: en_US.UTF-8
       run: |
         python build_nuitka.py
         
