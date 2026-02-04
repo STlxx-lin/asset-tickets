@@ -35,29 +35,31 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install nuitka
 
     - name: Build Windows
       if: matrix.os == 'windows-latest'
       env:
         PYTHONIOENCODING: utf-8
       run: |
-        python build_script.py --onefile
+        python build_nuitka.py
 
     - name: Build macOS
       if: matrix.os == 'macos-latest'
       run: |
-        python build_script.py
-        # Compress .app to zip for release
+        python build_nuitka.py
+        # Compress binary to zip for release
         cd dist
-        zip -r WorkOrderSystem_Mac_App.zip *.app
+        # Nuitka on mac generates a binary file, not .app unless specified.
+        # Our build_nuitka.py generates *mac.bin
+        zip -r WorkOrderSystem_Mac.zip *_mac.bin
 
     - name: Upload Artifacts (Windows)
       if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
       with:
         name: Windows-Build
-        path: dist/*.exe
+        path: "*.exe"
         if-no-files-found: error
 
     - name: Upload Artifacts (macOS)
@@ -66,8 +68,8 @@ jobs:
       with:
         name: macOS-Build
         path: |
-          dist/*.dmg
           dist/*.zip
+          *_mac.bin
         if-no-files-found: error
 
     - name: Create Release
@@ -75,8 +77,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          dist/*.exe
-          dist/*.dmg
+          *.exe
+          *_mac.bin
           dist/*.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,3 +3,4 @@ PyMySQL==1.1.1
 netifaces-plus==0.12.4
 requests==2.32.4
 psutil>=5.9.0
+packaging
