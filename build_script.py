@@ -38,7 +38,7 @@ def build_windows(onefile=False):
         pass  # 已在 spec 文件中设置
     subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True)
     # 生成带版本号的文件名
-    exe_name = f"工单管理系统{APP_VERSION}.exe"
+    exe_name = f"素材工单系统{APP_VERSION}.exe"
     print(f"Windows 版本构建完成: dist/{exe_name}")
 
 def build_mac(onefile=False):
@@ -52,17 +52,17 @@ def build_mac(onefile=False):
     
     # 生成带版本号的文件名
     if onefile:
-        exe_name = f"工单管理系统{APP_VERSION}_mac"
+        exe_name = f"素材工单系统{APP_VERSION}_mac"
         print(f"macOS 单文件版本构建完成: dist/{exe_name}")
     else:
-        app_name = f"工单管理系统{APP_VERSION}_mac.app"
+        app_name = f"素材工单系统{APP_VERSION}_mac.app"
         print(f"macOS App版本构建完成: dist/{app_name}")
     
     # 生成DMG安装包
     if platform.system() == "Darwin":  # 确保在macOS系统上运行
         print("正在生成DMG安装包...")
-        dmg_name = f"工单管理系统{APP_VERSION}_mac.dmg"
-        app_path = os.path.join("dist", f"工单管理系统{APP_VERSION}_mac.app")
+        dmg_name = f"素材工单系统{APP_VERSION}_mac.dmg"
+        app_path = os.path.join("dist", f"素材工单系统{APP_VERSION}_mac.app")
         dmg_path = os.path.join("dist", dmg_name)
         
         # 使用hdiutil（macOS系统自带工具）创建DMG文件
@@ -73,7 +73,7 @@ def build_mac(onefile=False):
         try:
             # 步骤2: 将App复制到临时目录
             import shutil
-            shutil.copytree(app_path, os.path.join(temp_dir, f"工单管理系统{APP_VERSION}_mac.app"))
+            shutil.copytree(app_path, os.path.join(temp_dir, f"素材工单系统{APP_VERSION}_mac.app"))
             
             # 步骤3: 添加Applications链接（macOS安装惯例）
             applications_link = os.path.join(temp_dir, "Applications")
@@ -81,7 +81,7 @@ def build_mac(onefile=False):
             
             # 步骤4: 创建DMG文件
             subprocess.run([
-                "hdiutil", "create", "-volname", f"工单管理系统{APP_VERSION}", 
+                "hdiutil", "create", "-volname", f"素材工单系统{APP_VERSION}", 
                 "-srcfolder", temp_dir, "-ov", "-format", "UDZO", dmg_path
             ], check=True)
             

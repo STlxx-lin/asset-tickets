@@ -42,11 +42,11 @@ def build():
     print(f"检测到操作系统: {system}")
     
     if system == "Windows":
-        output_name = f"工单管理系统{APP_VERSION}.exe"
+        output_name = f"素材工单系统{APP_VERSION}.exe"
     elif system == "Darwin": # macOS
-        output_name = f"工单管理系统{APP_VERSION}"
+        output_name = f"素材工单系统{APP_VERSION}"
     else:
-        output_name = f"工单管理系统{APP_VERSION}.bin"
+        output_name = f"素材工单系统{APP_VERSION}.bin"
 
     python_exe = sys.executable
 
