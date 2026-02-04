@@ -26,7 +26,7 @@
 
 ## 🛠️ 环境要求
 
-- **Python**: 3.8+
+- **Python**: 3.12+
 - **Database**: MySQL 5.7+ / MariaDB 10.2+
 - **Web Server**: Nginx/Apache (PHP 7.4+) - *用于部署Web看板*
 
@@ -47,13 +47,13 @@ pip install -r requirements.txt
 
 ### 3. 数据库配置
 
-1. 导入数据库结构文件 `mcs_by_takuya.sql` 到您的 MySQL 数据库中。
+1. 导入数据库结构文件 `sql/mcs_by_takuya.sql` 到您的 MySQL 数据库中。
 2. 复制并修改配置文件：
    
-   打开 `config.py` 文件，根据您的环境配置数据库连接信息：
+   打开 `src/core/config.py` 文件，根据您的环境配置数据库连接信息：
 
    ```python
-   # config.py
+   # src/core/config.py
    
    # 数据库配置
    DB_CONFIG_1 = {
@@ -70,7 +70,7 @@ pip install -r requirements.txt
 
 ### 4. 其他配置
 
-在 `config.py` 中还可以配置：
+在 `src/core/config.py` 中还可以配置：
 - **通知类型**: `dingtalk` (钉钉), `wechat_work` (企业微信), 或 `both`。
 - **管理员密码**: 修改 `ADMIN_PASSWORD`。
 
@@ -80,39 +80,44 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## � 打包部署
+## 📦 打包部署
 
 项目包含自动化打包脚本，支持构建 Windows Exe 和 macOS App/DMG。
 
 ```bash
-# Windows / macOS 通用
-python build_script.py
+# 使用 Nuitka 打包 (推荐)
+python scripts/build_nuitka.py
 
-# 打包成单文件 (One-file mode)
-python build_script.py --onefile
+# 使用 PyInstaller 打包
+python scripts/build_script.py
+
+# Windows 一键打包脚本
+scripts/一键打包.bat
 ```
 
-构建产物将输出到 `dist/` 目录。
+构建产物将输出到项目根目录或 `dist/` 目录。
 
-## �📂 项目结构
+## 📂 项目结构
 
 ```
 e:\2025\pyproj/
-├── main.py                 # 程序入口
-├── config.py               # 配置文件
-├── database.py             # 数据库操作层
-├── api_manager.py          # API 交互层
-├── requirements.txt        # 依赖列表
-├── ui/                     # 界面模块
-│   ├── character_selection.py  # 角色选择界面
-│   ├── main_window.py          # 主窗口逻辑
+├── main.py                     # 程序入口
+├── requirements.txt            # 依赖列表
+├── .github/                    # GitHub Actions 配置
+├── docs/                       # 文档
+├── scripts/                    # 构建和工具脚本
+│   ├── build_nuitka.py         # Nuitka 打包脚本
+│   ├── build_script.py         # PyInstaller 打包脚本
 │   └── ...
-├── build_script.py         # 打包脚本
-├── mcs_by_takuya.sql       # 数据库初始化脚本
-├── MANUAL.md               # 详细维护手册
-└── ...
+├── specs/                      # PyInstaller 配置文件
+├── sql/                        # 数据库脚本
+├── src/                        # 源代码目录
+│   ├── core/                   # 核心模块
+│   │   ├── api_manager.py      # API 交互层
+│   │   ├── config.py           # 配置文件
+│   │   └── database.py         # 数据库操作层
+│   └── ui/                     # 界面模块
+│       ├── main_window.py      # 主窗口逻辑
+│       └── ...
+└── README.md                   # 项目说明
 ```
-
-## 📖 详细文档
-
-更多详细功能说明和维护指南，请参阅 [MANUAL.md](MANUAL.md)。
