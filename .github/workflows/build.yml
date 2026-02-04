@@ -46,12 +46,12 @@ jobs:
     - name: Build Windows
       if: matrix.os == 'windows-latest'
       run: |
-        python build_nuitka.py
+        python scripts/build_nuitka.py
 
     - name: Build macOS
       if: matrix.os == 'macos-latest'
       run: |
-        python build_nuitka.py
+        python scripts/build_nuitka.py
         
         # Find the generated .app bundle
         APP_PATH=$(find . -maxdepth 1 -name "*.app" -type d | head -n 1)

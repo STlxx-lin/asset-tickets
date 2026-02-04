@@ -3,7 +3,7 @@
 """
 工单管理系统打包脚本
 支持 Windows 和 macOS 平台的单文件可执行程序打包
-python build_script.py --release
+python scripts/build_script.py --release
 """
 
 import os
@@ -141,7 +141,7 @@ def release_version():
         
         # 2. 提交版本号变更
         print(f"正在提交版本号变更...")
-        subprocess.run(["git", "add", "config.py"], check=True)
+        subprocess.run(["git", "add", "src/core/config.py"], check=True)
         subprocess.run(["git", "commit", "-m", f"chore: bump version to {new_version}"], check=True)
         
         # 3. 推送代码变更 (包含 config.py 的修改)
