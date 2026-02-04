@@ -44,7 +44,7 @@ def build():
     if system == "Windows":
         output_name = f"工单管理系统{APP_VERSION}.exe"
     elif system == "Darwin": # macOS
-        output_name = "WorkOrderSystem"
+        output_name = f"工单管理系统{APP_VERSION}"
     else:
         output_name = f"工单管理系统{APP_VERSION}.bin"
 
@@ -123,7 +123,23 @@ def build():
     
     try:
         subprocess.check_call(cmd)
-        print(f"\n打包成功！文件位于: {output_name}")
+        
+        # macOS 额外处理：重命名生成的 .app
+        if system == "Darwin":
+            default_app_name = "main.app"
+            target_app_name = f"{output_name}.app"
+            
+            if os.path.exists(default_app_name) and default_app_name != target_app_name:
+                print(f"检测到默认应用包 {default_app_name}，正在重命名为 {target_app_name}...")
+                if os.path.exists(target_app_name):
+                    shutil.rmtree(target_app_name)
+                os.rename(default_app_name, target_app_name)
+                
+            output_display = target_app_name
+        else:
+            output_display = output_name
+
+        print(f"\n打包成功！文件位于: {output_display}")
         if system == "Windows":
             print("提示: Nuitka 首次运行可能需要下载 C 编译器 (MinGW64)，请耐心等待。")
     except subprocess.CalledProcessError as e:

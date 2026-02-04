@@ -48,10 +48,20 @@ jobs:
       if: matrix.os == 'macos-latest'
       run: |
         python build_nuitka.py
+        
+        # Find the generated .app bundle
+        APP_PATH=$(find . -maxdepth 1 -name "*.app" -type d | head -n 1)
+        APP_NAME=$(basename "$APP_PATH" .app)
+        
+        echo "Found app: $APP_PATH"
+        echo "App Name: $APP_NAME"
+        
         # Create DMG using hdiutil (standard macOS tool)
-        hdiutil create -volname "WorkOrderSystem" -srcfolder "WorkOrderSystem.app" -ov -format UDZO "WorkOrderSystem.dmg"
+        hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$APP_NAME.dmg"
+        
         # Zip the .app for alternative distribution
-        zip -r WorkOrderSystem_App.zip WorkOrderSystem.app
+        # Use -r for recursive and -y to preserve symlinks (important for macOS apps)
+        zip -r -y "$APP_NAME.zip" "$APP_PATH"
 
     - name: Upload Artifacts (Windows)
       if: matrix.os == 'windows-latest'
