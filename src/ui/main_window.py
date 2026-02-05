@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 from PySide6.QtWidgets import (QMainWindow, QTableView, QVBoxLayout, QHBoxLayout, 
                              QWidget, QPushButton, QLabel, QMessageBox, QHeaderView,
                              QSplitter, QGroupBox, QListWidget, QStackedWidget,
-                             QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
+                             QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
 import sys
@@ -261,6 +261,89 @@ class AdminPasswordDialog(QDialog):
         layout.addWidget(button_box)
     def get_password(self):
         return self.edit.text().strip()
+
+class FileOperationDialog(QDialog):
+    def __init__(self, html_content, parent=None, title="确认删除", header_text="⚠️ 警告：此操作不可恢复！将要删除以下路径：", footer_text="是否确认删除上述所有文件及数据库记录？", is_confirmation=True):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(800, 500)
+        
+        # Apply dark theme style
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #2E2E2E;
+                color: #FFFFFF;
+            }
+            QTextEdit {
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px;
+                color: #FFFFFF;
+                font-family: Consolas, monospace;
+            }
+            QLabel {
+                color: #FFFFFF;
+                font-size: 14px;
+            }
+            QPushButton {
+                background-color: #0078d4;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
+            }
+        """)
+        
+        layout = QVBoxLayout(self)
+        
+        if header_text:
+            label = QLabel(header_text)
+            # Only style as warning if it looks like a warning or is confirmation
+            if "警告" in header_text or is_confirmation:
+                label.setStyleSheet("color: #ff4d4f; font-weight: bold; font-size: 16px;")
+            else:
+                label.setStyleSheet("color: #FFFFFF; font-weight: bold; font-size: 16px;")
+            layout.addWidget(label)
+        
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setHtml(html_content)
+        layout.addWidget(text_edit)
+        
+        if footer_text:
+            label_confirm = QLabel(footer_text)
+            layout.addWidget(label_confirm)
+        
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        
+        if is_confirmation:
+            btn_cancel = QPushButton("取消")
+            btn_cancel.clicked.connect(self.reject)
+            btn_cancel.setStyleSheet("background-color: #555555;")
+            
+            btn_confirm = QPushButton("确认删除")
+            btn_confirm.clicked.connect(self.accept)
+            btn_confirm.setStyleSheet("background-color: #d93025;")
+            
+            buttons.addWidget(btn_cancel)
+            buttons.addWidget(btn_confirm)
+        else:
+            btn_ok = QPushButton("确定")
+            btn_ok.clicked.connect(self.accept)
+            buttons.addWidget(btn_ok)
+        
+        layout.addLayout(buttons)
+
 class CreateWorkOrderDialog(QDialog):
     def __init__(self, role, departments, user_name=None, parent=None):
         super().__init__(parent)
@@ -1032,25 +1115,50 @@ class MainWindow(QMainWindow):
                 for path in paths:
                     all_paths.append((path, os.path.exists(path)))
                 # 构建路径及存在性信息
-                msg = "将要删除以下路径：\n\n" + "\n".join([f"{p}：{'存在' if exists else '不存在'}" for p, exists in all_paths])
-                confirm = QMessageBox.question(self, "确认删除", msg + "\n\n是否继续？", QMessageBox.Yes | QMessageBox.No)
-                if confirm != QMessageBox.Yes:
+                rows = []
+                for p, exists in all_paths:
+                    status_html = f"<span style='color: #4caf50; font-weight: bold;'>存在</span>" if exists else f"<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+                    rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='60' align='center'>{status_html}</td></tr>")
+                
+                msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(rows)}</table>"
+                
+                # 使用自定义对话框显示
+                dialog = FileOperationDialog(msg, self)
+                if dialog.exec() != QDialog.Accepted:
                     return
+                
                 # 执行删除操作
                 delete_results = []
                 for path, exists in all_paths:
                     if exists:
                         try:
                             shutil.rmtree(path, ignore_errors=True)
-                            delete_results.append(f"{path}：已删除")
+                            delete_results.append((path, "已删除", "#4caf50"))
                         except Exception as e:
-                            delete_results.append(f"{path}：删除失败（{e}）")
+                            delete_results.append((path, f"删除失败: {e}", "#ff4d4f"))
                     else:
-                        delete_results.append(f"{path}：不存在")
+                        delete_results.append((path, "不存在", "#ff4d4f"))
+                
                 # 删除数据库工单
                 if db_manager.delete_work_order(order_id):
-                    result_msg = "\n".join(delete_results)
-                    QMessageBox.information(self, "删除结果", f"工单 {order_id} 及相关文件删除结果：\n{result_msg}")
+                    # 构建结果HTML
+                    res_rows = []
+                    for p, status, color in delete_results:
+                        res_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
+                    
+                    result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(res_rows)}</table>"
+                    
+                    # 显示结果对话框
+                    res_dialog = FileOperationDialog(
+                        result_msg, 
+                        self, 
+                        title="删除结果", 
+                        header_text=f"工单 {order_id} 及相关文件删除结果：", 
+                        footer_text=None, 
+                        is_confirmation=False
+                    )
+                    res_dialog.exec()
+                    
                     self.log_action("删除工单", f"ID={order_id}")
                     self.refresh_work_orders()
                 else:
