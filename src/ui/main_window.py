@@ -862,52 +862,115 @@ class MainWindow(QMainWindow):
     def create_header(self):
         header_widget = QWidget()
         header_widget.setObjectName("Header")
+        header_widget.setMinimumHeight(56)
         header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(15, 10, 15, 10)
-        header_layout.setSpacing(20)
-        logo_label = QLabel("MySystem")
-        logo_label.setFont(QFont("Arial", 16, QFont.Bold))
-        # 菜单按钮
+        header_layout.setContentsMargins(16, 8, 16, 8)
+        header_layout.setSpacing(4)
+
+        # Logo
+        logo_label = QLabel("⚡ 工单系统")
+        logo_label.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: #4f8ef7;"
+            " letter-spacing: 1px; background: transparent; padding-right: 20px;"
+        )
+
+        # 菜单按钮（可切换激活状态）
         menu_items = [
-            ("仪表盘", lambda: self.stacked_widget.setCurrentWidget(self.dashboard_page)),
-            ("报表中心", lambda: self.stacked_widget.setCurrentWidget(self.reports_page)),
+            ("仪表盘", lambda: self.dashboard_page),
+            ("报表中心", lambda: self.reports_page),
         ]
-        # 只有管理员可以看到日志中心和系统设置
         if self.is_admin:
             menu_items.extend([
-                ("日志中心", lambda: self.stacked_widget.setCurrentWidget(self.logs_page)),
-                ("系统设置", lambda: self.stacked_widget.setCurrentWidget(self.settings_page)),
+                ("日志中心", lambda: self.logs_page),
+                ("系统设置", lambda: self.settings_page),
             ])
+
+        self._nav_buttons = []
         menu_layout = QHBoxLayout()
-        for name, action in menu_items:
+        menu_layout.setSpacing(2)
+
+        def make_nav_action(get_page, btn):
+            def action():
+                self.stacked_widget.setCurrentWidget(get_page())
+                for b in self._nav_buttons:
+                    b.setChecked(b is btn)
+            return action
+
+        for name, get_page in menu_items:
             button = QPushButton(name)
-            button.clicked.connect(action)
+            button.setCheckable(True)
+            self._nav_buttons.append(button)
+            button.clicked.connect(make_nav_action(get_page, button))
             menu_layout.addWidget(button)
-            if name == "系统设置":
-                task_btn = QPushButton("任务列表")
-                task_btn.setStyleSheet("font-size: 16px; padding: 4px 16px;")
-                task_btn.clicked.connect(lambda: self.task_manager.show())
-                menu_layout.addWidget(task_btn)
-        menu_layout.addStretch()
-        # 右上角信息区
-        info_text = ""
+
+        # 默认激活第一个
+        if self._nav_buttons:
+            self._nav_buttons[0].setChecked(True)
+
+        # 任务列表按钮（管理员）
+        if self.is_admin:
+            task_btn = QPushButton("📋 任务")
+            task_btn.setStyleSheet(
+                "background: transparent; color: #9ba3b0; border: 1px solid #2e3340;"
+                " border-radius: 7px; padding: 6px 14px; font-size: 13px;"
+            )
+            task_btn.clicked.connect(lambda: self.task_manager.show())
+            menu_layout.addWidget(task_btn)
+
+        # 分割线
+        sep = QLabel()
+        sep.setFixedWidth(1)
+        sep.setStyleSheet("background-color: #2e3340;")
+        sep.setFixedHeight(32)
+
+        # 右侧用户信息
+        right_layout = QHBoxLayout()
+        right_layout.setSpacing(8)
+
         if self.user_name:
-            info_text += f"<b>姓名:</b> {self.user_name}  "
-        info_text += f"<b>角色:</b> {self.role}  "
-        info_text += f"<b>部门:</b> {', '.join(self.departments)}"
-        info_label = QLabel(info_text)
-        info_label.setTextFormat(Qt.RichText)
-        info_label.setStyleSheet("font-size: 15px; color: #666;")
-        header_layout.addWidget(logo_label)
-        header_layout.addLayout(menu_layout)
-        header_layout.addStretch()
-        header_layout.addWidget(info_label)
-        header_layout.addWidget(self.version_label)
+            name_label = QLabel(self.user_name)
+            name_label.setStyleSheet(
+                "font-size: 14px; font-weight: bold; color: #e8eaed; background: transparent;"
+            )
+            name_label.setSizePolicy(name_label.sizePolicy().horizontalPolicy(), name_label.sizePolicy().verticalPolicy())
+            right_layout.addWidget(name_label)
+
+        role_chip = QLabel(self.role)
+        role_chip.setStyleSheet(
+            "background: #1e3a5f; color: #4f8ef7; border-radius: 5px;"
+            " padding: 3px 10px; font-size: 12px; font-weight: bold;"
+        )
+        role_chip.setToolTip(self.role)
+        right_layout.addWidget(role_chip)
+
+        dept_text = ', '.join(self.departments)
+        dept_chip = QLabel(dept_text)
+        dept_chip.setStyleSheet(
+            "background: #252830; color: #9ba3b0; border-radius: 5px;"
+            " padding: 3px 10px; font-size: 12px;"
+        )
+        dept_chip.setToolTip(dept_text)
+        right_layout.addWidget(dept_chip)
+
+        self.version_label.setStyleSheet(
+            "font-size: 11px; color: #454a55; background: transparent;"
+        )
+        right_layout.addWidget(self.version_label)
+
         # 注销按钮
         logout_btn = QPushButton("注销")
-        logout_btn.setStyleSheet("font-size: 15px; padding: 4px 16px; color: #fff; background:#d9534f;")
+        logout_btn.setStyleSheet(
+            "background-color: transparent; color: #ef4444; border: 1px solid #4a1a1a;"
+            " border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: bold;"
+        )
         logout_btn.clicked.connect(self.logout)
-        header_layout.addWidget(logout_btn)
+        right_layout.addWidget(logout_btn)
+
+        header_layout.addWidget(logo_label)
+        header_layout.addLayout(menu_layout, 0)   # 菜单不拉伸
+        header_layout.addStretch(1)               # 中间弹性空间
+        header_layout.addWidget(sep)
+        header_layout.addLayout(right_layout, 0)  # 右侧不拉伸，自然尺寸
         return header_widget
     def verify_admin(self):
         dialog = AdminPasswordDialog(self)
@@ -1004,7 +1067,7 @@ class MainWindow(QMainWindow):
         btn_year.clicked.connect(set_year)
         btn_week.clicked.connect(set_week)
         for btn in [btn_this_month, btn_31, btn_year, btn_week]:
-            btn.setFixedWidth(60)
+            btn.setFixedHeight(32)
             btn.clicked.connect(self.apply_filters)
             filter_layout.addWidget(btn)
         layout.addLayout(filter_layout)
@@ -4974,107 +5037,290 @@ class MainWindow(QMainWindow):
     def apply_styles(self):
         self.setStyleSheet("""
             QMainWindow, QWidget {
-                background-color: #2E2E2E;
-                color: #FFFFFF;
+                background-color: #1a1d23;
+                color: #e8eaed;
+                font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+                font-size: 14px;
             }
             QGroupBox {
-                border: 1px solid #555555;
-                border-radius: 5px;
-                margin-top: 1ex;
-                font-size: 14px;
+                border: 1px solid #2e3340;
+                border-radius: 8px;
+                margin-top: 14px;
+                font-size: 12px;
                 font-weight: bold;
+                color: #6b7280;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 10px;
+                padding: 0 8px;
+                left: 12px;
             }
-            QTableView {
-                gridline-color: #444;
-                border: 1px solid #555555;
-                selection-background-color: #2c5380;
-                selection-color: #ffffff;
+            QPushButton {
+                background-color: #4f8ef7;
+                color: #ffffff;
+                border: none;
+                padding: 8px 18px;
+                border-radius: 7px;
+                font-weight: bold;
                 font-size: 13px;
             }
+            QPushButton:hover {
+                background-color: #6ba3ff;
+            }
+            QPushButton:pressed {
+                background-color: #3a72d6;
+            }
+            QPushButton:disabled {
+                background-color: #2e3340;
+                color: #6b7280;
+            }
+            QTableView {
+                gridline-color: #252830;
+                border: none;
+                background-color: #1f232b;
+                selection-background-color: #1e3a5f;
+                selection-color: #ffffff;
+                font-size: 13px;
+                alternate-background-color: #22262f;
+            }
             QTableView::item {
-                padding: 8px;
-                border-bottom: 1px solid #444;
+                padding: 10px 8px;
+                border-bottom: 1px solid #252830;
             }
             QTableView::item:selected {
-                background-color: #2c5380;
+                background-color: #1e3a5f;
                 color: #ffffff;
-                border: 2px solid #4a90e2;
-                font-weight: bold;
-                font-size: 14px;
             }
             QTableView::item:hover {
-                background-color: #3c3c3c;
+                background-color: #262b35;
             }
             QTableView::item:selected:hover {
-                background-color: #366aa3;
+                background-color: #254d7a;
             }
             QHeaderView::section {
-                background-color: #3c3c3c;
-                color: #FFFFFF;
-                padding: 8px;
-                border: 1px solid #555555;
+                background-color: #252830;
+                color: #9ba3b0;
+                padding: 10px 8px;
+                border: none;
+                border-right: 1px solid #2e3340;
+                border-bottom: 1px solid #2e3340;
                 font-weight: bold;
+                font-size: 12px;
+            }
+            QHeaderView::section:last {
+                border-right: none;
             }
             QListWidget {
-                background-color: #2a2a2a;
+                background-color: #1f232b;
                 border: none;
-                font-size: 12px;
-                color: #aaa;
+                font-size: 13px;
+                color: #9ba3b0;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 10px 12px;
+                border-radius: 6px;
+                margin: 2px 4px;
+            }
+            QListWidget::item:hover {
+                background-color: #262b35;
+                color: #e8eaed;
+            }
+            QListWidget::item:selected {
+                background-color: #1e3a5f;
+                color: #ffffff;
             }
             QLabel {
-                color: #FFFFFF;
+                color: #e8eaed;
                 font-size: 14px;
+                background: transparent;
+            }
+            QLineEdit {
+                background-color: #252830;
+                border: 1px solid #353840;
+                padding: 9px 12px;
+                border-radius: 7px;
+                color: #e8eaed;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border-color: #4f8ef7;
+                background-color: #2a2f3d;
+            }
+            QLineEdit:disabled {
+                background-color: #1f232b;
+                color: #6b7280;
+            }
+            QComboBox {
+                background-color: #252830;
+                border: 1px solid #353840;
+                padding: 8px 12px;
+                border-radius: 7px;
+                color: #e8eaed;
+                font-size: 13px;
+            }
+            QComboBox:focus {
+                border-color: #4f8ef7;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 24px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #252830;
+                border: 1px solid #353840;
+                selection-background-color: #1e3a5f;
+                color: #e8eaed;
+                padding: 4px;
+            }
+            QDateEdit {
+                background-color: #252830;
+                border: 1px solid #353840;
+                padding: 8px 12px;
+                border-radius: 7px;
+                color: #e8eaed;
+            }
+            QTextEdit, QTextBrowser {
+                background-color: #1f232b;
+                border: 1px solid #2e3340;
+                border-radius: 7px;
+                color: #e8eaed;
+                padding: 8px;
+                font-size: 13px;
             }
             QSplitter::handle {
-                background-color: #555555;
+                background-color: #2e3340;
             }
             QSplitter::handle:horizontal {
                 width: 1px;
             }
+            QSplitter::handle:vertical {
+                height: 1px;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #1a1d23;
+                width: 8px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #3a3f4d;
+                min-height: 24px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #4f8ef7;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+            QScrollBar:horizontal {
+                border: none;
+                background: #1a1d23;
+                height: 8px;
+                margin: 0;
+            }
+            QScrollBar::handle:horizontal {
+                background: #3a3f4d;
+                min-width: 24px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #4f8ef7;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0;
+            }
             QWidget#Header {
-                background-color: #1e1e1e;
-                border-bottom: 1px solid #555;
+                background-color: #13151a;
+                border-bottom: 1px solid #252830;
             }
             QWidget#Header QLabel {
-                color: #f0f0f0;
+                color: #e8eaed;
                 font-size: 14px;
+                background: transparent;
             }
             QWidget#Header QPushButton {
                 background-color: transparent;
                 border: none;
-                padding: 8px 12px;
-                color: #f0f0f0;
+                padding: 8px 14px;
+                color: #9ba3b0;
                 font-size: 14px;
+                border-radius: 7px;
+                font-weight: normal;
             }
             QWidget#Header QPushButton:hover {
-                background-color: #555;
-                border-radius: 4px;
+                background-color: #252830;
+                color: #e8eaed;
+            }
+            QWidget#Header QPushButton:checked {
+                background-color: #1e3a5f;
+                color: #4f8ef7;
+                font-weight: bold;
             }
             QTabWidget::pane {
-                border: 1px solid #555;
+                border: 1px solid #2e3340;
                 border-top: none;
+                background-color: #1a1d23;
             }
             QTabBar::tab {
-                background-color: #3c3c3c;
-                color: #b0b0b0;
-                padding: 10px 25px;
-                border: 1px solid #555;
+                background-color: #1f232b;
+                color: #6b7280;
+                padding: 10px 24px;
+                border: 1px solid #2e3340;
                 border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                font-size: 13px;
+                margin-right: 2px;
             }
             QTabBar::tab:selected {
-                background-color: #2E2E2E;
+                background-color: #1a1d23;
                 color: #ffffff;
-                border-color: #555;
+                border-bottom: 2px solid #4f8ef7;
+                font-weight: bold;
             }
             QTabBar::tab:!selected:hover {
-                background-color: #4c4c4c;
+                background-color: #252830;
+                color: #c8cdd5;
+            }
+            QCheckBox {
+                spacing: 8px;
+                color: #c8cdd5;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid #454a55;
+                background: #1a1d23;
+            }
+            QCheckBox::indicator:checked {
+                background: #4f8ef7;
+                border-color: #4f8ef7;
+            }
+            QProgressBar {
+                border: 1px solid #2e3340;
+                border-radius: 5px;
+                background: #252830;
+                text-align: center;
+                color: #e8eaed;
+                font-size: 12px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4f8ef7, stop:1 #7ab4ff);
+                border-radius: 4px;
+            }
+            QDialog {
+                background-color: #1f232b;
+                border: 1px solid #2e3340;
+            }
+            QMessageBox {
+                background-color: #1f232b;
             }
         """)
     def showMaximized(self):
@@ -5125,6 +5371,12 @@ class MainWindow(QMainWindow):
                     continue
             filtered.append(order)
         # 更新筛选后的数据
+        # 若仅日期条件导致结果为空（无关键字/状态/产线/发起人额外筛选），回退显示最新30条
+        if (not filtered and not keyword
+                and dept == "全部产线"
+                and status == "全部状态"
+                and creator == "全部发起人"):
+            filtered = all_orders[:30]
         self.work_orders_data = filtered
         # 重新设置表格数据
         self.setup_work_orders_table()
