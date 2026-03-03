@@ -4,16 +4,19 @@ import subprocess
 import shutil
 import time
 import platform
-import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.config import APP_VERSION
 
-def remove_build_artifacts(base_name):
+def remove_build_artifacts():
     """
     尝试清理 Nuitka 生成的构建目录，带有重试机制以解决文件锁定问题
     """
-    dirs_to_remove = [f"{base_name}.build", f"{base_name}.onefile-build"]
+    dirs_to_remove = [
+        "main.build",
+        "main.onefile-build",
+        os.path.join("dist", "main.build"),
+        os.path.join("dist", "main.onefile-build"),
+    ]
     
     for d in dirs_to_remove:
         if os.path.exists(d):
@@ -33,12 +36,28 @@ def remove_build_artifacts(base_name):
                         print(f"警告: 无法清理目录 {d}: {e}")
                         print("您可以稍后手动删除这些目录。")
 
+def clean_path_for_rebuild(path):
+    if not os.path.exists(path):
+        return
+    print(f"正在清理路径: {path} ...")
+    try:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        print(f"清理成功: {path}")
+    except Exception as e:
+        raise RuntimeError(f"清理失败: {path}, 错误: {e}") from e
+
 def build():
     """
     使用 Nuitka 进行打包，生成更小、更快的可执行文件。
     支持 Windows 和 macOS。
     """
     main_script = "main.py"
+    clean_path_for_rebuild("dist")
+    clean_path_for_rebuild("main.build")
+    clean_path_for_rebuild("main.onefile-build")
     
     # 检测操作系统
     system = platform.system()
@@ -52,6 +71,10 @@ def build():
         output_name = f"素材工单系统{APP_VERSION}.bin"
 
     python_exe = sys.executable
+    onefile_mode = os.environ.get("NUITKA_ONEFILE", "1") == "1"# 生成单文件可执行文件
+    debug_console = os.environ.get("NUITKA_DEBUG_CONSOLE", "0") == "1" # 调试模式下保持控制台可见
+    pythonhome_env = os.environ.get("PYTHONHOME")
+    pythonpath_env = os.environ.get("PYTHONPATH")
 
     # Windows 特定环境检测
     if system == "Windows":
@@ -79,7 +102,10 @@ def build():
                 sys.exit(1)
     
     print(f"开始使用 Nuitka 打包 {main_script}...")
-    
+    if pythonhome_env:
+        print(f"警告: 当前环境变量 PYTHONHOME={pythonhome_env}，已启用隔离模式避免影响运行。")
+    if pythonpath_env:
+        print(f"警告: 当前环境变量 PYTHONPATH={pythonpath_env}，已启用隔离模式避免影响运行。")
     # 基础构建命令
     cmd = [
         python_exe, "-m", "nuitka",
@@ -88,9 +114,11 @@ def build():
         
         # 自动下载依赖 (如 MinGW64/ccache)
         "--assume-yes-for-downloads",
+        "--python-flag=isolated",
         
         # 插件支持
         "--enable-plugin=pyside6", # 自动检测并包含 PySide6 依赖
+        "--include-qt-plugins=platforms,styles,imageformats",
         
         # 显式包含模块
         "--include-package=packaging",
@@ -99,16 +127,29 @@ def build():
         "--include-module=pymysql",
         "--include-module=requests",
         "--include-module=netifaces",
+        "--include-module=encodings",
+        "--include-package=encodings",
+        "--include-module=codecs",
         
         # 优化选项
-        "--lto=yes",          # 链接时间优化 (yes=更小但慢, no=快)
+        "--lto=no",          # 链接时间优化 (yes=更小但慢, no=快)
     ]
 
     # 平台特定选项
     if system == "Windows":
-        cmd.append("--onefile")         # 打包成单文件
         cmd.append(f"--output-filename={output_name}") # 输出文件名
-        cmd.append("--windows-disable-console") # 运行时不显示控制台窗口
+        
+        # 强制指定输出目录为 dist
+        dist_dir = "dist"
+        if not os.path.exists(dist_dir):
+            os.makedirs(dist_dir)
+        cmd.append(f"--output-dir={dist_dir}")
+        
+        if onefile_mode:
+            cmd.append("--onefile")
+            cmd.append("--onefile-tempdir-spec={TEMP}/MCSWorkOrder/onefile/{PID}")
+        if not debug_console:
+            cmd.append("--windows-disable-console")
     elif system == "Darwin":
         cmd.append("--macos-create-app-bundle") # 生成 .app 包
         # 不指定 app-name，让其默认为 main.app，然后手动重命名
@@ -125,7 +166,10 @@ def build():
     print("执行命令:", " ".join(cmd))
     
     try:
-        subprocess.check_call(cmd)
+        build_env = os.environ.copy()
+        build_env.pop("PYTHONHOME", None)
+        build_env.pop("PYTHONPATH", None)
+        subprocess.check_call(cmd, env=build_env)
         
         # macOS 额外处理：重命名生成的 .app
         if system == "Darwin":
@@ -151,18 +195,26 @@ def build():
                 print(f"警告: 未找到生成的 .app 包 (预期: {default_app_name} 或其他)")
                 
             output_display = target_app_name
+        elif system == "Windows":
+            output_display = os.path.join("dist", output_name) if onefile_mode else os.path.join("dist", "main.dist", output_name)
         else:
             output_display = output_name
 
         print(f"\n打包成功！文件位于: {output_display}")
         if system == "Windows":
+            print(f"打包模式: {'onefile' if onefile_mode else 'standalone'}")
+            print(f"控制台模式: {'开启' if debug_console else '关闭'}")
+            if not onefile_mode:
+                print("提示: 若需单文件，请先设置环境变量 NUITKA_ONEFILE=1 后再执行打包。")
+            if not debug_console:
+                print("提示: 若需查看启动报错，请先设置环境变量 NUITKA_DEBUG_CONSOLE=1 后再执行打包。")
             print("提示: Nuitka 首次运行可能需要下载 C 编译器 (MinGW64)，请耐心等待。")
     except subprocess.CalledProcessError as e:
         print(f"\n打包失败，错误代码: {e.returncode}")
         sys.exit(1)
     finally:
         # 手动清理构建目录
-        remove_build_artifacts("main")
+        remove_build_artifacts()
 
 if __name__ == "__main__":
     build()
