@@ -11,8 +11,6 @@ import sys
 import platform
 import subprocess
 import argparse
-import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 导入版本号
 from src.core.config import APP_VERSION
@@ -124,7 +122,7 @@ def increment_version():
     print(f"版本号已更新: v{major}.{minor}.{patch} -> {new_version}")
     return new_version
 
-def release_version():
+def release_version(skip_push=False):
     """发布新版本：自动增加版本号、打标签并推送到远程仓库"""
     print(f"正在准备发布新版本...")
     
@@ -144,21 +142,31 @@ def release_version():
         subprocess.run(["git", "add", "src/core/config.py"], check=True)
         subprocess.run(["git", "commit", "-m", f"chore: bump version to {new_version}"], check=True)
         
-        # 3. 推送代码变更 (包含 config.py 的修改)
-        print(f"正在推送代码变更...")
-        subprocess.run(["git", "push", "origin", "main"], check=True)
-
-        # 4. 打标签
+        # 3. 打标签
         print(f"正在创建标签: {new_version} ...")
         subprocess.run(["git", "tag", new_version], check=True)
-        
-        # 5. 推送标签
-        print(f"正在推送标签...")
-        subprocess.run(["git", "push", "origin", new_version], check=True)
-        
-        print(f"\n成功发布版本 {new_version}！")
-        print("GitHub Actions 将自动开始构建并发布 Release。")
-        print(f"查看进度: https://github.com/STlxx-lin/20250914/actions")
+
+        if skip_push:
+            print(f"\n已完成本地发布准备: {new_version}")
+            print("已跳过推送。您可以稍后手动执行以下命令：")
+            print("git push origin main")
+            print(f"git push origin {new_version}")
+            return
+
+        # 4. 推送代码与标签
+        try:
+            print(f"正在推送代码变更...")
+            subprocess.run(["git", "push", "origin", "main"], check=True)
+            print(f"正在推送标签...")
+            subprocess.run(["git", "push", "origin", new_version], check=True)
+            print(f"\n成功发布版本 {new_version}！")
+            print("GitHub Actions 将自动开始构建并发布 Release。")
+            print(f"查看进度: https://github.com/STlxx-lin/20250914/actions")
+        except subprocess.CalledProcessError:
+            print("\n警告: 网络异常导致推送失败，但本地版本提交与标签已创建。")
+            print("请网络恢复后手动执行：")
+            print("git push origin main")
+            print(f"git push origin {new_version}")
         
     except subprocess.CalledProcessError as e:
         print(f"\n发布流程出错: {e}")
@@ -168,11 +176,15 @@ def main():
     parser = argparse.ArgumentParser(description="工单管理系统打包脚本")
     parser.add_argument("--onefile", action="store_true", help="打包成单个可执行文件")
     parser.add_argument("--release", action="store_true", help="发布新版本(打标签并推送)")
+    parser.add_argument("--release-local", action="store_true", help="仅本地发布(提交+打标签，不推送)")
     args = parser.parse_args()
     
     # 如果指定了 --release，则执行发布流程并退出
     if args.release:
-        release_version()
+        release_version(skip_push=False)
+        return
+    if args.release_local:
+        release_version(skip_push=True)
         return
     
     current_platform = platform.system()
@@ -186,9 +198,9 @@ def main():
         build_windows(args.onefile)
         print("\n=== 构建完成 ===")
         if args.onefile:
-            print(f"Windows 可执行文件: dist/工单管理系统{APP_VERSION}.exe")
+            print(f"Windows 可执行文件: dist/素材工单系统{APP_VERSION}.exe")
         else:
-            print(f"Windows 可执行文件目录: dist/工单管理系统{APP_VERSION}/")
+            print(f"Windows 可执行文件目录: dist/素材工单系统{APP_VERSION}/")
         print("\n如需构建 macOS 版本，请在 macOS 系统上运行:")
         print("python build_script.py")
         
@@ -196,10 +208,10 @@ def main():
         build_mac(args.onefile)
         print("\n=== 构建完成 ===")
         if args.onefile:
-            print(f"macOS 可执行文件: dist/工单管理系统{APP_VERSION}_mac")
+            print(f"macOS 可执行文件: dist/素材工单系统{APP_VERSION}_mac")
         else:
-            print(f"macOS 可执行文件目录: dist/工单管理系统{APP_VERSION}_mac.app")
-        print(f"macOS DMG安装包: dist/工单管理系统{APP_VERSION}_mac.dmg")
+            print(f"macOS 可执行文件目录: dist/素材工单系统{APP_VERSION}_mac.app")
+        print(f"macOS DMG安装包: dist/素材工单系统{APP_VERSION}_mac.dmg")
         print("\n如需构建 Windows 版本，请在 Windows 系统上运行:")
         print("python build_script.py")
         
