@@ -49,12 +49,30 @@ def clean_path_for_rebuild(path):
     except Exception as e:
         raise RuntimeError(f"清理失败: {path}, 错误: {e}") from e
 
+def build_windows_icon_ico(source_png, target_ico):
+    if not os.path.exists(source_png):
+        return ""
+    try:
+        from PySide6.QtGui import QImage
+        image = QImage(source_png)
+        if image.isNull():
+            return ""
+        if os.path.exists(target_ico):
+            os.remove(target_ico)
+        if image.save(target_ico, "ICO"):
+            return target_ico
+        return ""
+    except Exception:
+        return ""
+
 def build():
     """
     使用 Nuitka 进行打包，生成更小、更快的可执行文件。
     支持 Windows 和 macOS。
     """
     main_script = "main.py"
+    icon_png = "logo-ykohqv-s3wb4i-pck6c0.png"
+    icon_ico = "app_icon.ico"
     clean_path_for_rebuild("dist")
     clean_path_for_rebuild("main.build")
     clean_path_for_rebuild("main.onefile-build")
@@ -130,6 +148,7 @@ def build():
         "--include-module=encodings",
         "--include-package=encodings",
         "--include-module=codecs",
+        f"--include-data-files={icon_png}={icon_png}",
         
         # 优化选项
         "--lto=no",          # 链接时间优化 (yes=更小但慢, no=快)
@@ -149,7 +168,10 @@ def build():
             cmd.append("--onefile")
             cmd.append("--onefile-tempdir-spec={TEMP}/MCSWorkOrder/onefile/{PID}")
         if not debug_console:
-            cmd.append("--windows-disable-console")
+            cmd.append("--windows-console-mode=disable")
+        built_ico = build_windows_icon_ico(icon_png, icon_ico)
+        if built_ico:
+            cmd.append(f"--windows-icon-from-ico={built_ico}")
     elif system == "Darwin":
         cmd.append("--macos-create-app-bundle") # 生成 .app 包
         # 不指定 app-name，让其默认为 main.app，然后手动重命名
