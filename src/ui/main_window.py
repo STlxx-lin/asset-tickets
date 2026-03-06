@@ -1724,9 +1724,10 @@ class MainWindow(QMainWindow):
             add_role_btn.setMaximumWidth(60)
             
             # 添加角色的函数
-            def add_role_func():
-                # 确保使用的是当前迭代的角色值（作为字符串）
-                current_role = str(role)
+            def add_role_func(checked=False, current_role=str(role)):
+                existing_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
+                if current_role in existing_roles:
+                    return
                 current_roles_list.addItem(current_role)
                 # 添加后从右侧移除
                 for i in range(roles_container_layout.count()):
@@ -1809,9 +1810,10 @@ class MainWindow(QMainWindow):
             add_dept_btn.setMaximumWidth(60)
             
             # 添加部门的函数
-            def add_dept_func():
-                # 确保使用的是当前迭代的部门值（作为字符串）
-                current_dept = str(dept)
+            def add_dept_func(checked=False, current_dept=str(dept)):
+                existing_depts = [current_depts_list.item(i).text() for i in range(current_depts_list.count())]
+                if current_dept in existing_depts:
+                    return
                 current_depts_list.addItem(current_dept)
                 # 添加后从右侧移除
                 for i in range(depts_container_layout.count()):
@@ -2045,9 +2047,10 @@ class MainWindow(QMainWindow):
             add_role_btn.setMaximumWidth(60)
             
             # 添加角色的函数
-            def add_role_func():
-                # 确保使用的是当前迭代的角色值（作为字符串）
-                current_role = str(role)
+            def add_role_func(checked=False, current_role=str(role)):
+                existing_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
+                if current_role in existing_roles:
+                    return
                 current_roles_list.addItem(current_role)
                 # 添加后从右侧移除
                 for i in range(roles_container_layout.count()):
@@ -2133,7 +2136,7 @@ class MainWindow(QMainWindow):
             add_dept_btn.setMaximumWidth(60)
             
             # 添加部门的函数
-            def add_dept_func(d=dept):
+            def add_dept_func(checked=False, d=dept):
                 current_depts_list.addItem(d)
                 # 添加后从右侧移除
                 for i in range(depts_container_layout.count()):
@@ -3037,9 +3040,26 @@ class MainWindow(QMainWindow):
                     op_type="copy",
                     update_status_func=update_status
                 )
+            def get_src_files_when_images_available(src_dir):
+                try:
+                    src_files = os.listdir(src_dir)
+                except FileNotFoundError:
+                    QMessageBox.warning(dialog, "提示", f"素材目录不存在：\n{src_dir}")
+                    return None
+                except OSError as e:
+                    QMessageBox.warning(dialog, "提示", f"无法读取素材目录：\n{src_dir}\n{e}")
+                    return None
+                image_files = [f for f in src_files if os.path.splitext(f)[1].lower() in IMG_EXTS]
+                if not image_files:
+                    QMessageBox.warning(dialog, "提示", "素材目录中没有图片，无法分发。")
+                    return None
+                return src_files
             def on_distribute_img():
                 src_dir = get_upload_dir()
                 target_dir = get_dist_img_dir()
+                src_files = get_src_files_when_images_available(src_dir)
+                if src_files is None:
+                    return
                 try:
                     os.makedirs(target_dir, exist_ok=True)
                 except OSError as e:
@@ -3086,7 +3106,7 @@ class MainWindow(QMainWindow):
                     # )
                 self.add_file_task(
                     name=task_name,
-                    files=os.listdir(src_dir),
+                    files=src_files,
                     src_dir=src_dir,
                     dest_dir=target_dir,
                     file_filter=lambda f: os.path.splitext(f)[1].lower() in IMG_EXTS,
@@ -3096,6 +3116,9 @@ class MainWindow(QMainWindow):
             def on_distribute_vid():
                 src_dir = get_upload_dir()
                 target_dir = get_dist_video_dir()
+                src_files = get_src_files_when_images_available(src_dir)
+                if src_files is None:
+                    return
                 try:
                     os.makedirs(target_dir, exist_ok=True)
                 except OSError as e:
@@ -3137,7 +3160,7 @@ class MainWindow(QMainWindow):
                         QDesktopServices.openUrl(QUrl.fromLocalFile(target_dir))
                 self.add_file_task(
                     name=task_name,
-                    files=os.listdir(src_dir),
+                    files=src_files,
                     src_dir=src_dir,
                     dest_dir=target_dir,
                     file_filter=lambda f: os.path.splitext(f)[1].lower() in VID_EXTS,
