@@ -1688,7 +1688,43 @@ class MainWindow(QMainWindow):
         def remove_selected_role():
             selected_items = current_roles_list.selectedItems()
             for item in selected_items:
+                role_name = item.text()
                 current_roles_list.takeItem(current_roles_list.row(item))
+                role_exists = False
+                for i in range(roles_container_layout.count()):
+                    widget = roles_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == role_name:
+                            role_exists = True
+                            break
+                if role_exists:
+                    continue
+                role_row = QHBoxLayout()
+                role_label = QLabel(role_name)
+                role_label.setStyleSheet("border: none;")
+                add_role_btn = QPushButton("添加")
+                add_role_btn.setMaximumWidth(60)
+                def add_role_func(checked=False, current_role=role_name):
+                    existing_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
+                    if current_role in existing_roles:
+                        return
+                    current_roles_list.addItem(current_role)
+                    for j in range(roles_container_layout.count()):
+                        available_widget = roles_container_layout.itemAt(j).widget()
+                        if available_widget and available_widget.layout():
+                            available_label = available_widget.layout().itemAt(0).widget()
+                            if available_label and isinstance(available_label, QLabel) and available_label.text() == current_role:
+                                available_widget.hide()
+                                available_widget.deleteLater()
+                                break
+                add_role_btn.clicked.connect(add_role_func)
+                role_row.addWidget(role_label)
+                role_row.addWidget(add_role_btn)
+                role_row.addStretch()
+                role_widget = QWidget()
+                role_widget.setLayout(role_row)
+                roles_container_layout.addWidget(role_widget)
         remove_role_btn.clicked.connect(remove_selected_role)
         left_role_layout.addWidget(remove_role_btn)
         
@@ -2010,7 +2046,43 @@ class MainWindow(QMainWindow):
         def remove_selected_role():
             selected_items = current_roles_list.selectedItems()
             for item in selected_items:
+                role_name = item.text()
                 current_roles_list.takeItem(current_roles_list.row(item))
+                role_exists = False
+                for i in range(roles_container_layout.count()):
+                    widget = roles_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == role_name:
+                            role_exists = True
+                            break
+                if role_exists:
+                    continue
+                role_row = QHBoxLayout()
+                role_label = QLabel(role_name)
+                role_label.setStyleSheet("border: none;")
+                add_role_btn = QPushButton("添加")
+                add_role_btn.setMaximumWidth(60)
+                def add_role_func(checked=False, current_role=role_name):
+                    existing_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
+                    if current_role in existing_roles:
+                        return
+                    current_roles_list.addItem(current_role)
+                    for j in range(roles_container_layout.count()):
+                        available_widget = roles_container_layout.itemAt(j).widget()
+                        if available_widget and available_widget.layout():
+                            available_label = available_widget.layout().itemAt(0).widget()
+                            if available_label and isinstance(available_label, QLabel) and available_label.text() == current_role:
+                                available_widget.hide()
+                                available_widget.deleteLater()
+                                break
+                add_role_btn.clicked.connect(add_role_func)
+                role_row.addWidget(role_label)
+                role_row.addWidget(add_role_btn)
+                role_row.addStretch()
+                role_widget = QWidget()
+                role_widget.setLayout(role_row)
+                roles_container_layout.addWidget(role_widget)
         remove_role_btn.clicked.connect(remove_selected_role)
         left_role_layout.addWidget(remove_role_btn)
         
