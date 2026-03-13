@@ -65,6 +65,46 @@ def build_windows_icon_ico(source_png, target_ico):
     except Exception:
         return ""
 
+def build_macos_icon_icns(source_png, target_icns):
+    if platform.system() != "Darwin":
+        return ""
+    if os.path.exists(target_icns):
+        return target_icns
+    if not os.path.exists(source_png):
+        return ""
+    iconset_dir = "app_icon.iconset"
+    try:
+        if os.path.exists(iconset_dir):
+            shutil.rmtree(iconset_dir)
+        os.makedirs(iconset_dir, exist_ok=True)
+        sizes = [16, 32, 128, 256, 512]
+        for size in sizes:
+            subprocess.run(
+                ["sips", "-z", str(size), str(size), source_png, "--out", os.path.join(iconset_dir, f"icon_{size}x{size}.png")],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            retina_size = size * 2
+            subprocess.run(
+                ["sips", "-z", str(retina_size), str(retina_size), source_png, "--out", os.path.join(iconset_dir, f"icon_{size}x{size}@2x.png")],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        subprocess.run(
+            ["iconutil", "-c", "icns", iconset_dir, "-o", target_icns],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        return target_icns if os.path.exists(target_icns) else ""
+    except Exception:
+        return ""
+    finally:
+        if os.path.exists(iconset_dir):
+            shutil.rmtree(iconset_dir, ignore_errors=True)
+
 def build():
     """
     使用 Nuitka 进行打包，生成更小、更快的可执行文件。
@@ -73,6 +113,7 @@ def build():
     main_script = "main.py"
     icon_png = "logo-ykohqv-s3wb4i-pck6c0.png"
     icon_ico = "app_icon.ico"
+    icon_icns = "app_icon.icns"
     clean_path_for_rebuild("dist")
     clean_path_for_rebuild("main.build")
     clean_path_for_rebuild("main.onefile-build")
@@ -173,7 +214,10 @@ def build():
         if built_ico:
             cmd.append(f"--windows-icon-from-ico={built_ico}")
     elif system == "Darwin":
+        built_icns = build_macos_icon_icns(icon_png, icon_icns)
         cmd.append("--macos-create-app-bundle") # 生成 .app 包
+        if built_icns:
+            cmd.append(f"--macos-app-icon={built_icns}")
         # 不指定 app-name，让其默认为 main.app，然后手动重命名
         # 避免 Nuitka 对非 ASCII 字符名称的潜在处理问题
         # cmd.append(f"--macos-app-name={output_name}") 
