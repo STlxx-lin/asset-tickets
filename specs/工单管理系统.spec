@@ -3,13 +3,16 @@
 # 从配置文件导入版本号
 import os
 import sys
-# 添加当前目录到Python路径，使用os.getcwd()代替__file__
-sys.path.append(os.getcwd())
+SPEC_FILE = globals().get('__file__')
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(SPEC_FILE))) if SPEC_FILE else os.getcwd()
+MAIN_SCRIPT = os.path.join(PROJECT_ROOT, 'main.py')
+ICON_ICO = os.path.join(PROJECT_ROOT, 'app_icon.ico')
+sys.path.append(PROJECT_ROOT)
 from src.core.config import APP_VERSION
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [MAIN_SCRIPT],
+    pathex=[PROJECT_ROOT],
     binaries=[],
     datas=[],
     hiddenimports=[
@@ -44,6 +47,7 @@ exe = EXE(
     strip=False,
     upx=True,
     upx_exclude=[],
+    icon=ICON_ICO if os.path.exists(ICON_ICO) else None,
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,

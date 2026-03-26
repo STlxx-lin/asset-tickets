@@ -5,12 +5,14 @@ import os
 import sys
 import shutil
 import subprocess
-# 添加当前目录到Python路径，使用os.getcwd()代替__file__
-sys.path.append(os.getcwd())
+SPEC_FILE = globals().get('__file__')
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(SPEC_FILE))) if SPEC_FILE else os.getcwd()
+MAIN_SCRIPT = os.path.join(PROJECT_ROOT, 'main.py')
+sys.path.append(PROJECT_ROOT)
 from src.core.config import APP_VERSION
 
-ICON_PNG = os.path.join(os.getcwd(), "logo-ykohqv-s3wb4i-pck6c0.png")
-ICON_ICNS = os.path.join(os.getcwd(), "app_icon.icns")
+ICON_PNG = os.path.join(PROJECT_ROOT, "logo-ykohqv-s3wb4i-pck6c0.png")
+ICON_ICNS = os.path.join(PROJECT_ROOT, "app_icon.icns")
 
 def resolve_bundle_icon():
     if os.path.exists(ICON_ICNS):
@@ -19,7 +21,7 @@ def resolve_bundle_icon():
         return None
     if not os.path.exists(ICON_PNG):
         return None
-    iconset_dir = os.path.join(os.getcwd(), "app_icon.iconset")
+    iconset_dir = os.path.join(PROJECT_ROOT, "app_icon.iconset")
     try:
         if os.path.exists(iconset_dir):
             shutil.rmtree(iconset_dir)
@@ -66,8 +68,8 @@ if bundle_icon:
     bundle_info_plist['CFBundleIconFile'] = os.path.basename(bundle_icon)
 
 a = Analysis(
-    ['main.py'],
-    pathex=[],
+    [MAIN_SCRIPT],
+    pathex=[PROJECT_ROOT],
     binaries=[],
     datas=[],
     hiddenimports=[

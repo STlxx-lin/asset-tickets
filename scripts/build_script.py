@@ -12,6 +12,7 @@ import platform
 import subprocess
 import argparse
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 导入版本号
 from src.core.config import APP_VERSION
 
@@ -26,18 +27,18 @@ if sys.platform.startswith('win'):
 def install_dependencies():
     """安装依赖包"""
     print("正在安装依赖包...")
-    subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
-    subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", os.path.join(PROJECT_ROOT, "requirements.txt")], check=True, cwd=PROJECT_ROOT)
+    subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True, cwd=PROJECT_ROOT)
     print("依赖包安装完成")
 
 def build_windows(onefile=False):
     """构建 Windows 版本"""
     print(f"正在构建 Windows 版本 (单文件: {onefile})...")
-    spec_file = "specs/工单管理系统.spec"
+    spec_file = os.path.join(PROJECT_ROOT, "specs", "工单管理系统.spec")
     if onefile:
         # 确保 spec 文件中设置了 onefile=True
         pass  # 已在 spec 文件中设置
-    subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True)
+    subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT)
     # 生成带版本号的文件名
     exe_name = f"素材工单系统{APP_VERSION}.exe"
     print(f"Windows 版本构建完成: dist/{exe_name}")
@@ -45,11 +46,11 @@ def build_windows(onefile=False):
 def build_mac(onefile=False):
     """构建 macOS 版本，同时生成DMG安装包"""
     print(f"正在构建 macOS 版本 (单文件: {onefile})...")
-    spec_file = "specs/工单管理系统_mac.spec"
+    spec_file = os.path.join(PROJECT_ROOT, "specs", "工单管理系统_mac.spec")
     # 确保在spec文件中设置了正确的onefile参数
     # 这里我们已经在spec文件中直接设置了one_file=True
     # 执行打包命令
-    subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True)
+    subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT)
     
     # 生成带版本号的文件名
     if onefile:
