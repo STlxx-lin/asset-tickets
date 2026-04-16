@@ -263,7 +263,7 @@ class AdminPasswordDialog(QDialog):
         return self.edit.text().strip()
 
 class FileOperationDialog(QDialog):
-    def __init__(self, html_content, parent=None, title="确认删除", header_text="⚠️ 警告：此操作不可恢复！将要删除以下路径：", footer_text="是否确认删除上述所有文件及数据库记录？", is_confirmation=True):
+    def __init__(self, html_content, parent=None, title="确认删除", header_text="⚠️ 警告：此操作不可恢复！将要删除以下路径：", footer_text="是否确认删除上述所有文件及数据库记录？", is_confirmation=True, confirm_button_text="确认删除"):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(800, 500)
@@ -331,7 +331,7 @@ class FileOperationDialog(QDialog):
             btn_cancel.clicked.connect(self.reject)
             btn_cancel.setStyleSheet("background-color: #555555;")
             
-            btn_confirm = QPushButton("确认删除")
+            btn_confirm = QPushButton(confirm_button_text)
             btn_confirm.clicked.connect(self.accept)
             btn_confirm.setStyleSheet("background-color: #d93025;")
             
@@ -344,7 +344,18 @@ class FileOperationDialog(QDialog):
         
         layout.addLayout(buttons)
 
-class CreateWorkOrderDialog(QDialog):
+INVALID_PATH_NAME_CHARS = set('#%&*|\\:"<>?/')
+
+def get_invalid_path_name_message(field_label, value):
+    if value in {".", ".."}:
+        return f"{field_label}不能为“.”或“..”"
+    invalid_chars = sorted({ch for ch in value if ch in INVALID_PATH_NAME_CHARS})
+    if invalid_chars:
+        chars_text = " ".join(invalid_chars)
+        return f"{field_label}不能包含以下字符：{chars_text}"
+    return None
+
+
     def __init__(self, role, departments, user_name=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("创建新工单")
@@ -619,13 +630,23 @@ class CreateWorkOrderDialog(QDialog):
             return False
 
         # 验证型号
-        if not self.model_field.text().strip():
+        model_text = self.model_field.text().strip()
+        if not model_text:
             QMessageBox.warning(self, "验证失败", "请输入产品型号")
+            return False
+        model_error = get_invalid_path_name_message("产品型号", model_text)
+        if model_error:
+            QMessageBox.warning(self, "验证失败", model_error)
             return False
 
         # 验证名称
-        if not self.name_field.text().strip():
+        name_text = self.name_field.text().strip()
+        if not name_text:
             QMessageBox.warning(self, "验证失败", "请输入产品名称")
+            return False
+        name_error = get_invalid_path_name_message("产品名称", name_text)
+        if name_error:
+            QMessageBox.warning(self, "验证失败", name_error)
             return False
 
         # 验证发起人
@@ -2702,6 +2723,14 @@ class MainWindow(QMainWindow):
             if not new_model or not new_name or not new_creator:
                 QMessageBox.warning(dialog, "错误", "型号、名称、发起人不能为空")
                 return
+            model_error = get_invalid_path_name_message("型号", new_model)
+            if model_error:
+                QMessageBox.warning(dialog, "错误", model_error)
+                return
+            name_error = get_invalid_path_name_message("名称", new_name)
+            if name_error:
+                QMessageBox.warning(dialog, "错误", name_error)
+                return
             old_dept = order_data['department']
             old_model = order_data['model']
             old_name = order_data['name']
@@ -2726,15 +2755,15 @@ class MainWindow(QMainWindow):
                 old_path = tpl(old_dept, id_, old_model, old_name)
                 new_path = tpl(new_dept, id_, new_model, new_name)
                 path_pairs.append((old_path, new_path))
-            # 检查哪些路径需要移动/重命名
-            check_msgs = []
+            # 检查路径状态并构建确认列表（先检测原路径，再检测目标路径）
+            path_checks = []
             for old_path, new_path in path_pairs:
                 if old_path == new_path:
                     continue
-                exists = os.path.exists(old_path)
-                if exists:
-                    check_msgs.append(f"{old_path} → {new_path}")
-            if not check_msgs:
+                old_exists = os.path.exists(old_path)
+                new_exists = os.path.exists(new_path)
+                path_checks.append((old_path, new_path, old_exists, new_exists))
+            if not path_checks:
                 # 没有需要移动/重命名的路径，直接保存
                 if db_manager.update_work_order_full(
                 order_data['id'], new_dept, new_model, new_name, new_creator,
@@ -2746,43 +2775,53 @@ class MainWindow(QMainWindow):
                 else:
                     QMessageBox.critical(dialog, "失败", "更新工单失败")
                 return
-            # 弹窗确认（只显示存在的路径，窗口加宽）
-            msg = "将要移动/重命名以下路径：\n\n" + "\n".join(check_msgs) + "\n\n是否继续？"
-            confirm_box = QMessageBox(dialog)
-            confirm_box.setWindowTitle("确认路径变更")
-            confirm_box.setText(msg)
-            confirm_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            confirm_box.setDefaultButton(QMessageBox.No)
-            confirm_box.setStyleSheet("QLabel{min-width:600px;}")
-            confirm = confirm_box.exec()
-            if confirm != QMessageBox.Yes:
+            # 使用与删除检测一致的表格弹窗确认
+            check_rows = []
+            check_rows.append("<tr><th style='padding: 4px; border-bottom: 1px solid #555; text-align:left;'>路径</th><th style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>原路径</th><th style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>目标路径</th></tr>")
+            for old_path, new_path, old_exists, new_exists in path_checks:
+                old_status_html = f"<span style='color: #4caf50; font-weight: bold;'>存在</span>" if old_exists else f"<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+                new_status_html = f"<span style='color: #4caf50; font-weight: bold;'>存在</span>" if new_exists else f"<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+                display_path = f"{old_path} → {new_path}"
+                check_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{display_path}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>{old_status_html}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>{new_status_html}</td></tr>")
+            check_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(check_rows)}</table>"
+            confirm_dialog = FileOperationDialog(
+                check_msg,
+                dialog,
+                title="确认保存",
+                header_text="⚠️ 警告：将要移动/重命名以下路径：",
+                footer_text="是否确认执行上述路径变更并保存工单？",
+                is_confirmation=True,
+                confirm_button_text="确认保存"
+            )
+            if confirm_dialog.exec() != QDialog.Accepted:
                 return
             # 执行移动/重命名
             move_results = []
-            for old_path, new_path in path_pairs:
-                if old_path == new_path:
-                    continue
-                if os.path.exists(old_path):
+            for old_path, new_path, old_exists, _ in path_checks:
+                if old_exists:
                     try:
                         if os.path.exists(new_path):
                             shutil.rmtree(new_path, ignore_errors=True)
                         os.makedirs(os.path.dirname(new_path), exist_ok=True)
                         shutil.move(old_path, new_path)
-                        move_results.append(f"{old_path} → {new_path}：已移动/重命名")
+                        move_results.append((f"{old_path} → {new_path}", "已移动/重命名", "#4caf50"))
                         self.log_action("工单路径变更", f"{old_path} → {new_path} 已移动/重命名")
                     except Exception as e:
-                        move_results.append(f"{old_path} → {new_path}：失败（{e}）")
+                        move_results.append((f"{old_path} → {new_path}", f"失败（{e}）", "#ff4d4f"))
                         self.log_action("工单路径变更失败", f"{old_path} → {new_path} 失败：{e}")
                 else:
-                    move_results.append(f"{old_path} → {new_path}：不存在")
+                    move_results.append((f"{old_path} → {new_path}", "不存在", "#ff4d4f"))
             # 保存工单信息
             if db_manager.update_work_order_full(
                 order_data['id'], new_dept, new_model, new_name, new_creator,
                 new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
             ):
                 self.log_action("编辑工单", f"ID={order_data['id']}，产线/型号/名称变更")
-                # 只显示已操作的路径结果
-                result_msg = "\n".join([r for r in move_results if "已移动/重命名" in r or "失败" in r])
+                # 使用与删除检测一致的结果展示
+                result_rows = []
+                for p, status, color in move_results:
+                    result_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='100' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
+                result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(result_rows)}</table>"
                 # 钉钉推送
                 # 生成推送内容
                 changes = []
@@ -2802,7 +2841,15 @@ class MainWindow(QMainWindow):
                 rename_text = f"{order_data['id']} {new_model} {new_name}"
                 push_text = f"工单 {order_data['id']} 信息已修改：\n{change_text}\n\n如已领取素材，请将相关文件夹重命名为：{rename_text}"
                 send_notification("工单信息变更通知", push_text)
-                QMessageBox.information(dialog, "操作结果", f"工单信息已更新，路径操作结果：\n{result_msg}")
+                result_dialog = FileOperationDialog(
+                    result_msg,
+                    dialog,
+                    title="保存结果",
+                    header_text=f"工单 {order_data['id']} 路径操作结果：",
+                    footer_text=None,
+                    is_confirmation=False
+                )
+                result_dialog.exec()
                 self.refresh_work_orders()
                 dialog.accept()
             else:
