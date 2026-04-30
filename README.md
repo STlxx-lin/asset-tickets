@@ -1,91 +1,139 @@
 # 工单管理系统 (Work Order Management System)
 
-本项目是一个专为多角色、多部门协作设计的工单管理系统。它由一个基于 **PySide6** 的桌面应用程序和一个 **PHP** 开发的现代化数据看板网站组成，后端共享同一个 **MySQL** 数据库。
+多角色协作工单管理系统，包含一个基于 **PySide6** 的桌面端和一个基于 **PHP** 的数据看板，后端共享 **MySQL** 数据库。
 
-系统旨在简化和自动化工单处理流程，涵盖从工单创建、分配、处理到完成的全过程，并提供强大的数据可视化和分析功能。
+系统目标是把工单从创建、分配、执行、回传到归档的全过程标准化，同时为管理者提供可视化统计与运营决策支持。
 
-## 🚀 功能特点
+## 目录
 
-### 桌面端应用 (Python/PySide6)
-- **多角色权限**: 支持采购、摄影、美工、剪辑、运营、销售等多种角色，提供定制化操作界面。
-- **工单全生命周期管理**: 实时更新状态，支持按部门筛选，查看完整操作日志。
-- **自动化协作**: 
-  - 任务自动流转
-  - 关键操作自动记录日志
-  - 钉钉/企业微信消息通知
-- **便捷操作**: 
-  - 文件/文件夹路径双击打开
-  - 运营产品信息管理（标题、关键词、URL）
-- **管理员功能**: 专属管理面板，查看系统所有操作日志。
+- [项目亮点](#项目亮点)
+- [功能概览](#功能概览)
+- [技术架构](#技术架构)
+- [环境要求](#环境要求)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [运行与打包](#运行与打包)
+- [项目结构](#项目结构)
+- [常见问题](#常见问题)
+- [贡献指南](#贡献指南)
+- [许可证](#许可证)
 
-### Web 数据看板 (PHP)
-- **现代化仪表盘**: Apple/Nike 风格设计，实时展示总工单数、日志数等核心指标。
-- **图表分析**: 使用 Chart.js 动态展示工单趋势、角色活动分布等。
-- **高级查询**: 卡片式工单列表，支持多维度筛选和异步详情加载。
-- **深度分析**: 提供部门效率评级、多维度数据报表。
+## 项目亮点
 
-## 🛠️ 环境要求
+- **多角色协同**：支持采购、摄影、美工、剪辑、运营、销售等角色按权限操作。
+- **全流程追踪**：工单状态、操作日志、部门流转清晰可追溯。
+- **自动化通知**：可对接钉钉、企业微信，减少人工同步成本。
+- **可视化看板**：基于 Chart.js 的统计图表，支持趋势和分布分析。
+- **设计统一**：Web 看板采用简洁、统一、响应式的页面布局与交互风格。
 
-- **Python**: 3.12+
-- **Database**: MySQL 5.7+ / MariaDB 10.2+
-- **Web Server**: Nginx/Apache (PHP 7.4+) - *用于部署Web看板*
+## 功能概览
 
-## 📦 安装与配置
+### 桌面端 (Python / PySide6)
 
-### 1. 克隆项目
+- **角色化操作界面**：不同角色进入不同工作流与操作入口。
+- **工单生命周期管理**：覆盖创建、指派、处理、验收、归档。
+- **关键动作自动记录**：重要环节自动写入日志，便于审计与排障。
+- **便捷日常操作**：支持路径双击打开、产品信息维护（标题/关键词/URL）。
+- **管理员视图**：集中查看系统运行情况与全量日志。
+
+### Web 看板 (PHP)
+
+- **核心指标总览**：总工单数、处理进度、日志规模等指标可视化呈现。
+- **趋势与分布图表**：按时间、角色、部门维度展示业务变化。
+- **多维筛选查询**：卡片化列表配合筛选条件快速定位目标工单。
+- **管理分析报表**：支持部门效率评级与多指标分析。
+
+## 技术架构
+
+```text
+[PySide6 Desktop] ----\
+                        >---- [MySQL] ---- [PHP Dashboard]
+[Automation/Notify] ---/
+```
+
+- **Desktop（PySide6）**：承担业务操作主流程。
+- **Dashboard（PHP）**：承担数据统计展示与管理分析。
+- **Database（MySQL）**：统一存储工单、日志、配置等核心数据。
+- **Core Modules（src/core）**：封装配置、数据库访问、接口调用等基础能力。
+
+## 环境要求
+
+- **Python**：3.12+
+- **Database**：MySQL 5.7+ / MariaDB 10.2+
+- **Web Server**：Nginx/Apache + PHP 7.4+（部署 Web 看板时需要）
+
+## 快速开始
+
+### 1. 获取代码
 
 ```bash
 git clone <repository_url>
 cd pyproj
 ```
 
-### 2. 安装 Python 依赖
+### 2. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 数据库配置
+### 3. 初始化数据库
 
-1. 导入数据库结构文件 `sql/mcs_by_takuya.sql` 到您的 MySQL 数据库中。
-2. 复制并修改配置文件：
-   
-   打开 `src/core/config.py` 文件，根据您的环境配置数据库连接信息：
+1. 创建数据库。
+2. 导入 `sql/mcs_by_takuya.sql`。
+3. 确认数据库账号具备读写权限。
 
-   ```python
-   # src/core/config.py
-   
-   # 数据库配置
-   DB_CONFIG_1 = {
-       'host': 'your_host',
-       'database': 'your_db_name',
-       'user': 'your_username',
-       'password': 'your_password',
-       # ...
-   }
-   
-   # 选择使用的配置
-   DB_SWITCH = 'db1'
-   ```
+### 4. 配置连接
 
-### 4. 其他配置
+编辑 `src/core/config.py`，填入真实数据库信息。
 
-在 `src/core/config.py` 中还可以配置：
-- **通知类型**: `dingtalk` (钉钉), `wechat_work` (企业微信), 或 `both`。
-- **管理员密码**: 修改 `ADMIN_PASSWORD`。
+```python
+# src/core/config.py
 
-## ▶️ 运行应用
+# 数据库配置
+DB_CONFIG_1 = {
+    "host": "127.0.0.1",
+    "database": "your_db_name",
+    "user": "your_username",
+    "password": "your_password",
+}
+
+# 选择使用的数据库配置
+DB_SWITCH = "db1"
+```
+
+### 5. 启动应用
 
 ```bash
 python main.py
 ```
 
-## 📦 打包部署
+## 配置说明
 
-项目包含自动化打包脚本，支持构建 Windows Exe 和 macOS App/DMG。
+主要配置文件：`src/core/config.py`
+
+- `DB_CONFIG_1` / `DB_CONFIG_2`：数据库连接参数。
+- `DB_SWITCH`：选择当前生效的数据库配置。
+- `NOTIFY_TYPE`：通知类型，可选 `dingtalk`、`wechat_work`、`both`。
+- `ADMIN_PASSWORD`：管理员口令（建议上线前改为强密码）。
+
+建议：
+
+- 生产环境使用独立数据库账号，最小权限原则授权。
+- 不要把真实密码直接提交到仓库，可改为环境变量读取。
+
+## 运行与打包
+
+### 本地运行
 
 ```bash
-# 使用 Nuitka 打包 (推荐)
+python main.py
+```
+
+### 打包发布
+
+```bash
+# 使用 Nuitka 打包（推荐）
 python scripts/build_nuitka.py
 
 # 使用 PyInstaller 打包
@@ -95,29 +143,57 @@ python scripts/build_script.py
 scripts/一键打包.bat
 ```
 
-构建产物将输出到项目根目录或 `dist/` 目录。
+构建产物通常输出到项目根目录或 `dist/` 目录。
 
-## 📂 项目结构
+## 项目结构
 
-```
+```text
 e:\2025\pyproj/
-├── main.py                     # 程序入口
-├── requirements.txt            # 依赖列表
-├── .github/                    # GitHub Actions 配置
-├── docs/                       # 文档
-├── scripts/                    # 构建和工具脚本
-│   ├── build_nuitka.py         # Nuitka 打包脚本
-│   ├── build_script.py         # PyInstaller 打包脚本
+├── main.py
+├── requirements.txt
+├── .github/
+├── docs/
+├── scripts/
+│   ├── build_nuitka.py
+│   ├── build_script.py
 │   └── ...
-├── specs/                      # PyInstaller 配置文件
-├── sql/                        # 数据库脚本
-├── src/                        # 源代码目录
-│   ├── core/                   # 核心模块
-│   │   ├── api_manager.py      # API 交互层
-│   │   ├── config.py           # 配置文件
-│   │   └── database.py         # 数据库操作层
-│   └── ui/                     # 界面模块
-│       ├── main_window.py      # 主窗口逻辑
+├── specs/
+├── sql/
+├── src/
+│   ├── core/
+│   │   ├── api_manager.py
+│   │   ├── config.py
+│   │   └── database.py
+│   └── ui/
+│       ├── main_window.py
 │       └── ...
-└── README.md                   # 项目说明
+└── README.md
 ```
+
+## 常见问题
+
+### 1. 启动时报数据库连接失败
+
+- 检查 `config.py` 中的主机、端口、库名、账号密码。
+- 确认 MySQL 服务已启动且可从当前机器访问。
+- 确认导入了 `sql/mcs_by_takuya.sql`。
+
+### 2. Web 看板没有数据
+
+- 检查看板连接的数据库是否与桌面端一致。
+- 检查时区和编码设置，避免统计维度错位。
+
+### 3. 通知没有发送
+
+- 检查 `NOTIFY_TYPE` 配置是否正确。
+- 检查钉钉/企业微信 webhook 或凭证是否有效。
+
+## 贡献指南
+
+- 提交前请先阅读 `CONTRIBUTING.md`。
+- 行为规范请遵守 `CODE_OF_CONDUCT.md`。
+- 安全问题请按 `SECURITY.md` 指引私下上报。
+
+## 许可证
+
+本项目使用 **MIT License**，详见 `LICENSE` 文件。
