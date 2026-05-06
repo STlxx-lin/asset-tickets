@@ -4,10 +4,7 @@ import logging
 import pymysql
 from .api_manager import api_manager
 from datetime import datetime
-from .config import DB_CONFIG
-
-# 全局回退通知类型（用于数据库无值时的兜底）
-DEFAULT_NOTIFICATION_TYPE = "wechat_work"
+from .config import DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
 
 class DatabaseManager:
     def __init__(self):

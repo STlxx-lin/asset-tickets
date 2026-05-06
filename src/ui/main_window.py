@@ -32,10 +32,10 @@ import base64
 import urllib.parse
 
 # 导入配置模块
-from src.core.config import APP_VERSION, DB_CONFIG
+from src.core.config import APP_VERSION, DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
 
-# 全局回退通知类型（用于数据库无值时的兜底）
-NOTIFICATION_TYPE = "wechat_work"
+# 为兼容现有调用保留变量名，统一使用配置模块中的单一默认值
+NOTIFICATION_TYPE = DEFAULT_NOTIFICATION_TYPE
 
 ADMIN_PASSWORD = "Db65109032"
 # 全局路径前缀适配

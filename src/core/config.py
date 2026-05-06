@@ -37,12 +37,16 @@ else:
     # 默认使用第一个数据库配置
     DB_CONFIG = DB_CONFIG_1
 
-# 通知类型旧配置（已弃用，通知配置改为“按产线从数据库读取”）
+# 通知类型配置（已迁移到数据库按产线管理，参见 app_notification_line_settings 表）
+# 迁移说明文档：docs/NOTIFICATION_MIGRATION.md
 # 可选值：
 # - 'dingtalk': 仅使用钉钉通知
 # - 'wechat_work': 仅使用企业微信通知
 # - 'both': 同时使用钉钉和企业微信通知
 # NOTIFICATION_TYPE = 'wechat_work'
+
+# 全局回退通知类型（用于数据库无值时统一兜底）
+DEFAULT_NOTIFICATION_TYPE = 'wechat_work'
 
 # 管理员登录密码配置
 ADMIN_PASSWORD = 'DBJX.8888' 
