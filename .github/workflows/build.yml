@@ -29,14 +29,7 @@ jobs:
       id: detect_version
       shell: bash
       run: |
-        VERSION_TAG=$(python - <<'PY'
-import re
-from pathlib import Path
-text = Path("src/core/config.py").read_text(encoding="utf-8")
-match = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']', text)
-print(match.group(1) if match else "")
-PY
-)
+        VERSION_TAG=$(python -c "import re; from pathlib import Path; text=Path('src/core/config.py').read_text(encoding='utf-8'); m=re.search(r\"APP_VERSION\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]\", text); print(m.group(1) if m else '')")
         if [ -z "$VERSION_TAG" ]; then
           echo "未检测到 APP_VERSION，跳过自动打标签。"
           exit 0
