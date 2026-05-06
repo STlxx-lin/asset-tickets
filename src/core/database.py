@@ -929,24 +929,32 @@ class DatabaseManager:
 
         try:
             with self.connection.cursor() as cursor:
+                # 显式开启事务，避免 autocommit=True 导致部分数据提前提交
+                self.connection.begin()
                 self._ensure_notification_settings_table(cursor)
                 cursor.execute("SELECT COUNT(*) FROM app_notification_line_settings")
                 row_count = cursor.fetchone()[0]
                 if row_count > 0:
+                    # 已有数据时提交并直接返回，保持事务边界完整
+                    self.connection.commit()
                     return True
 
+                # 批量构造插入参数，确保一次事务完成全部初始化写入
+                insert_values = []
                 for line_name, settings in seed_data.items():
-                    cursor.execute("""
-                        INSERT INTO app_notification_line_settings
-                        (line_name, notification_type, dingtalk_webhook, dingtalk_secret, wechat_work_webhook)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (
+                    insert_values.append((
                         line_name,
                         settings.get("notification_type", DEFAULT_NOTIFICATION_TYPE),
                         settings.get("dingtalk_webhook", ""),
                         settings.get("dingtalk_secret", ""),
                         settings.get("wechat_work_webhook", "")
                     ))
+                if insert_values:
+                    cursor.executemany("""
+                        INSERT INTO app_notification_line_settings
+                        (line_name, notification_type, dingtalk_webhook, dingtalk_secret, wechat_work_webhook)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, insert_values)
                 self.connection.commit()
                 return True
         except Exception as e:
