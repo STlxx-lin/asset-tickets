@@ -4,7 +4,7 @@ import logging
 import pymysql
 from .api_manager import api_manager
 from datetime import datetime
-from .config import DB_CONFIG
+from .config import DB_CONFIG, NOTIFICATION_TYPE
 
 class DatabaseManager:
     def __init__(self):
@@ -842,6 +842,117 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取最新版本失败: {e}")
             return {}
+        finally:
+            self.disconnect()
+
+    def _ensure_notification_settings_table(self, cursor) -> None:
+        """确保按产线通知配置表存在。"""
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS app_notification_line_settings (
+                line_name VARCHAR(100) PRIMARY KEY,
+                notification_type VARCHAR(20) NOT NULL DEFAULT 'wechat_work',
+                dingtalk_webhook TEXT,
+                dingtalk_secret VARCHAR(255),
+                wechat_work_webhook TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+    def get_all_notification_settings(self) -> Dict[str, Dict[str, str]]:
+        """获取所有产线的通知配置。"""
+        if not self.connect():
+            return {}
+
+        try:
+            with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                self._ensure_notification_settings_table(cursor)
+                cursor.execute("""
+                    SELECT line_name, notification_type, dingtalk_webhook, dingtalk_secret, wechat_work_webhook
+                    FROM app_notification_line_settings
+                """)
+                rows = cursor.fetchall()
+                settings_map = {}
+                for row in rows:
+                    line_name = row.get("line_name")
+                    if not line_name:
+                        continue
+                    settings_map[line_name] = {
+                        "notification_type": row.get("notification_type") or NOTIFICATION_TYPE,
+                        "dingtalk_webhook": row.get("dingtalk_webhook") or "",
+                        "dingtalk_secret": row.get("dingtalk_secret") or "",
+                        "wechat_work_webhook": row.get("wechat_work_webhook") or ""
+                    }
+                return settings_map
+        except Exception as e:
+            self.logger.error(f"获取通知配置失败: {e}")
+            return {}
+        finally:
+            self.disconnect()
+
+    def upsert_notification_setting(self, line_name: str, settings: Dict[str, str]) -> bool:
+        """保存单个产线的通知配置。"""
+        if not self.connect():
+            return False
+
+        try:
+            with self.connection.cursor() as cursor:
+                self._ensure_notification_settings_table(cursor)
+                cursor.execute("""
+                    INSERT INTO app_notification_line_settings
+                    (line_name, notification_type, dingtalk_webhook, dingtalk_secret, wechat_work_webhook)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        notification_type = VALUES(notification_type),
+                        dingtalk_webhook = VALUES(dingtalk_webhook),
+                        dingtalk_secret = VALUES(dingtalk_secret),
+                        wechat_work_webhook = VALUES(wechat_work_webhook)
+                """, (
+                    line_name,
+                    settings.get("notification_type", NOTIFICATION_TYPE),
+                    settings.get("dingtalk_webhook", ""),
+                    settings.get("dingtalk_secret", ""),
+                    settings.get("wechat_work_webhook", "")
+                ))
+                self.connection.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"保存产线通知配置失败: {e}")
+            self.connection.rollback()
+            return False
+        finally:
+            self.disconnect()
+
+    def seed_notification_settings_if_empty(self, seed_data: Dict[str, Dict[str, str]]) -> bool:
+        """当通知配置表为空时，写入当前代码内的通知配置作为初始数据。"""
+        if not self.connect():
+            return False
+
+        try:
+            with self.connection.cursor() as cursor:
+                self._ensure_notification_settings_table(cursor)
+                cursor.execute("SELECT COUNT(*) FROM app_notification_line_settings")
+                row_count = cursor.fetchone()[0]
+                if row_count > 0:
+                    return True
+
+                for line_name, settings in seed_data.items():
+                    cursor.execute("""
+                        INSERT INTO app_notification_line_settings
+                        (line_name, notification_type, dingtalk_webhook, dingtalk_secret, wechat_work_webhook)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (
+                        line_name,
+                        settings.get("notification_type", NOTIFICATION_TYPE),
+                        settings.get("dingtalk_webhook", ""),
+                        settings.get("dingtalk_secret", ""),
+                        settings.get("wechat_work_webhook", "")
+                    ))
+                self.connection.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"初始化通知配置失败: {e}")
+            self.connection.rollback()
+            return False
         finally:
             self.disconnect()
 

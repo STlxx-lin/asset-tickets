@@ -134,14 +134,20 @@ def send_dingtalk_markdown(title, text, department=None):
     else:
         bot_config = DINGTALK_BOTS["default"]
     
-    webhook = bot_config["webhook"]
-    secret = bot_config["secret"]
+    webhook = bot_config.get("webhook", "")
+    secret = bot_config.get("secret", "")
+    if not webhook:
+        print(f"钉钉推送已跳过 - 产线: {department or 'default'}, 原因: 未配置Webhook")
+        return
     
-    timestamp = str(round(time.time() * 1000))
-    string_to_sign = f'{timestamp}\n{secret}'
-    hmac_code = hmac.new(secret.encode('utf-8'), string_to_sign.encode('utf-8'), digestmod=hashlib.sha256).digest()
-    sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
-    webhook_url = f"{webhook}&timestamp={timestamp}&sign={sign}"
+    webhook_url = webhook
+    if secret:
+        # 有加签密钥时按钉钉签名规则拼接签名参数
+        timestamp = str(round(time.time() * 1000))
+        string_to_sign = f'{timestamp}\n{secret}'
+        hmac_code = hmac.new(secret.encode('utf-8'), string_to_sign.encode('utf-8'), digestmod=hashlib.sha256).digest()
+        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+        webhook_url = f"{webhook}&timestamp={timestamp}&sign={sign}"
 
     data = {
         "msgtype": "markdown",
@@ -198,6 +204,87 @@ WECHAT_WORK_BOTS = {
     },
 }
 
+# 全局产线通知配置缓存（按产线名存储）
+LINE_NOTIFICATION_SETTINGS = {}
+
+
+def _get_department_line_names():
+    """从部门表获取产线列表。"""
+    try:
+        # 从数据库读取部门并清理空值，作为产线标准来源
+        departments = db_manager.get_departments()
+        return [name.strip() for name in departments if isinstance(name, str) and name.strip()]
+    except Exception as error:
+        # 读取失败时记录日志并返回空列表，后续由调用方做兜底处理
+        logger.warning(f"读取部门列表失败: {error}")
+        return []
+
+
+def _build_seed_notification_settings():
+    """基于当前代码中的通知常量构建初始入库数据。"""
+    # 产线统一从部门表获取，满足“产线从部门获取”的业务要求
+    line_names = set(_get_department_line_names())
+    # 当部门表暂不可用时，回退到现有常量键，避免初始化阶段无数据
+    if not line_names:
+        line_names = set(DINGTALK_BOTS.keys()) | set(WECHAT_WORK_BOTS.keys())
+    # 确保存在默认配置行，供未匹配产线时回退
+    line_names.add("default")
+    seed_data = {}
+    for line_name in line_names:
+        # 使用当前代码中的配置作为首批入库值，缺省时回退 default
+        dingtalk_source = DINGTALK_BOTS.get(line_name, DINGTALK_BOTS.get("default", {}))
+        wechat_source = WECHAT_WORK_BOTS.get(line_name, WECHAT_WORK_BOTS.get("default", {}))
+        seed_data[line_name] = {
+            "notification_type": NOTIFICATION_TYPE,
+            "dingtalk_webhook": dingtalk_source.get("webhook", ""),
+            "dingtalk_secret": dingtalk_source.get("secret", ""),
+            "wechat_work_webhook": wechat_source.get("webhook", "")
+        }
+    return seed_data
+
+def _load_notification_settings():
+    """从数据库加载所有产线通知配置，必要时自动写入初始数据。"""
+    try:
+        # 首次升级时将当前代码中的通知配置写入数据库，避免历史配置丢失
+        db_manager.seed_notification_settings_if_empty(_build_seed_notification_settings())
+        loaded_settings = db_manager.get_all_notification_settings()
+        # 数据库无数据时回退到代码内配置，保证通知逻辑可用
+        return loaded_settings or _build_seed_notification_settings()
+    except Exception as error:
+        # 读取失败时回退代码内配置，保证通知能力不中断
+        logger.warning(f"从数据库读取通知配置失败，已使用代码内默认配置: {error}")
+        return _build_seed_notification_settings()
+
+
+def _apply_notification_settings(settings_map):
+    """将所有产线通知配置应用到运行时变量，使配置修改后即时生效。"""
+    global NOTIFICATION_TYPE
+    global LINE_NOTIFICATION_SETTINGS
+
+    # 更新全局缓存，供设置界面与通知路由共享
+    LINE_NOTIFICATION_SETTINGS = settings_map
+
+    # 按产线覆盖钉钉/企业微信配置，确保发送函数按部门取到最新值
+    for line_name, settings in settings_map.items():
+        dingtalk_config = DINGTALK_BOTS.setdefault(line_name, {})
+        dingtalk_config["webhook"] = settings.get("dingtalk_webhook", "").strip()
+        dingtalk_config["secret"] = settings.get("dingtalk_secret", "").strip()
+        wechat_config = WECHAT_WORK_BOTS.setdefault(line_name, {})
+        wechat_config["webhook"] = settings.get("wechat_work_webhook", "").strip()
+
+    # 将 default 行的通知类型作为全局回退值
+    default_settings = settings_map.get("default", {})
+    NOTIFICATION_TYPE = default_settings.get("notification_type", NOTIFICATION_TYPE)
+
+
+def _save_notification_settings(line_name, settings):
+    """将单个产线通知配置保存到数据库。"""
+    return db_manager.upsert_notification_setting(line_name, settings)
+
+
+# 启动时加载并应用通知配置，保证设置界面和发送逻辑保持一致
+_apply_notification_settings(_load_notification_settings())
+
 def send_wechat_work_markdown(title, text, department=None):
     """
     发送企业微信消息，支持按产线选择不同的机器人
@@ -213,7 +300,10 @@ def send_wechat_work_markdown(title, text, department=None):
     else:
         bot_config = WECHAT_WORK_BOTS["default"]
     
-    webhook = bot_config["webhook"]
+    webhook = bot_config.get("webhook", "")
+    if not webhook:
+        print(f"企业微信推送已跳过 - 产线: {department or 'default'}, 原因: 未配置Webhook")
+        return
     
     # 企业微信消息格式
     data = {
@@ -238,10 +328,13 @@ def send_notification(title, text, department=None):
         text: 消息内容
         department: 产线/部门名称，用于选择对应的机器人
     """
-    if NOTIFICATION_TYPE in ['dingtalk', 'both']:
+    # 先按产线取通知类型，未配置时回退到 default，再回退全局默认值
+    effective_settings = LINE_NOTIFICATION_SETTINGS.get(department, LINE_NOTIFICATION_SETTINGS.get("default", {}))
+    effective_notification_type = effective_settings.get("notification_type", NOTIFICATION_TYPE)
+    if effective_notification_type in ['dingtalk', 'both']:
         send_dingtalk_markdown(title, text, department)
     
-    if NOTIFICATION_TYPE in ['wechat_work', 'both']:
+    if effective_notification_type in ['wechat_work', 'both']:
         send_wechat_work_markdown(title, text, department)
 
 class AdminPasswordDialog(QDialog):
@@ -1530,9 +1623,53 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(del_btn)
         btn_layout.addStretch()
         users_layout.addLayout(btn_layout)
+        
+        # 通知配置Tab
+        notification_tab = QWidget()
+        notification_layout = QVBoxLayout(notification_tab)
+        notification_group = QGroupBox("通知接口配置")
+        notification_form = QFormLayout()
+
+        # 产线选择器（产线来源于部门表）
+        self.notify_line_combo = QComboBox()
+
+        # 通知类型选择器
+        self.notify_type_combo = QComboBox()
+        self.notify_type_combo.addItem("仅钉钉通知", "dingtalk")
+        self.notify_type_combo.addItem("仅企业微信通知", "wechat_work")
+        self.notify_type_combo.addItem("钉钉 + 企业微信", "both")
+
+        # 钉钉接口输入框（Webhook + Secret）
+        self.dingtalk_webhook_input = QLineEdit()
+        self.dingtalk_webhook_input.setPlaceholderText("请输入钉钉机器人 Webhook 地址")
+        self.dingtalk_secret_input = QLineEdit()
+        self.dingtalk_secret_input.setPlaceholderText("请输入钉钉机器人加签 Secret（可选）")
+
+        # 企业微信接口输入框（Webhook）
+        self.wechat_webhook_input = QLineEdit()
+        self.wechat_webhook_input.setPlaceholderText("请输入企业微信机器人 Webhook 地址")
+
+        # 将控件放入表单布局，保持设置页排版统一
+        notification_form.addRow("产线（部门）：", self.notify_line_combo)
+        notification_form.addRow("通知类型：", self.notify_type_combo)
+        notification_form.addRow("钉钉 Webhook：", self.dingtalk_webhook_input)
+        notification_form.addRow("钉钉 Secret：", self.dingtalk_secret_input)
+        notification_form.addRow("企业微信 Webhook：", self.wechat_webhook_input)
+        notification_group.setLayout(notification_form)
+        notification_layout.addWidget(notification_group)
+
+        # 保存按钮区域
+        notification_btn_layout = QHBoxLayout()
+        save_notification_btn = QPushButton("保存通知配置")
+        notification_btn_layout.addWidget(save_notification_btn)
+        notification_btn_layout.addStretch()
+        notification_layout.addLayout(notification_btn_layout)
+        notification_layout.addStretch()
+
         tab_widget.addTab(roles_tab, "角色管理")
         tab_widget.addTab(depts_tab, "部门管理")
         tab_widget.addTab(users_tab, "用户管理")
+        tab_widget.addTab(notification_tab, "通知配置")
         
         # 保存筛选控件的引用
         self.settings_name_filter = name_filter
@@ -1550,6 +1687,9 @@ class MainWindow(QMainWindow):
         add_btn.clicked.connect(self.show_add_user_dialog)
         edit_btn.clicked.connect(self.show_edit_user_dialog)
         del_btn.clicked.connect(self.delete_selected_user)
+        save_notification_btn.clicked.connect(self.save_notification_settings)
+        self.notify_line_combo.currentIndexChanged.connect(self.on_notification_line_changed)
+        self.load_notification_settings_to_form()
         return page
 
     def on_user_double_clicked(self, row, column):
@@ -1589,6 +1729,87 @@ class MainWindow(QMainWindow):
         self.settings_role_filter.clear()
         self.settings_dept_filter.clear()
         self.refresh_users_table()
+
+    def load_notification_settings_to_form(self):
+        """将所有产线通知配置加载到设置表单。"""
+        # 刷新运行时配置缓存，确保界面显示数据库最新数据
+        _apply_notification_settings(_load_notification_settings())
+
+        # 产线严格来源于部门表
+        line_names = _get_department_line_names()
+
+        # 重建产线下拉框
+        self.notify_line_combo.blockSignals(True)
+        self.notify_line_combo.clear()
+        for line_name in line_names:
+            self.notify_line_combo.addItem(line_name, line_name)
+        self.notify_line_combo.blockSignals(False)
+
+        # 存在部门时默认选中第一条并回填，不存在时提示
+        if self.notify_line_combo.count() > 0:
+            self.notify_line_combo.setCurrentIndex(0)
+            self.on_notification_line_changed()
+        else:
+            self.dingtalk_webhook_input.clear()
+            self.dingtalk_secret_input.clear()
+            self.wechat_webhook_input.clear()
+
+    def on_notification_line_changed(self):
+        """切换产线时回填该产线的通知配置。"""
+        # 获取当前选中的产线
+        line_name = self.notify_line_combo.currentData()
+        if not line_name:
+            return
+
+        # 先取当前产线配置，若不存在则回退到 default 行
+        settings = LINE_NOTIFICATION_SETTINGS.get(line_name, LINE_NOTIFICATION_SETTINGS.get("default", {}))
+
+        # 回填通知类型
+        notify_type = settings.get("notification_type", NOTIFICATION_TYPE)
+        combo_index = self.notify_type_combo.findData(notify_type)
+        if combo_index >= 0:
+            self.notify_type_combo.setCurrentIndex(combo_index)
+
+        # 回填接口输入框
+        self.dingtalk_webhook_input.setText(settings.get("dingtalk_webhook", ""))
+        self.dingtalk_secret_input.setText(settings.get("dingtalk_secret", ""))
+        self.wechat_webhook_input.setText(settings.get("wechat_work_webhook", ""))
+
+    def save_notification_settings(self):
+        """保存当前选中产线的通知接口配置并即时生效。"""
+        # 获取当前选中的产线
+        line_name = self.notify_line_combo.currentData()
+        if not line_name:
+            QMessageBox.warning(self, "保存失败", "请先在部门中维护产线，再配置通知接口。")
+            return
+
+        # 收集用户输入并进行基础清洗
+        settings = {
+            "notification_type": self.notify_type_combo.currentData(),
+            "dingtalk_webhook": self.dingtalk_webhook_input.text().strip(),
+            "dingtalk_secret": self.dingtalk_secret_input.text().strip(),
+            "wechat_work_webhook": self.wechat_webhook_input.text().strip()
+        }
+
+        # 针对不同通知模式做最小必填校验，避免保存后发送必然失败
+        if settings["notification_type"] in ("dingtalk", "both") and not settings["dingtalk_webhook"]:
+            QMessageBox.warning(self, "配置不完整", "当前通知类型包含钉钉，请填写钉钉 Webhook。")
+            return
+        if settings["notification_type"] in ("wechat_work", "both") and not settings["wechat_work_webhook"]:
+            QMessageBox.warning(self, "配置不完整", "当前通知类型包含企业微信，请填写企业微信 Webhook。")
+            return
+
+        try:
+            # 先持久化到数据库，再应用到运行时，确保下次启动也能保持配置
+            if not _save_notification_settings(line_name, settings):
+                QMessageBox.critical(self, "保存失败", "通知配置写入数据库失败，请检查数据库连接。")
+                return
+
+            # 保存后刷新全量配置并重新应用，确保发送路由立刻使用最新值
+            _apply_notification_settings(_load_notification_settings())
+            QMessageBox.information(self, "保存成功", f"产线【{line_name}】通知配置已保存并即时生效。")
+        except Exception as error:
+            QMessageBox.critical(self, "保存失败", f"通知配置保存失败：{error}")
 
     def show_add_user_dialog(self):
         dialog = QDialog(self)
