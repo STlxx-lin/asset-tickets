@@ -4,7 +4,10 @@ import logging
 import pymysql
 from .api_manager import api_manager
 from datetime import datetime
-from .config import DB_CONFIG, NOTIFICATION_TYPE
+from .config import DB_CONFIG
+
+# 全局回退通知类型（用于数据库无值时的兜底）
+DEFAULT_NOTIFICATION_TYPE = "wechat_work"
 
 class DatabaseManager:
     def __init__(self):
@@ -877,7 +880,7 @@ class DatabaseManager:
                     if not line_name:
                         continue
                     settings_map[line_name] = {
-                        "notification_type": row.get("notification_type") or NOTIFICATION_TYPE,
+                        "notification_type": row.get("notification_type") or DEFAULT_NOTIFICATION_TYPE,
                         "dingtalk_webhook": row.get("dingtalk_webhook") or "",
                         "dingtalk_secret": row.get("dingtalk_secret") or "",
                         "wechat_work_webhook": row.get("wechat_work_webhook") or ""
@@ -908,7 +911,7 @@ class DatabaseManager:
                         wechat_work_webhook = VALUES(wechat_work_webhook)
                 """, (
                     line_name,
-                    settings.get("notification_type", NOTIFICATION_TYPE),
+                    settings.get("notification_type", DEFAULT_NOTIFICATION_TYPE),
                     settings.get("dingtalk_webhook", ""),
                     settings.get("dingtalk_secret", ""),
                     settings.get("wechat_work_webhook", "")
@@ -942,7 +945,7 @@ class DatabaseManager:
                         VALUES (%s, %s, %s, %s, %s)
                     """, (
                         line_name,
-                        settings.get("notification_type", NOTIFICATION_TYPE),
+                        settings.get("notification_type", DEFAULT_NOTIFICATION_TYPE),
                         settings.get("dingtalk_webhook", ""),
                         settings.get("dingtalk_secret", ""),
                         settings.get("wechat_work_webhook", "")
