@@ -28,6 +28,7 @@
 - **多角色协同**：支持采购、摄影、美工、剪辑、运营、销售等角色按权限操作。
 - **全流程追踪**：工单状态、操作日志、部门流转清晰可追溯。
 - **自动化通知**：可对接钉钉、企业微信，减少人工同步成本。
+- **按产线通知配置**：通知配置按部门（产线）独立存储在数据库中，支持差异化路由。
 - **可视化看板**：基于 Chart.js 的统计图表，支持趋势和分布分析。
 - **设计统一**：Web 看板采用简洁、统一、响应式的页面布局与交互风格。
 
@@ -79,7 +80,8 @@
 
 ## 环境要求
 
-- **Python**：3.12+
+- **Python（运行）**：3.12+
+- **Python（Nuitka 打包）**：建议 3.11（当前工作流对旧版 Nuitka 兼容性更稳定）
 - **Database**：MySQL 5.7+ / MariaDB 10.2+
 - **Web Server**：Nginx/Apache + PHP 7.4+（部署 Web 看板时需要）
 
@@ -88,8 +90,8 @@
 ### 1. 获取代码
 
 ```bash
-git clone <repository_url>
-cd pyproj
+git clone https://github.com/STlxx-lin/asset-tickets.git
+cd asset-tickets
 ```
 
 ### 2. 安装依赖
@@ -148,7 +150,7 @@ python main.py
 |---|---|---|---|
 | `DB_CONFIG_1` / `DB_CONFIG_2` | 数据库连接参数组 | `host/user/password/database` | 生产环境使用独立账号 |
 | `DB_SWITCH` | 选择当前生效的数据库配置 | `db1` | 保持与实际连接组一致 |
-| `NOTIFY_TYPE` | 通知渠道类型 | `dingtalk` / `wechat_work` / `both` | 先单通道验证，再开启双通道 |
+| `app_notification_line_settings` | 按产线（部门）通知配置表 | `notification_type/webhook/secret` | 通过“系统设置 -> 通知配置”维护 |
 | `ADMIN_PASSWORD` | 管理员口令 | 自定义强密码 | 定期轮换，不入库明文 |
 | Webhook / Token | 通知凭证 | 按各平台生成 | 使用环境变量管理 |
 
@@ -156,6 +158,7 @@ python main.py
 
 - 生产环境使用独立数据库账号，最小权限原则授权。
 - 不要把真实密码直接提交到仓库，可改为环境变量读取。
+- 通知配置已从代码常量迁移到数据库按产线管理，详见 `docs/NOTIFICATION_MIGRATION.md`。
 
 ## 运行与打包
 
@@ -182,13 +185,13 @@ scripts/一键打包.bat
 
 ## 发布流程
 
-建议使用以下轻量流程保证版本可追踪、可回滚。
+建议使用以下流程保证版本可追踪、可回滚，并与 CI 自动发布对齐。
 
 1. 在功能分支完成开发与自测。
 2. 提交 PR 并通过代码评审。
-3. 合并到 `main` 后打 Tag（如 `v1.16.0`）。
-4. 执行打包脚本生成发布产物。
-5. 在 Release 中附上变更摘要与升级说明。
+3. 更新 `src/core/config.py` 中的 `APP_VERSION`（如 `v1.16.0`）并合并到 `main`。
+4. GitHub Actions 自动执行打包、打标签并发布到 Releases。
+5. 在 Release 中补充变更摘要与升级说明。
 6. 将本次版本要点写入 `CHANGELOG.md`。
 
 变更日志建议格式：
@@ -249,7 +252,8 @@ e:\2025\pyproj/
 
 ### 3. 通知没有发送
 
-- 检查 `NOTIFY_TYPE` 配置是否正确。
+- 打开“系统设置 -> 通知配置”，确认当前产线已配置通知类型和 webhook。
+- 检查数据库表 `app_notification_line_settings` 是否存在对应产线记录。
 - 检查钉钉/企业微信 webhook 或凭证是否有效。
 
 ## 贡献指南
