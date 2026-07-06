@@ -7,3 +7,5 @@ build/
 src/core/config.local.py
 .env
 .env.*
+.venv/
+.trae/
