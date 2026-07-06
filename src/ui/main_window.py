@@ -452,6 +452,7 @@ def get_invalid_path_name_message(field_label, value):
     return None
 
 
+class CreateWorkOrderDialog(QDialog):
     def __init__(self, role, departments, user_name=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("创建新工单")
@@ -2055,7 +2056,43 @@ class MainWindow(QMainWindow):
         def remove_selected_dept():
             selected_items = current_depts_list.selectedItems()
             for item in selected_items:
+                dept_name = item.text()
                 current_depts_list.takeItem(current_depts_list.row(item))
+                dept_exists = False
+                for i in range(depts_container_layout.count()):
+                    widget = depts_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == dept_name:
+                            dept_exists = True
+                            break
+                if dept_exists:
+                    continue
+                dept_row = QHBoxLayout()
+                dept_label = QLabel(dept_name)
+                dept_label.setStyleSheet("border: none;")
+                add_dept_btn = QPushButton("添加")
+                add_dept_btn.setMaximumWidth(60)
+                def add_dept_func(checked=False, current_dept=dept_name):
+                    existing_depts = [current_depts_list.item(i).text() for i in range(current_depts_list.count())]
+                    if current_dept in existing_depts:
+                        return
+                    current_depts_list.addItem(current_dept)
+                    for j in range(depts_container_layout.count()):
+                        available_widget = depts_container_layout.itemAt(j).widget()
+                        if available_widget and available_widget.layout():
+                            available_label = available_widget.layout().itemAt(0).widget()
+                            if available_label and isinstance(available_label, QLabel) and available_label.text() == current_dept:
+                                available_widget.hide()
+                                available_widget.deleteLater()
+                                break
+                add_dept_btn.clicked.connect(add_dept_func)
+                dept_row.addWidget(dept_label)
+                dept_row.addWidget(add_dept_btn)
+                dept_row.addStretch()
+                dept_widget = QWidget()
+                dept_widget.setLayout(dept_row)
+                depts_container_layout.addWidget(dept_widget)
         remove_dept_btn.clicked.connect(remove_selected_dept)
         left_dept_layout.addWidget(remove_dept_btn)
         
@@ -2416,7 +2453,40 @@ class MainWindow(QMainWindow):
         def remove_selected_dept():
             selected_items = current_depts_list.selectedItems()
             for item in selected_items:
+                dept_name = item.text()
                 current_depts_list.takeItem(current_depts_list.row(item))
+                dept_exists = False
+                for i in range(depts_container_layout.count()):
+                    widget = depts_container_layout.itemAt(i).widget()
+                    if widget and widget.layout():
+                        label = widget.layout().itemAt(0).widget()
+                        if label and isinstance(label, QLabel) and label.text() == dept_name:
+                            dept_exists = True
+                            break
+                if dept_exists:
+                    continue
+                dept_row = QHBoxLayout()
+                dept_label = QLabel(dept_name)
+                dept_label.setStyleSheet("border: none;")
+                add_dept_btn = QPushButton("添加")
+                add_dept_btn.setMaximumWidth(60)
+                def add_dept_func(checked=False, d=dept_name):
+                    current_depts_list.addItem(d)
+                    for j in range(depts_container_layout.count()):
+                        available_widget = depts_container_layout.itemAt(j).widget()
+                        if available_widget and available_widget.layout():
+                            available_label = available_widget.layout().itemAt(0).widget()
+                            if available_label and isinstance(available_label, QLabel) and available_label.text() == d:
+                                available_widget.hide()
+                                available_widget.deleteLater()
+                                break
+                add_dept_btn.clicked.connect(add_dept_func)
+                dept_row.addWidget(dept_label)
+                dept_row.addWidget(add_dept_btn)
+                dept_row.addStretch()
+                dept_widget = QWidget()
+                dept_widget.setLayout(dept_row)
+                depts_container_layout.addWidget(dept_widget)
         remove_dept_btn.clicked.connect(remove_selected_dept)
         left_dept_layout.addWidget(remove_dept_btn)
         
