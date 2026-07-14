@@ -3293,29 +3293,64 @@ class MainWindow(QMainWindow):
             
             # 新增：如果是重新拍摄状态，获取不通过反馈并展示
             feedbacks = db_manager.get_review_feedback(order_data['id'])
-            if order_data.get('status') == '重新拍摄' and feedbacks:
-                feedback_widget = QWidget()
-                feedback_widget.setObjectName("ReviewFeedbackPanel")
-                feedback_widget.setStyleSheet("""
-                    QWidget#ReviewFeedbackPanel {
-                        background-color: #3d1c1c;
+            if feedbacks:
+                feedback_group = QGroupBox("⚠️ 审核退回明细（需重新拍摄）")
+                feedback_group.setStyleSheet("""
+                    QGroupBox {
                         border: 1px solid #ef4444;
                         border-radius: 6px;
+                        margin-top: 12px;
+                        font-weight: bold;
+                        color: #ef4444;
                     }
                 """)
-                fb_layout = QVBoxLayout(feedback_widget)
-                fb_layout.setContentsMargins(15, 10, 15, 10)
-                fb_layout.setSpacing(6)
-                title_lbl = QLabel("⚠️ 视频审核退回提示：")
-                title_lbl.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 14px;")
-                fb_layout.addWidget(title_lbl)
-                for fb in feedbacks:
-                    lbl = QLabel(f"• <b>文件</b>: {fb['file_name']}<br/>  <b>原因</b>: <span style='color: #ff8888;'>{fb['reason']}</span>")
-                    lbl.setStyleSheet("color: #e8eaed; font-size: 12px; line-height: 1.4;")
-                    lbl.setWordWrap(True)
-                    lbl.setTextFormat(Qt.RichText)
-                    fb_layout.addWidget(lbl)
-                main_layout.addWidget(feedback_widget)
+                fb_layout = QVBoxLayout(feedback_group)
+                fb_table = QTableWidget()
+                fb_table.setColumnCount(3)
+                fb_table.setHorizontalHeaderLabels(["文件名", "素材目录", "退回原因"])
+                fb_table.setEditTriggers(QTableWidget.NoEditTriggers)
+                fb_table.setRowCount(len(feedbacks))
+                
+                # 设置列宽与拉伸模式
+                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+                fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+                fb_table.setColumnWidth(0, 180)
+                fb_table.setColumnWidth(1, 180)
+                
+                # 设置表格暗黑样式
+                fb_table.setStyleSheet("""
+                    QTableWidget {
+                        background-color: #2b2b2b;
+                        color: #FFFFFF;
+                        gridline-color: #555555;
+                        border: 1px solid #555555;
+                        border-radius: 4px;
+                    }
+                    QHeaderView::section {
+                        background-color: #3c3c3c;
+                        color: #FFFFFF;
+                        padding: 4px;
+                        border: 1px solid #555555;
+                        font-weight: bold;
+                    }
+                """)
+                
+                for idx, fb in enumerate(feedbacks):
+                    # 文件名
+                    fb_table.setItem(idx, 0, QTableWidgetItem(fb['file_name']))
+                    # 目录 (提取末尾目录名以提升可读性)
+                    dir_name = os.path.basename(fb['directory']) if fb['directory'] else ""
+                    dir_item = QTableWidgetItem(dir_name)
+                    dir_item.setToolTip(fb['directory'])
+                    fb_table.setItem(idx, 1, dir_item)
+                    # 原因
+                    fb_table.setItem(idx, 2, QTableWidgetItem(fb['reason']))
+                
+                fb_table.setMinimumHeight(120)
+                fb_table.setMaximumHeight(180)
+                fb_layout.addWidget(fb_table)
+                main_layout.addWidget(feedback_group)
 
             # 表单区域
             form_widget = QWidget()
@@ -3478,6 +3513,9 @@ class MainWindow(QMainWindow):
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     
                     self.update_work_order_status_and_ui(order_data['id'], '拍摄完成')
+                    order_data['status'] = '拍摄完成'
+                    distribute_img_btn.setEnabled(False)
+                    distribute_vid_btn.setEnabled(False)
                     # 显示完成消息
                     msg = QMessageBox(dialog)
                     msg.setWindowTitle("上传完成")
@@ -3515,6 +3553,9 @@ class MainWindow(QMainWindow):
                     return None
                 return src_files
             def on_distribute_img():
+                if order_data.get('status') != '审核通过':
+                    QMessageBox.warning(dialog, "提示", "工单未审核通过，无法分发！")
+                    return
                 src_dir = get_upload_dir()
                 target_dir = get_dist_img_dir()
                 src_files = get_src_files_when_images_available(src_dir)
@@ -3574,6 +3615,9 @@ class MainWindow(QMainWindow):
                     update_status_func=update_status
                 )
             def on_distribute_vid():
+                if order_data.get('status') != '审核通过':
+                    QMessageBox.warning(dialog, "提示", "工单未审核通过，无法分发！")
+                    return
                 src_dir = get_upload_dir()
                 target_dir = get_dist_video_dir()
                 src_files = get_src_files_when_images_available(src_dir)
@@ -6312,7 +6356,7 @@ class MainWindow(QMainWindow):
 
 # 状态进度条委托
 class StatusProgressDelegate(QStyledItemDelegate):
-    STATUS_ORDER = ["拍摄中", "拍摄完成", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"]
+    STATUS_ORDER = ["拍摄中", "拍摄完成", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"]
     def paint(self, painter, option, index):
         status = index.data()
         # 计算进度百分比
@@ -6348,6 +6392,8 @@ class StatusProgressDelegate(QStyledItemDelegate):
         color_map = {
             "拍摄中": (255, 170, 0),      # 橙色
             "拍摄完成": (0, 200, 255),    # 亮蓝色
+            "审核通过": (40, 167, 69),     # 绿色
+            "重新拍摄": (220, 53, 69),     # 红色
             "后期待领取": (255, 140, 0),  # 深橙色
             "后期处理中": (180, 80, 255), # 紫色
             "后期已完成": (0, 220, 120),  # 绿色
