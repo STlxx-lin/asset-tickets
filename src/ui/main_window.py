@@ -1121,7 +1121,7 @@ class MainWindow(QMainWindow):
         # 状态筛选
         self.status_filter = QComboBox()
         self.status_filter.addItem("全部状态")
-        self.status_filter.addItems(["拍摄中", "拍摄完成", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"])
+        self.status_filter.addItems(["拍摄中", "拍摄完成", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"])
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
@@ -1209,7 +1209,7 @@ class MainWindow(QMainWindow):
             controls_layout.addWidget(create_button)
 
         # 办理按钮
-        if self.role in ["摄影", "美工", "剪辑", "运营", "销售"]:
+        if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核"]:
             op_button = QPushButton("办理")
             op_button.clicked.connect(self.handle_process_selected_order)
             controls_layout.addWidget(op_button)
@@ -3290,6 +3290,33 @@ class MainWindow(QMainWindow):
             """)
             title_label.setAlignment(Qt.AlignCenter)
             main_layout.addWidget(title_label)
+            
+            # 新增：如果是重新拍摄状态，获取不通过反馈并展示
+            feedbacks = db_manager.get_review_feedback(order_data['id'])
+            if order_data.get('status') == '重新拍摄' and feedbacks:
+                feedback_widget = QWidget()
+                feedback_widget.setObjectName("ReviewFeedbackPanel")
+                feedback_widget.setStyleSheet("""
+                    QWidget#ReviewFeedbackPanel {
+                        background-color: #3d1c1c;
+                        border: 1px solid #ef4444;
+                        border-radius: 6px;
+                    }
+                """)
+                fb_layout = QVBoxLayout(feedback_widget)
+                fb_layout.setContentsMargins(15, 10, 15, 10)
+                fb_layout.setSpacing(6)
+                title_lbl = QLabel("⚠️ 视频审核退回提示：")
+                title_lbl.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 14px;")
+                fb_layout.addWidget(title_lbl)
+                for fb in feedbacks:
+                    lbl = QLabel(f"• <b>文件</b>: {fb['file_name']}<br/>  <b>原因</b>: <span style='color: #ff8888;'>{fb['reason']}</span>")
+                    lbl.setStyleSheet("color: #e8eaed; font-size: 12px; line-height: 1.4;")
+                    lbl.setWordWrap(True)
+                    lbl.setTextFormat(Qt.RichText)
+                    fb_layout.addWidget(lbl)
+                main_layout.addWidget(feedback_widget)
+
             # 表单区域
             form_widget = QWidget()
             form_layout = QVBoxLayout(form_widget)
@@ -3391,12 +3418,21 @@ class MainWindow(QMainWindow):
             upload_btn = QPushButton("上传素材")
             distribute_img_btn = QPushButton("分发图片")
             distribute_vid_btn = QPushButton("分发视频")
+            
+            # 仅在“审核通过”状态下才允许分发
+            is_approved = order_data.get('status') == '审核通过'
+            distribute_img_btn.setEnabled(is_approved)
+            distribute_vid_btn.setEnabled(is_approved)
+            if not is_approved:
+                distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
+                distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
+
             def on_upload_material():
                 # 验证摄影师是否已选择
                 photographer = get_photographer()
                 if not photographer:
-                    QMessageBox.warning(dialog, "提示", "请先选择摄影师")
-                    return
+                      QMessageBox.warning(dialog, "提示", "请先选择摄影师")
+                      return
                 upload_dir = get_upload_dir()
                 try:
                     os.makedirs(upload_dir, exist_ok=True)
@@ -3409,6 +3445,17 @@ class MainWindow(QMainWindow):
                 files, _ = QFileDialog.getOpenFileNames(dialog, "选择要上传的素材")
                 if not files:
                     return
+                
+                # 重新上传时自动物理删除不通过文件夹并清理反馈记录
+                fail_dir = os.path.join(upload_dir, "不通过")
+                if os.path.exists(fail_dir):
+                    try:
+                        shutil.rmtree(fail_dir, ignore_errors=True)
+                        logger.info(f"摄影师重新上传，已成功物理删除不通过文件夹: {fail_dir}")
+                    except Exception as e:
+                        logger.error(f"物理删除不通过文件夹失败: {e}")
+                db_manager.delete_review_feedback(order_data['id'])
+
                 # 使用任务管理器处理文件上传
                 task_name = f"上传素材 - 工单{order_data['id']}"
                 def update_status():
@@ -3588,6 +3635,249 @@ class MainWindow(QMainWindow):
             button_layout.addWidget(distribute_vid_btn)
             button_layout.addStretch()
             main_layout.addWidget(button_widget)
+            dialog.exec()
+        # 视频审核弹窗
+        elif self.role == "视频审核":
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"审核工单素材 - {order_data['id']}")
+            dialog.setMinimumWidth(900)
+            dialog.setMinimumHeight(650)
+            # 设置弹窗样式
+            dialog.setStyleSheet(self.styleSheet() + """
+                QDialog {
+                    background-color: #2E2E2E;
+                    color: #FFFFFF;
+                }
+                QGroupBox {
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                    margin-top: 1ex;
+                    font-size: 14px;
+                    font-weight: bold;
+                    color: #FFFFFF;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    padding: 0 10px;
+                    color: #FFFFFF;
+                }
+                QLineEdit, QTextEdit, QLabel {
+                    background-color: #3c3c3c;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    color: #FFFFFF;
+                    font-size: 14px;
+                }
+                QLabel {
+                    color: #FFFFFF;
+                    font-size: 14px;
+                }
+                QPushButton {
+                    background-color: #0078d4;
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 10px 24px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #106ebe;
+                }
+                QPushButton[type="cancel"] {
+                    background-color: #555555;
+                }
+                QPushButton[type="cancel"]:hover {
+                    background-color: #666666;
+                }
+            """)
+            main_layout = QVBoxLayout(dialog)
+            main_layout.setSpacing(15)
+            main_layout.setContentsMargins(25, 25, 25, 25)
+
+            title_label = QLabel(f"审核工单素材 - {order_data['id']}")
+            title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #FFFFFF; padding-bottom: 5px;")
+            title_label.setAlignment(Qt.AlignCenter)
+            main_layout.addWidget(title_label)
+
+            # 左右分栏布局
+            content_layout = QHBoxLayout()
+            content_layout.setSpacing(20)
+
+            # 左侧垂直布局
+            left_layout = QVBoxLayout()
+            left_layout.setSpacing(15)
+
+            # 工单基本信息
+            basic_group = QGroupBox("工单信息")
+            basic_layout = QFormLayout(basic_group)
+            basic_layout.setSpacing(8)
+            basic_layout.addRow("工单ID:", QLabel(order_data['id']))
+            basic_layout.addRow("产线/部门:", QLabel(order_data['department']))
+            basic_layout.addRow("型号:", QLabel(order_data['model']))
+            basic_layout.addRow("名称:", QLabel(order_data['name']))
+            basic_layout.addRow("发起人:", QLabel(order_data['creator']))
+            basic_layout.addRow("当前状态:", QLabel(order_data.get('status', '')))
+            left_layout.addWidget(basic_group)
+
+            # 不通过反馈原因输入
+            feedback_group = QGroupBox("退回反馈设置")
+            feedback_layout = QVBoxLayout(feedback_group)
+            reason_edit = QTextEdit()
+            reason_edit.setPlaceholderText("选择“重新拍摄”时，必须在此输入退回的具体原因...")
+            reason_edit.setMinimumHeight(150)
+            feedback_layout.addWidget(reason_edit)
+            left_layout.addWidget(feedback_group)
+            left_layout.addStretch()
+
+            content_layout.addLayout(left_layout, 1) # 左侧权重 1
+
+            # 右侧素材列表分组
+            material_group = QGroupBox("摄影上传的素材列表")
+            material_layout = QVBoxLayout(material_group)
+            
+            file_table = QTableWidget()
+            file_table.setColumnCount(3)
+            file_table.setHorizontalHeaderLabels(["选择", "文件名", "摄影师"])
+            # 优化列宽占比，选择列固定 50px，摄影师固定 90px，文件名自适应拉伸
+            file_table.setColumnWidth(0, 50)
+            file_table.setColumnWidth(2, 90)
+            file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+            file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+            file_table.setEditTriggers(QTableWidget.NoEditTriggers)
+            
+            files_found = []
+            photographers = ["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项","08Arin"]
+            for pg in photographers:
+                upload_dir = PHOTOGRAPHY_UPLOAD(pg, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
+                if os.path.exists(upload_dir):
+                    try:
+                        for item in os.listdir(upload_dir):
+                            full_item_path = os.path.join(upload_dir, item)
+                            if os.path.isfile(full_item_path):
+                                files_found.append((item, pg, full_item_path, upload_dir))
+                    except Exception as e:
+                        logger.error(f"读取摄影上传目录 {upload_dir} 失败: {e}")
+
+            file_table.setRowCount(len(files_found))
+            checkboxes = []
+            for idx, (fname, pg_name, fpath, udir) in enumerate(files_found):
+                chk_widget = QWidget()
+                chk_layout = QHBoxLayout(chk_widget)
+                chk_layout.setContentsMargins(0, 0, 0, 0)
+                chk_layout.setAlignment(Qt.AlignCenter)
+                chk = QCheckBox()
+                chk_layout.addWidget(chk)
+                file_table.setCellWidget(idx, 0, chk_widget)
+                checkboxes.append(chk)
+
+                file_table.setItem(idx, 1, QTableWidgetItem(fname))
+                file_table.setItem(idx, 2, QTableWidgetItem(pg_name))
+
+            material_layout.addWidget(file_table)
+            
+            # 绑定双击事件：使用系统默认程序（如播放器或看图软件）打开/播放文件
+            def on_file_double_clicked(row, column):
+                if row < len(files_found):
+                    _, _, fpath, _ = files_found[row]
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(fpath))
+            file_table.cellDoubleClicked.connect(on_file_double_clicked)
+
+            content_layout.addWidget(material_group, 1) # 右侧权重 1
+
+            main_layout.addLayout(content_layout)
+
+            # 按钮区域
+            button_widget = QWidget()
+            button_layout = QHBoxLayout(button_widget)
+            button_layout.setSpacing(15)
+
+            pass_btn = QPushButton("审核通过")
+            pass_btn.setStyleSheet("background-color: #28a745; color: white;")
+            
+            reject_btn = QPushButton("重新拍摄")
+            reject_btn.setStyleSheet("background-color: #dc3545; color: white;")
+            
+            cancel_btn = QPushButton("取消")
+            cancel_btn.setProperty("type", "cancel")
+            
+            button_layout.addWidget(pass_btn)
+            button_layout.addWidget(reject_btn)
+            button_layout.addStretch()
+            button_layout.addWidget(cancel_btn)
+            main_layout.addWidget(button_widget)
+
+            cancel_btn.clicked.connect(dialog.reject)
+
+            def on_approve():
+                new_status = '审核通过'
+                self.update_work_order_status_and_ui(order_data['id'], new_status)
+                api_response = api_manager.update_work_order_status(order_data['id'], new_status)
+                if api_response['success']:
+                    logger.info(f"API更新工单{order_data['id']}状态为审核通过成功")
+                else:
+                    logger.error(f"API更新工单状态失败: {api_response['error']}")
+                
+                self.log_action("视频审核通过", f"工单ID={order_data['id']}, 角色=视频审核")
+                send_notification(
+                    "工单状态变更通知",
+                    f"### 工单号：{order_data['id']}\n- 角色：视频审核\n- 操作：审核通过\n- 状态：审核通过\n- 提示：视频审核已通过，摄影师现在可以分发素材了！",
+                    order_data.get('department')
+                )
+                QMessageBox.information(dialog, "成功", "工单已审核通过！")
+                dialog.accept()
+
+            def on_reject():
+                reason = reason_edit.toPlainText().strip()
+                if not reason:
+                    QMessageBox.warning(dialog, "提示", "重新拍摄必须填写不通过原因")
+                    return
+                
+                selected_indices = [i for i, chk in enumerate(checkboxes) if chk.isChecked()]
+                if not selected_indices:
+                    QMessageBox.warning(dialog, "提示", "请选择至少一个不通过的素材文件")
+                    return
+
+                fail_count = 0
+                for i in selected_indices:
+                    fname, pg_name, fpath, udir = files_found[i]
+                    fail_dir = os.path.join(udir, "不通过")
+                    try:
+                        os.makedirs(fail_dir, exist_ok=True)
+                        dest_path = os.path.join(fail_dir, fname)
+                        shutil.move(fpath, dest_path)
+                        db_manager.add_review_feedback(order_data['id'], fname, udir, reason)
+                        fail_count += 1
+                    except Exception as e:
+                        logger.error(f"退回移动文件 {fname} 失败: {e}")
+                        QMessageBox.warning(dialog, "错误", f"移动文件 {fname} 失败: {str(e)}")
+
+                if fail_count > 0:
+                    new_status = '重新拍摄'
+                    self.update_work_order_status_and_ui(order_data['id'], new_status)
+                    api_response = api_manager.update_work_order_status(order_data['id'], new_status)
+                    if api_response['success']:
+                        logger.info(f"API更新工单{order_data['id']}状态为重新拍摄成功")
+                    else:
+                        logger.error(f"API更新工单状态失败: {api_response['error']}")
+                        
+                    self.log_action("视频审核退回", f"工单ID={order_data['id']}, 角色=视频审核, 不通过文件数={fail_count}, 原因={reason}")
+                    send_notification(
+                        "工单状态变更通知",
+                        f"### 工单号：{order_data['id']}\n- 角色：视频审核\n- 操作：退回重拍\n- 状态：重新拍摄\n- 退回数量：{fail_count}个文件\n- 原因：{reason}",
+                        order_data.get('department')
+                    )
+                    QMessageBox.information(dialog, "提示", f"已成功将 {fail_count} 个不通过素材移至“不通过”文件夹，并通知摄影师重新拍摄。")
+                    dialog.accept()
+                else:
+                    QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
+
+            pass_btn.clicked.connect(on_approve)
+            reject_btn.clicked.connect(on_reject)
             dialog.exec()
         # 美工弹窗
         elif self.role == "美工":

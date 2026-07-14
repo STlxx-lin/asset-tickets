@@ -106,6 +106,9 @@ class WorkOrderDetailDialog(QDialog):
         # 1. 核心信息概览 (始终显示，不折叠)
         self.setup_header_section()
 
+        # 展示审核退回提示（如有）
+        self.setup_review_feedback_section()
+
         # 2. 详细信息分组 (可折叠)
         self.setup_detail_groups()
 
@@ -121,6 +124,41 @@ class WorkOrderDetailDialog(QDialog):
 
         # 底部关闭按钮
         self.setup_footer()
+
+    def setup_review_feedback_section(self):
+        """展示重新拍摄（不通过）的反馈原因"""
+        status = self.order_data.get('status', '')
+        if status == '重新拍摄':
+            from src.core.database import db_manager
+            feedbacks = db_manager.get_review_feedback(self.order_data['id'])
+            if feedbacks:
+                feedback_widget = QWidget()
+                feedback_widget.setObjectName("ReviewFeedbackPanel")
+                # 暗红色背景、鲜红边框，白字/淡红字高亮
+                feedback_widget.setStyleSheet("""
+                    QWidget#ReviewFeedbackPanel {
+                        background-color: #3d1c1c;
+                        border: 1px solid #ef4444;
+                        border-radius: 8px;
+                    }
+                """)
+                layout = QVBoxLayout(feedback_widget)
+                layout.setContentsMargins(15, 12, 15, 12)
+                layout.setSpacing(8)
+
+                title_label = QLabel("⚠️ 视频审核退回提示（需要重新拍摄）")
+                title_label.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 15px;")
+                layout.addWidget(title_label)
+
+                # 添加退回的文件详情
+                for i, fb in enumerate(feedbacks):
+                    item_label = QLabel(f"• <b>文件</b>: {fb['file_name']}<br/>  <b>所在目录</b>: {fb['directory']}<br/>  <b>原因</b>: <span style='color: #ff8888;'>{fb['reason']}</span>")
+                    item_label.setStyleSheet("color: #e8eaed; font-size: 13px; line-height: 1.4;")
+                    item_label.setWordWrap(True)
+                    item_label.setTextFormat(Qt.RichText)
+                    layout.addWidget(item_label)
+
+                self.scroll_layout.addWidget(feedback_widget)
 
     def setup_header_section(self):
         """核心信息概览"""
@@ -453,6 +491,9 @@ class WorkOrderDetailDialog(QDialog):
     def get_status_color(self, status):
         colors = {
             "拍摄中": "#ff9800",
+            "拍摄完成": "#2196f3",
+            "审核通过": "#4caf50",
+            "重新拍摄": "#f44336",
             "美工设计": "#2196f3",
             "视频剪辑": "#9c27b0",
             "已完成": "#4caf50",
