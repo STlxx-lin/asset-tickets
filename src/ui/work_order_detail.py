@@ -132,7 +132,7 @@ class WorkOrderDetailDialog(QDialog):
         """展示重新拍摄（不通过）的反馈原因"""
         from src.core.database import db_manager
         feedbacks = db_manager.get_review_feedback(self.order_data['id'])
-        if feedbacks:
+        if self.order_data.get('status') == '重新拍摄' and feedbacks:
                 feedback_widget = QWidget()
                 feedback_widget.setObjectName("ReviewFeedbackPanel")
                 # 暗红色背景、鲜红边框，白字/淡红字高亮

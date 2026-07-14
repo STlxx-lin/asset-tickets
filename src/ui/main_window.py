@@ -3294,7 +3294,7 @@ class MainWindow(QMainWindow):
             # 获取不通过反馈，并根据是否存在反馈动态调整窗口尺寸
             feedbacks = db_manager.get_review_feedback(order_data['id'])
             if feedbacks:
-                dialog.setMinimumWidth(950)
+                dialog.setMinimumWidth(1100)
                 dialog.setMinimumHeight(600)
             else:
                 dialog.setMinimumWidth(650)
@@ -3415,11 +3415,9 @@ class MainWindow(QMainWindow):
                 fb_table.setEditTriggers(QTableWidget.NoEditTriggers)
                 fb_table.setRowCount(len(feedbacks))
                 
-                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
-                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
                 fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-                fb_table.setColumnWidth(0, 180)
-                fb_table.setColumnWidth(1, 150)
                 
                 fb_table.setStyleSheet("""
                     QTableWidget {
@@ -3838,6 +3836,12 @@ class MainWindow(QMainWindow):
                 chk_layout.setContentsMargins(0, 0, 0, 0)
                 chk_layout.setAlignment(Qt.AlignCenter)
                 chk = QCheckBox()
+                chk.setStyleSheet("""
+                    QCheckBox::indicator {
+                        width: 20px;
+                        height: 20px;
+                    }
+                """)
                 chk_layout.addWidget(chk)
                 file_table.setCellWidget(idx, 0, chk_widget)
                 checkboxes.append(chk)
@@ -3845,6 +3849,58 @@ class MainWindow(QMainWindow):
                 file_table.setItem(idx, 1, QTableWidgetItem(fname))
                 file_table.setItem(idx, 2, QTableWidgetItem(pg_name))
 
+            # 解决不好点击：点击表格“选择”列（第一列）整格任意空白处即可勾选
+            def on_table_cell_clicked(row, column):
+                if column == 0:
+                    if row < len(checkboxes):
+                        chk = checkboxes[row]
+                        chk.setChecked(not chk.isChecked())
+            file_table.cellClicked.connect(on_table_cell_clicked)
+
+            # 新增：操作控制条（全选/取消全选）
+            top_bar_layout = QHBoxLayout()
+            top_bar_layout.setContentsMargins(0, 5, 0, 5)
+            
+            select_all_btn = QPushButton("全选")
+            deselect_all_btn = QPushButton("取消全选")
+            
+            tool_btn_style = """
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #FFFFFF;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 5px 12px;
+                    font-size: 13px;
+                    min-width: 70px;
+                }
+                QPushButton:hover {
+                    background-color: #505050;
+                }
+                QPushButton:pressed {
+                    background-color: #2b2b2b;
+                }
+            """
+            select_all_btn.setStyleSheet(tool_btn_style)
+            deselect_all_btn.setStyleSheet(tool_btn_style)
+            
+            # 绑定全选与取消全选事件
+            def select_all_files():
+                for chk in checkboxes:
+                    chk.setChecked(True)
+            
+            def deselect_all_files():
+                for chk in checkboxes:
+                    chk.setChecked(False)
+                    
+            select_all_btn.clicked.connect(select_all_files)
+            deselect_all_btn.clicked.connect(deselect_all_files)
+            
+            top_bar_layout.addStretch()
+            top_bar_layout.addWidget(select_all_btn)
+            top_bar_layout.addWidget(deselect_all_btn)
+            
+            material_layout.addLayout(top_bar_layout)
             material_layout.addWidget(file_table)
             
             # 绑定双击事件：使用系统默认程序（如播放器或看图软件）打开/播放文件
