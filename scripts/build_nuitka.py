@@ -123,7 +123,7 @@ def build():
     print(f"检测到操作系统: {system}")
     
     if system == "Windows":
-        output_name = f"素材工单系统{APP_VERSION}.exe"
+        output_name = f"素材工单系统_{APP_VERSION}_nuitka.exe"
     elif system == "Darwin": # macOS
         output_name = f"素材工单系统{APP_VERSION}"
     else:
