@@ -1121,7 +1121,7 @@ class MainWindow(QMainWindow):
         # 状态筛选
         self.status_filter = QComboBox()
         self.status_filter.addItem("全部状态")
-        self.status_filter.addItems(["拍摄中", "拍摄完成", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"])
+        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"])
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
@@ -3586,8 +3586,8 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     
-                    self.update_work_order_status_and_ui(order_data['id'], '拍摄完成')
-                    order_data['status'] = '拍摄完成'
+                    self.update_work_order_status_and_ui(order_data['id'], '视频审核中')
+                    order_data['status'] = '视频审核中'
                     distribute_img_btn.setEnabled(False)
                     distribute_vid_btn.setEnabled(False)
                     gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
@@ -3759,6 +3759,14 @@ class MainWindow(QMainWindow):
             dialog.exec()
         # 视频审核弹窗
         elif self.role == "视频审核":
+            # 仅「视频审核中」状态可以审核
+            current_status = order_data.get('status', '')
+            if current_status != '视频审核中':
+                QMessageBox.information(
+                    self, "提示",
+                    f"当前工单状态为【{current_status}】\n只有状态为【视频审核中】的工单才可进行审核。"
+                )
+                return
             dialog = QDialog(self)
             dialog.setWindowTitle(f"审核工单素材 - {order_data['id']}")
             dialog.setMinimumWidth(1300)
@@ -6633,6 +6641,7 @@ class StatusProgressDelegate(QStyledItemDelegate):
         color_map = {
             "拍摄中": (255, 170, 0),      # 橙色
             "拍摄完成": (0, 200, 255),    # 亮蓝色
+            "视频审核中": (245, 158, 11),  # 驼升黄
             "审核通过": (40, 167, 69),     # 绿色
             "重新拍摄": (220, 53, 69),     # 红色
             "后期待领取": (255, 140, 0),  # 深橙色
