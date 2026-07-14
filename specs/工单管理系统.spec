@@ -41,7 +41,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name=f'工单管理系统{APP_VERSION}',
+    name=f'素材工单系统_{APP_VERSION}_pyinstaller',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -59,7 +59,7 @@ exe = EXE(
 )
 app = BUNDLE(
     exe,
-    name=f'工单管理系统{APP_VERSION}.app',
+    name=f'素材工单系统_{APP_VERSION}_pyinstaller.app',
     icon=None,
     bundle_identifier=None,
 )
