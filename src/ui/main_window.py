@@ -1241,7 +1241,7 @@ class MainWindow(QMainWindow):
                 import os
                 # 添加根目录到Python路径
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from api_manager import api_manager
+                from src.core.api_manager import api_manager
                 response = api_manager.create_work_order(order_data)
                 
                 # 显示操作结果
@@ -3291,66 +3291,14 @@ class MainWindow(QMainWindow):
             title_label.setAlignment(Qt.AlignCenter)
             main_layout.addWidget(title_label)
             
-            # 新增：如果是重新拍摄状态，获取不通过反馈并展示
+            # 获取不通过反馈，并根据是否存在反馈动态调整窗口尺寸
             feedbacks = db_manager.get_review_feedback(order_data['id'])
             if feedbacks:
-                feedback_group = QGroupBox("⚠️ 审核退回明细（需重新拍摄）")
-                feedback_group.setStyleSheet("""
-                    QGroupBox {
-                        border: 1px solid #ef4444;
-                        border-radius: 6px;
-                        margin-top: 12px;
-                        font-weight: bold;
-                        color: #ef4444;
-                    }
-                """)
-                fb_layout = QVBoxLayout(feedback_group)
-                fb_table = QTableWidget()
-                fb_table.setColumnCount(3)
-                fb_table.setHorizontalHeaderLabels(["文件名", "素材目录", "退回原因"])
-                fb_table.setEditTriggers(QTableWidget.NoEditTriggers)
-                fb_table.setRowCount(len(feedbacks))
-                
-                # 设置列宽与拉伸模式
-                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
-                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
-                fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-                fb_table.setColumnWidth(0, 180)
-                fb_table.setColumnWidth(1, 180)
-                
-                # 设置表格暗黑样式
-                fb_table.setStyleSheet("""
-                    QTableWidget {
-                        background-color: #2b2b2b;
-                        color: #FFFFFF;
-                        gridline-color: #555555;
-                        border: 1px solid #555555;
-                        border-radius: 4px;
-                    }
-                    QHeaderView::section {
-                        background-color: #3c3c3c;
-                        color: #FFFFFF;
-                        padding: 4px;
-                        border: 1px solid #555555;
-                        font-weight: bold;
-                    }
-                """)
-                
-                for idx, fb in enumerate(feedbacks):
-                    # 文件名
-                    fb_table.setItem(idx, 0, QTableWidgetItem(fb['file_name']))
-                    # 目录 (提取末尾目录名以提升可读性)
-                    dir_name = os.path.basename(fb['directory']) if fb['directory'] else ""
-                    dir_item = QTableWidgetItem(dir_name)
-                    dir_item.setToolTip(fb['directory'])
-                    fb_table.setItem(idx, 1, dir_item)
-                    # 原因
-                    fb_table.setItem(idx, 2, QTableWidgetItem(fb['reason']))
-                
-                fb_table.setMinimumHeight(120)
-                fb_table.setMaximumHeight(180)
-                fb_layout.addWidget(fb_table)
-                main_layout.addWidget(feedback_group)
+                dialog.setMinimumWidth(950)
+                dialog.setMinimumHeight(600)
+            else:
+                dialog.setMinimumWidth(650)
+                dialog.setMinimumHeight(550)
 
             # 表单区域
             form_widget = QWidget()
@@ -3445,7 +3393,76 @@ class MainWindow(QMainWindow):
                 }
             """)
             form_layout.addWidget(info_label)
-            main_layout.addWidget(form_widget)
+            if feedbacks:
+                content_layout = QHBoxLayout()
+                content_layout.setSpacing(20)
+                content_layout.addWidget(form_widget, 1) # 左侧放表单占比 1
+                
+                feedback_group = QGroupBox("⚠️ 审核退回明细（需重新拍摄）")
+                feedback_group.setStyleSheet("""
+                    QGroupBox {
+                        border: 1px solid #ef4444;
+                        border-radius: 6px;
+                        margin-top: 12px;
+                        font-weight: bold;
+                        color: #ef4444;
+                    }
+                """)
+                fb_layout = QVBoxLayout(feedback_group)
+                fb_table = QTableWidget()
+                fb_table.setColumnCount(3)
+                fb_table.setHorizontalHeaderLabels(["文件名", "素材目录", "退回原因"])
+                fb_table.setEditTriggers(QTableWidget.NoEditTriggers)
+                fb_table.setRowCount(len(feedbacks))
+                
+                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
+                fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+                fb_table.setColumnWidth(0, 180)
+                fb_table.setColumnWidth(1, 150)
+                
+                fb_table.setStyleSheet("""
+                    QTableWidget {
+                        background-color: #2b2b2b;
+                        color: #FFFFFF;
+                        gridline-color: #555555;
+                        border: 1px solid #555555;
+                        border-radius: 4px;
+                    }
+                    QHeaderView::section {
+                        background-color: #3c3c3c;
+                        color: #FFFFFF;
+                        padding: 4px;
+                        border: 1px solid #555555;
+                        font-weight: bold;
+                    }
+                """)
+                
+                for idx, fb in enumerate(feedbacks):
+                    fb_table.setItem(idx, 0, QTableWidgetItem(fb['file_name']))
+                    dir_name = os.path.basename(fb['directory']) if fb['directory'] else ""
+                    dir_item = QTableWidgetItem(dir_name)
+                    dir_item.setToolTip(fb['directory'])
+                    fb_table.setItem(idx, 1, dir_item)
+                    fb_table.setItem(idx, 2, QTableWidgetItem(fb['reason']))
+                
+                # 双击打开文件或对应目录
+                def on_edit_fb_double_clicked(row, column):
+                    if row < len(feedbacks):
+                        full_p = os.path.join(feedbacks[row]['directory'], "不通过", feedbacks[row]['file_name'])
+                        if os.path.exists(full_p):
+                            QDesktopServices.openUrl(QUrl.fromLocalFile(full_p))
+                        else:
+                            QDesktopServices.openUrl(QUrl.fromLocalFile(feedbacks[row]['directory']))
+                fb_table.cellDoubleClicked.connect(on_edit_fb_double_clicked)
+
+                fb_table.setMinimumHeight(150)
+                fb_layout.addWidget(fb_table)
+                
+                content_layout.addWidget(feedback_group, 1.2) # 右侧放退回明细，稍微宽一点占比 1.2
+                main_layout.addLayout(content_layout)
+            else:
+                main_layout.addWidget(form_widget)
             # 按钮区域
             button_widget = QWidget()
             button_layout = QHBoxLayout(button_widget)
@@ -3459,6 +3476,9 @@ class MainWindow(QMainWindow):
             distribute_img_btn.setEnabled(is_approved)
             distribute_vid_btn.setEnabled(is_approved)
             if not is_approved:
+                gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+                distribute_img_btn.setStyleSheet(gray_style)
+                distribute_vid_btn.setStyleSheet(gray_style)
                 distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
                 distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
 
@@ -3516,6 +3536,9 @@ class MainWindow(QMainWindow):
                     order_data['status'] = '拍摄完成'
                     distribute_img_btn.setEnabled(False)
                     distribute_vid_btn.setEnabled(False)
+                    gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+                    distribute_img_btn.setStyleSheet(gray_style)
+                    distribute_vid_btn.setStyleSheet(gray_style)
                     # 显示完成消息
                     msg = QMessageBox(dialog)
                     msg.setWindowTitle("上传完成")
