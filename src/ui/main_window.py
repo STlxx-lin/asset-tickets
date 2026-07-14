@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QMainWindow, QTableView, QVBoxLayout, QHBoxLayout
                              QWidget, QPushButton, QLabel, QMessageBox, QHeaderView,
                              QSplitter, QGroupBox, QListWidget, QStackedWidget,
                              QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor, QPixmap
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
 import sys
 import os
@@ -3291,16 +3291,73 @@ class MainWindow(QMainWindow):
             title_label.setAlignment(Qt.AlignCenter)
             main_layout.addWidget(title_label)
             
-            # 获取不通过反馈，并根据是否存在反馈动态调整窗口尺寸
+            # 获取不通过反馈
             feedbacks = db_manager.get_review_feedback(order_data['id'])
-            if feedbacks:
-                dialog.setMinimumWidth(1100)
-                dialog.setMinimumHeight(600)
-            else:
-                dialog.setMinimumWidth(650)
-                dialog.setMinimumHeight(550)
+            dialog.setMinimumWidth(820)
+            dialog.setMinimumHeight(880)
 
-            # 表单区域
+            # ── 如果有退回明细，在标题下方添加 Tab 切换按钮 ──
+            stacked = None
+            if feedbacks:
+                tab_bar = QWidget()
+                tab_bar_layout = QHBoxLayout(tab_bar)
+                tab_bar_layout.setContentsMargins(0, 0, 0, 0)
+                tab_bar_layout.setSpacing(0)
+
+                tab_btn_style_active = """
+                    QPushButton {
+                        background-color: #0078d4;
+                        color: #FFFFFF;
+                        border: none;
+                        border-radius: 0px;
+                        border-bottom: 2px solid #005fa3;
+                        padding: 8px 20px;
+                        font-size: 13px;
+                        font-weight: bold;
+                    }
+                """
+                tab_btn_style_inactive = """
+                    QPushButton {
+                        background-color: #3c3c3c;
+                        color: #aaaaaa;
+                        border: none;
+                        border-radius: 0px;
+                        border-bottom: 2px solid #555555;
+                        padding: 8px 20px;
+                        font-size: 13px;
+                    }
+                    QPushButton:hover {
+                        background-color: #505050;
+                        color: #ffffff;
+                    }
+                """
+                tab_order_btn = QPushButton("📋 办理工单")
+                tab_order_btn.setStyleSheet(tab_btn_style_active)
+                tab_return_btn = QPushButton(f"⚠️ 退回明细（{len(feedbacks)} 条）")
+                tab_return_btn.setStyleSheet(tab_btn_style_inactive)
+
+                tab_bar_layout.addWidget(tab_order_btn)
+                tab_bar_layout.addWidget(tab_return_btn)
+                tab_bar_layout.addStretch()
+                main_layout.addWidget(tab_bar)
+
+                stacked = QStackedWidget()
+                stacked.setContentsMargins(0, 0, 0, 0)
+
+                def switch_to_order():
+                    stacked.setCurrentIndex(0)
+                    tab_order_btn.setStyleSheet(tab_btn_style_active)
+                    tab_return_btn.setStyleSheet(tab_btn_style_inactive)
+
+                def switch_to_return():
+                    stacked.setCurrentIndex(1)
+                    tab_return_btn.setStyleSheet(tab_btn_style_active)
+                    tab_order_btn.setStyleSheet(tab_btn_style_inactive)
+
+                tab_order_btn.clicked.connect(switch_to_order)
+                tab_return_btn.clicked.connect(switch_to_return)
+
+            # ── Page 0: 表单区域 ──
             form_widget = QWidget()
             form_layout = QVBoxLayout(form_widget)
             form_layout.setSpacing(15)
@@ -3309,13 +3366,11 @@ class MainWindow(QMainWindow):
             basic_layout = QFormLayout(basic_group)
             basic_layout.setSpacing(12)
             basic_layout.setLabelAlignment(Qt.AlignRight)
-            # 创建字段
             id_label = QLabel(order_data['id'])
             dept_label = QLabel(order_data['department'])
             model_label = QLabel(order_data['model'])
             name_label = QLabel(order_data['name'])
             creator_label = QLabel(order_data['creator'])
-            # 添加字段到布局
             basic_layout.addRow("工单ID:", id_label)
             basic_layout.addRow("产线/部门:", dept_label)
             basic_layout.addRow("型号:", model_label)
@@ -3328,7 +3383,7 @@ class MainWindow(QMainWindow):
             operation_layout.setSpacing(12)
             operation_layout.setLabelAlignment(Qt.AlignRight)
             photographer_combo = QComboBox()
-            photographer_combo.addItem("")  # 默认空项
+            photographer_combo.addItem("")
             photographer_combo.addItems(["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项","08Arin"])
             photographer_combo.setObjectName('photographer_combo')
             photographer_combo.setPlaceholderText("请选择摄影师")
@@ -3339,7 +3394,6 @@ class MainWindow(QMainWindow):
             path_layout = QFormLayout(path_group)
             path_layout.setSpacing(12)
             path_layout.setLabelAlignment(Qt.AlignRight)
-            # 创建可双击的路径标签
             def create_clickable_path_label(path, tooltip_text):
                 label = QLabel(path)
                 label.setStyleSheet("""
@@ -3358,32 +3412,24 @@ class MainWindow(QMainWindow):
                 label.setToolTip(f"双击打开：{tooltip_text}")
                 label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
                 return label
-            # 获取路径信息
             upload_path = get_upload_dir()
             dist_img_path = get_dist_img_dir()
             dist_video_path = get_dist_video_dir()
-            # 创建路径标签
             upload_label = create_clickable_path_label(upload_path, "上传素材路径")
             dist_img_label = self.create_path_status_label(dist_img_path, "分发图片路径", order_data, 'dist_img')
             dist_video_label = self.create_path_status_label(dist_video_path, "分发视频路径", order_data, 'dist_video')
-            # 添加路径到布局
             path_layout.addRow("上传素材路径:", upload_label)
             path_layout.addRow("分发图片路径:", dist_img_label)
             path_layout.addRow("分发视频路径:", dist_video_label)
             form_layout.addWidget(path_group)
-            # 更新路径显示的函数
             def update_path_display():
                 photographer = get_photographer()
                 if photographer:
-                    # 重新生成包含摄影师的路径
                     new_upload_path = PHOTOGRAPHY_UPLOAD(photographer, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
                     upload_label.setText(new_upload_path)
                     upload_label.setToolTip(f"双击打开：上传素材路径")
-                    # 重新绑定点击事件
                     upload_label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(new_upload_path))
-            # 当摄影师选择改变时更新路径显示
             photographer_combo.currentTextChanged.connect(update_path_display)
-            # 提示信息
             info_label = QLabel("💡 提示：请先选择摄影师，然后进行相应的操作")
             info_label.setStyleSheet("""
                 QLabel {
@@ -3393,32 +3439,26 @@ class MainWindow(QMainWindow):
                 }
             """)
             form_layout.addWidget(info_label)
-            if feedbacks:
-                content_layout = QHBoxLayout()
-                content_layout.setSpacing(20)
-                content_layout.addWidget(form_widget, 1) # 左侧放表单占比 1
-                
-                feedback_group = QGroupBox("⚠️ 审核退回明细（需重新拍摄）")
-                feedback_group.setStyleSheet("""
-                    QGroupBox {
-                        border: 1px solid #ef4444;
-                        border-radius: 6px;
-                        margin-top: 12px;
-                        font-weight: bold;
-                        color: #ef4444;
-                    }
-                """)
-                fb_layout = QVBoxLayout(feedback_group)
+
+            if stacked is not None:
+                stacked.addWidget(form_widget)  # index 0: 表单页
+
+                # ── Page 1: 退回明细页 ──
+                feedback_page = QWidget()
+                feedback_page_layout = QVBoxLayout(feedback_page)
+                feedback_page_layout.setContentsMargins(0, 8, 0, 0)
+                feedback_page_layout.setSpacing(8)
+
                 fb_table = QTableWidget()
                 fb_table.setColumnCount(3)
                 fb_table.setHorizontalHeaderLabels(["文件名", "素材目录", "退回原因"])
                 fb_table.setEditTriggers(QTableWidget.NoEditTriggers)
                 fb_table.setRowCount(len(feedbacks))
-                
-                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+                fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+                fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
                 fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-                
+                fb_table.setColumnWidth(0, 200)
+                fb_table.setColumnWidth(1, 140)
                 fb_table.setStyleSheet("""
                     QTableWidget {
                         background-color: #2b2b2b;
@@ -3426,39 +3466,55 @@ class MainWindow(QMainWindow):
                         gridline-color: #555555;
                         border: 1px solid #555555;
                         border-radius: 4px;
+                        font-size: 13px;
                     }
                     QHeaderView::section {
                         background-color: #3c3c3c;
                         color: #FFFFFF;
-                        padding: 4px;
+                        padding: 6px 4px;
                         border: 1px solid #555555;
                         font-weight: bold;
                     }
                 """)
-                
+
                 for idx, fb in enumerate(feedbacks):
                     fb_table.setItem(idx, 0, QTableWidgetItem(fb['file_name']))
                     dir_name = os.path.basename(fb['directory']) if fb['directory'] else ""
                     dir_item = QTableWidgetItem(dir_name)
                     dir_item.setToolTip(fb['directory'])
                     fb_table.setItem(idx, 1, dir_item)
-                    fb_table.setItem(idx, 2, QTableWidgetItem(fb['reason']))
-                
-                # 双击打开文件或对应目录
+                    reason_item = QTableWidgetItem(fb['reason'])
+                    fb_table.setItem(idx, 2, reason_item)
+
                 def on_edit_fb_double_clicked(row, column):
                     if row < len(feedbacks):
-                        full_p = os.path.join(feedbacks[row]['directory'], "不通过", feedbacks[row]['file_name'])
-                        if os.path.exists(full_p):
-                            QDesktopServices.openUrl(QUrl.fromLocalFile(full_p))
-                        else:
-                            QDesktopServices.openUrl(QUrl.fromLocalFile(feedbacks[row]['directory']))
+                        fb = feedbacks[row]
+                        # 路径候选：1) directory/file_name  2) directory/不通过/file_name
+                        candidates = [
+                            os.path.join(fb.get('directory', ''), fb.get('file_name', '')),
+                            os.path.join(fb.get('directory', ''), '不通过', fb.get('file_name', '')),
+                        ]
+                        opened = False
+                        for p in candidates:
+                            if p and os.path.exists(p):
+                                QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+                                opened = True
+                                break
+                        if not opened:
+                            d = fb.get('directory', '')
+                            if d and os.path.exists(d):
+                                QDesktopServices.openUrl(QUrl.fromLocalFile(d))
+                            else:
+                                QMessageBox.warning(dialog, '提示',
+                                    f"文件不存在，请确认素材已上传到以下路径：\n{candidates[0]}")
                 fb_table.cellDoubleClicked.connect(on_edit_fb_double_clicked)
 
-                fb_table.setMinimumHeight(150)
-                fb_layout.addWidget(fb_table)
-                
-                content_layout.addWidget(feedback_group, 1.2) # 右侧放退回明细，稍微宽一点占比 1.2
-                main_layout.addLayout(content_layout)
+                hint_lbl = QLabel("💡 双击任意行可用系统默认程序打开对应文件")
+                hint_lbl.setStyleSheet("color: #888888; font-size: 12px; padding: 4px 0;")
+                feedback_page_layout.addWidget(fb_table)
+                feedback_page_layout.addWidget(hint_lbl)
+                stacked.addWidget(feedback_page)  # index 1: 明细页
+                main_layout.addWidget(stacked)
             else:
                 main_layout.addWidget(form_widget)
             # 按钮区域
@@ -3705,7 +3761,7 @@ class MainWindow(QMainWindow):
         elif self.role == "视频审核":
             dialog = QDialog(self)
             dialog.setWindowTitle(f"审核工单素材 - {order_data['id']}")
-            dialog.setMinimumWidth(900)
+            dialog.setMinimumWidth(1300)
             dialog.setMinimumHeight(650)
             # 设置弹窗样式
             dialog.setStyleSheet(self.styleSheet() + """
@@ -3910,7 +3966,113 @@ class MainWindow(QMainWindow):
                     QDesktopServices.openUrl(QUrl.fromLocalFile(fpath))
             file_table.cellDoubleClicked.connect(on_file_double_clicked)
 
-            content_layout.addWidget(material_group, 1) # 右侧权重 1
+            content_layout.addWidget(material_group, 1)  # 中间权重 1
+
+            # ── 右侧预览面板 ──
+            preview_panel = QGroupBox("文件预览")
+            preview_panel.setMinimumWidth(300)
+            preview_panel_layout = QVBoxLayout(preview_panel)
+            preview_panel_layout.setSpacing(8)
+
+            preview_label = QLabel("选择文件后\n在此预览")
+            preview_label.setAlignment(Qt.AlignCenter)
+            preview_label.setMinimumHeight(320)
+            preview_label.setStyleSheet("""
+                QLabel {
+                    background-color: #1a1a1a;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    color: #888888;
+                    font-size: 13px;
+                    padding: 8px;
+                }
+            """)
+            preview_label.setWordWrap(True)
+            preview_label.setScaledContents(False)
+            preview_panel_layout.addWidget(preview_label, 1)
+
+            preview_filename_label = QLabel("")
+            preview_filename_label.setAlignment(Qt.AlignCenter)
+            preview_filename_label.setStyleSheet(
+                "background-color: transparent; border: none; color: #cccccc; font-size: 12px; padding: 2px;"
+            )
+            preview_filename_label.setWordWrap(True)
+            preview_panel_layout.addWidget(preview_filename_label)
+
+            nav_layout = QHBoxLayout()
+            nav_btn_style = """
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #FFFFFF;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 6px 14px;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover { background-color: #505050; }
+                QPushButton:disabled { background-color: #2b2b2b; color: #555555; border-color: #3a3a3a; }
+            """
+            prev_file_btn = QPushButton("▲ 上一个")
+            next_file_btn = QPushButton("▼ 下一个")
+            prev_file_btn.setStyleSheet(nav_btn_style)
+            next_file_btn.setStyleSheet(nav_btn_style)
+            prev_file_btn.setEnabled(False)
+            next_file_btn.setEnabled(False)
+            nav_layout.addWidget(prev_file_btn)
+            nav_layout.addWidget(next_file_btn)
+            preview_panel_layout.addLayout(nav_layout)
+
+            preview_state = {'index': -1}
+            IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif'}
+            VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.m4v', '.ts'}
+
+            def load_preview(idx):
+                if idx < 0 or idx >= len(files_found):
+                    return
+                preview_state['index'] = idx
+                file_table.selectRow(idx)
+                fname, pg_name, fpath, udir = files_found[idx]
+                preview_filename_label.setText(f"[{idx + 1}/{len(files_found)}]  {fname}")
+                ext = os.path.splitext(fname)[1].lower()
+                w = max(preview_label.width() - 8, 260)
+                h = max(preview_label.height() - 8, 300)
+                if ext in IMAGE_EXTS and os.path.exists(fpath):
+                    pix = QPixmap(fpath)
+                    if not pix.isNull():
+                        scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        preview_label.setPixmap(scaled)
+                        preview_label.setText("")
+                    else:
+                        preview_label.setPixmap(QPixmap())
+                        preview_label.setText("❌ 无法加载图片")
+                elif ext in VIDEO_EXTS:
+                    preview_label.setPixmap(QPixmap())
+                    preview_label.setText(f"🎬 视频文件\n\n{fname}\n\n双击表格行\n用播放器打开")
+                else:
+                    preview_label.setPixmap(QPixmap())
+                    preview_label.setText(f"📄 {fname}")
+                prev_file_btn.setEnabled(idx > 0)
+                next_file_btn.setEnabled(idx < len(files_found) - 1)
+
+            def on_prev_file():
+                load_preview(preview_state['index'] - 1)
+
+            def on_next_file():
+                load_preview(preview_state['index'] + 1)
+
+            prev_file_btn.clicked.connect(on_prev_file)
+            next_file_btn.clicked.connect(on_next_file)
+
+            # 点击表格行更新预览（与已有的 checkbox 点击共存）
+            original_cell_clicked = on_table_cell_clicked
+            def on_cell_clicked_with_preview(row, column):
+                original_cell_clicked(row, column)
+                load_preview(row)
+            file_table.cellClicked.disconnect(on_table_cell_clicked)
+            file_table.cellClicked.connect(on_cell_clicked_with_preview)
+
+            content_layout.addWidget(preview_panel, 1)  # 右侧预览
 
             main_layout.addLayout(content_layout)
 
