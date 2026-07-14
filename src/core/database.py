@@ -127,8 +127,10 @@ class DatabaseManager:
                 cursor.execute("SELECT COUNT(*) FROM mcs_by_takuya_versions")
                 if cursor.fetchone()[0] == 0:
                     cursor.execute("INSERT INTO mcs_by_takuya_versions (version) VALUES ('v1.09')")
+                # 确保审核反馈表存在
+                self._ensure_review_feedback_table(cursor)
                 # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
                 for role in default_roles:
                     cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 # 默认部门
@@ -168,7 +170,7 @@ class DatabaseManager:
                 all_roles = [row[0] for row in cursor.fetchall()]
                 
                 # 按照指定顺序排序
-                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售"]
+                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
                 ordered_roles = []
                 
                 # 先添加指定顺序的角色
@@ -247,14 +249,6 @@ class DatabaseManager:
             with self.connection.cursor() as cursor:
                 cursor.execute("INSERT INTO mcs_by_takuya_roles (name) VALUES (%s)", (role_name,))
                 self.connection.commit()
-                    # 可以根据API需求添加更多字段
-                
-                api_response = api_manager.create_work_order(api_data)
-                if api_response['success']:
-                    self.logger.info(f"API创建工单成功: {order_data['id']}")
-                else:
-                    self.logger.error(f"API创建工单失败: {order_data['id']}, 错误: {api_response.get('error', '未知错误')}")
-                
                 return True
         except Exception as e:
             self.logger.error(f"添加角色失败: {e}")
@@ -269,27 +263,6 @@ class DatabaseManager:
             with self.connection.cursor() as cursor:
                 cursor.execute("DELETE FROM mcs_by_takuya_roles WHERE name = %s", (role_name,))
                 self.connection.commit()
-
-                # 调用API创建工单系统信息
-                try:
-                    from api_manager import api_manager
-                    # 构造API所需的工单数据
-                    api_order_data = {
-                        'id': order_data['id'],
-                        'project_name': order_data['name'],
-                        'applicant': order_data['creator'],
-                        'status': '拍摄中',
-                        'start_time': order_data.get('start_time', '')
-                    }
-                    # 调用API
-                    response = api_manager.create_work_order(api_order_data)
-                    if response['success']:
-                        self.logger.info(f"通过API创建工单系统信息成功: {order_data['id']}")
-                    else:
-                        self.logger.error(f"通过API创建工单系统信息失败: {order_data['id']}, 错误: {response.get('error', '未知错误')}")
-                except Exception as e:
-                    self.logger.error(f"调用API创建工单系统信息发生异常: {e}")
-
                 return True
         except Exception as e:
             self.logger.error(f"删除角色失败: {e}")
@@ -605,8 +578,11 @@ class DatabaseManager:
             return False
         try:
             with self.connection.cursor() as cursor:
+                # 确保审核反馈表存在
+                self._ensure_review_feedback_table(cursor)
                 # 按外键依赖顺序删除数据
                 cursor.execute("DELETE FROM mcs_by_takuya_logs")
+                cursor.execute("DELETE FROM mcs_by_takuya_review_feedback")
                 cursor.execute("DELETE FROM mcs_by_takuya_work_orders")
                 cursor.execute("DELETE FROM mcs_by_takuya_user_departments")
                 cursor.execute("DELETE FROM mcs_by_takuya_users")
@@ -615,7 +591,7 @@ class DatabaseManager:
                 
                 # 重新插入默认数据
                 # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
                 for role in default_roles:
                     cursor.execute("INSERT INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 
@@ -1068,6 +1044,80 @@ class DatabaseManager:
                 return True
         except Exception as e:
             self.logger.error(f"添加工单失败: {e}")
+            self.connection.rollback()
+            return False
+        finally:
+            self.disconnect()
+
+    def _ensure_review_feedback_table(self, cursor) -> None:
+        """确保审核反馈表存在。"""
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mcs_by_takuya_review_feedback (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                work_order_id VARCHAR(20) NOT NULL,
+                file_name VARCHAR(255) NOT NULL,
+                directory VARCHAR(500) NOT NULL,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (work_order_id) REFERENCES mcs_by_takuya_work_orders(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+    def add_review_feedback(self, work_order_id: str, file_name: str, directory: str, reason: str) -> bool:
+        """添加一条审核不通过反馈。"""
+        if not self.connect():
+            return False
+        try:
+            with self.connection.cursor() as cursor:
+                self._ensure_review_feedback_table(cursor)
+                cursor.execute("""
+                    INSERT INTO mcs_by_takuya_review_feedback (work_order_id, file_name, directory, reason)
+                    VALUES (%s, %s, %s, %s)
+                """, (work_order_id, file_name, directory, reason))
+                self.connection.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"添加审核反馈失败: {e}")
+            self.connection.rollback()
+            return False
+        finally:
+            self.disconnect()
+
+    def get_review_feedback(self, work_order_id: str) -> List[Dict[str, Any]]:
+        """获取某个工单的所有审核反馈记录。"""
+        if not self.connect():
+            return []
+        try:
+            with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                self._ensure_review_feedback_table(cursor)
+                cursor.execute("""
+                    SELECT file_name, directory, reason, created_at
+                    FROM mcs_by_takuya_review_feedback
+                    WHERE work_order_id = %s
+                    ORDER BY created_at DESC
+                """, (work_order_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            self.logger.error(f"获取审核反馈失败: {e}")
+            return []
+        finally:
+            self.disconnect()
+
+    def delete_review_feedback(self, work_order_id: str) -> bool:
+        """删除某个工单的所有审核反馈记录。"""
+        if not self.connect():
+            return False
+        try:
+            with self.connection.cursor() as cursor:
+                self._ensure_review_feedback_table(cursor)
+                cursor.execute("""
+                    DELETE FROM mcs_by_takuya_review_feedback
+                    WHERE work_order_id = %s
+                """, (work_order_id,))
+                self.connection.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"删除审核反馈失败: {e}")
             self.connection.rollback()
             return False
         finally:
