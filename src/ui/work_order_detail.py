@@ -7,7 +7,10 @@ from PySide6.QtGui import QColor, QPalette
 class CollapsibleBox(QWidget):
     def __init__(self, title="", parent=None):
         super().__init__(parent)
-        self.toggle_button = QToolButton(text=title, checkable=True, checked=False)
+        self.toggle_button = QToolButton()
+        self.toggle_button.setText(title)
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setChecked(False)
         self.toggle_button.setStyleSheet("""
             QToolButton {
                 border: none;
