@@ -340,7 +340,13 @@ def send_notification(title, text, department=None):
     if effective_notification_type in ['wechat_work', 'both']:
         send_wechat_work_markdown(title, text, department)
 
+def is_video_review_enabled() -> bool:
+    """读取视频审核功能开关，默认开启（True）。"""
+    val = db_manager.get_system_setting('video_review_enabled', default='1')
+    return val == '1'
+
 class AdminPasswordDialog(QDialog):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("管理员验证")
@@ -957,26 +963,8 @@ class MainWindow(QMainWindow):
         self.version_label = QLabel(f"版本：{APP_VERSION}")
         self.version_label.setStyleSheet("font-size: 13px; color: #888;")
     def get_ip_address(self):
-        try:
-            for iface in netifaces.interfaces():
-                ifaddrs = netifaces.ifaddresses(iface)
-                if netifaces.AF_INET in ifaddrs:
-                    for addr_info in ifaddrs[netifaces.AF_INET]:
-                        ip_addr = addr_info['addr']
-                        # 跳过回环地址和特殊地址
-                        if not ip_addr.startswith('127.') and not ip_addr.startswith('169.254.'):
-                            return ip_addr
-            # 如果没找到合适的IP，返回第一个非回环地址
-            for iface in netifaces.interfaces():
-                ifaddrs = netifaces.ifaddresses(iface)
-                if netifaces.AF_INET in ifaddrs:
-                    for addr_info in ifaddrs[netifaces.AF_INET]:
-                        ip_addr = addr_info['addr']
-                        if not ip_addr.startswith('127.'):
-                            return ip_addr
-            return "N/A"
-        except Exception:
-            return "N/A"
+        ip = db_manager.get_local_ip()
+        return "N/A" if ip == "无法获取IP" else ip
     def create_header(self):
         header_widget = QWidget()
         header_widget.setObjectName("Header")
@@ -1674,7 +1662,51 @@ class MainWindow(QMainWindow):
         tab_widget.addTab(depts_tab, "部门管理")
         tab_widget.addTab(users_tab, "用户管理")
         tab_widget.addTab(notification_tab, "通知配置")
-        
+
+        # ── 功能设置 Tab ──
+        features_tab = QWidget()
+        features_layout = QVBoxLayout(features_tab)
+        features_layout.setContentsMargins(20, 20, 20, 20)
+        features_layout.setSpacing(16)
+
+        workflow_group = QGroupBox("工单流程功能")
+        workflow_group_layout = QVBoxLayout(workflow_group)
+        workflow_group_layout.setSpacing(12)
+
+        # 读取当前开关状态
+        _vr_enabled = db_manager.get_system_setting('video_review_enabled', default='1') == '1'
+        self.video_review_checkbox = QCheckBox("启用视频审核功能")
+        self.video_review_checkbox.setChecked(_vr_enabled)
+        self.video_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
+
+        vr_desc = QLabel(
+            "开启时：摄影师上传素材后，工单状态变为【视频审核中】，需视频审核员审核后方可分发。\n"
+            "关闭时：摄影师上传素材后，工单状态直接变为【审核通过】，跳过视频审核环节；\n"
+            "        视频审核角色点击'办理'时将提示功能已关闭。"
+        )
+        vr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
+        vr_desc.setWordWrap(True)
+
+        workflow_group_layout.addWidget(self.video_review_checkbox)
+        workflow_group_layout.addWidget(vr_desc)
+        features_layout.addWidget(workflow_group)
+
+        # 保存按钮
+        save_features_btn = QPushButton("保存功能设置")
+        save_features_btn.setFixedWidth(160)
+        features_layout.addWidget(save_features_btn)
+        features_layout.addStretch()
+
+        def on_save_features():
+            val = '1' if self.video_review_checkbox.isChecked() else '0'
+            if db_manager.set_system_setting('video_review_enabled', val):
+                QMessageBox.information(self, "保存成功", "功能设置已保存并即时生效。")
+            else:
+                QMessageBox.critical(self, "保存失败", "写入数据库失败，请检查数据库连接。")
+
+        save_features_btn.clicked.connect(on_save_features)
+        tab_widget.addTab(features_tab, "功能设置")
+
         # 保存筛选控件的引用
         self.settings_name_filter = name_filter
         self.settings_ip_filter = ip_filter
@@ -1695,6 +1727,7 @@ class MainWindow(QMainWindow):
         self.notify_line_combo.currentIndexChanged.connect(self.on_notification_line_changed)
         self.load_notification_settings_to_form()
         return page
+
 
     def on_user_double_clicked(self, row, column):
         """处理用户表格双击事件，打开编辑对话框"""
@@ -3586,13 +3619,28 @@ class MainWindow(QMainWindow):
                         logger.error(error_msg)
                         QMessageBox.warning(dialog, "API更新失败", error_msg)
                     
-                    self.update_work_order_status_and_ui(order_data['id'], '视频审核中')
-                    order_data['status'] = '视频审核中'
-                    distribute_img_btn.setEnabled(False)
-                    distribute_vid_btn.setEnabled(False)
-                    gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
-                    distribute_img_btn.setStyleSheet(gray_style)
-                    distribute_vid_btn.setStyleSheet(gray_style)
+                    if is_video_review_enabled():
+                        self.update_work_order_status_and_ui(order_data['id'], '视频审核中')
+                        order_data['status'] = '视频审核中'
+                        distribute_img_btn.setEnabled(False)
+                        distribute_vid_btn.setEnabled(False)
+                        gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+                        distribute_img_btn.setStyleSheet(gray_style)
+                        distribute_vid_btn.setStyleSheet(gray_style)
+                        distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
+                        distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
+                        status_str = "拍摄完成"
+                    else:
+                        self.update_work_order_status_and_ui(order_data['id'], '审核通过')
+                        order_data['status'] = '审核通过'
+                        distribute_img_btn.setEnabled(True)
+                        distribute_vid_btn.setEnabled(True)
+                        distribute_img_btn.setStyleSheet("")
+                        distribute_vid_btn.setStyleSheet("")
+                        distribute_img_btn.setToolTip("")
+                        distribute_vid_btn.setToolTip("")
+                        status_str = "审核通过"
+                    
                     # 显示完成消息
                     msg = QMessageBox(dialog)
                     msg.setWindowTitle("上传完成")
@@ -3605,7 +3653,7 @@ class MainWindow(QMainWindow):
                     # 发送通知
                     send_notification(
                         "工单状态变更通知",
-                        f"### 工单号：{order_data['id']}\n- 角色：{self.role}\n- 操作：上传素材\n- 状态：拍摄完成\n- 目标路径：{upload_dir}"
+                        f"### 工单号：{order_data['id']}\n- 角色：{self.role}\n- 操作：上传素材\n- 状态：{status_str}\n- 目标路径：{upload_dir}"
                     )
                 self.add_file_task(
                     name=task_name,
@@ -3759,15 +3807,23 @@ class MainWindow(QMainWindow):
             dialog.exec()
         # 视频审核弹窗
         elif self.role == "视频审核":
-            # 仅「视频审核中」状态可以审核
+            # 检查视频审核功能开关
+            if not is_video_review_enabled():
+                QMessageBox.information(
+                    self, "功能已关闭",
+                    "视频审核功能当前已关闭。\n如需开启，请管理员前往【系统设置 → 功能设置】进行配置。"
+                )
+                return
+            # 「视频审核中」或「拍摄完成」状态均可审核
             current_status = order_data.get('status', '')
-            if current_status != '视频审核中':
+            if current_status not in ['视频审核中', '拍摄完成']:
                 QMessageBox.information(
                     self, "提示",
-                    f"当前工单状态为【{current_status}】\n只有状态为【视频审核中】的工单才可进行审核。"
+                    f"当前工单状态为【{current_status}】\n只有状态为【视频审核中】或【拍摄完成】的工单才可进行审核。"
                 )
                 return
             dialog = QDialog(self)
+
             dialog.setWindowTitle(f"审核工单素材 - {order_data['id']}")
             dialog.setMinimumWidth(1300)
             dialog.setMinimumHeight(650)

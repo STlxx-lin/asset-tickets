@@ -166,6 +166,12 @@ class DatabaseManager:
             return []
         try:
             with self.connection.cursor() as cursor:
+                # 确保默认角色存在（如数据库已建但缺少角色时）
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
+                for role in default_roles:
+                    cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
+                self.connection.commit()
+
                 cursor.execute("SELECT name FROM mcs_by_takuya_roles")
                 all_roles = [row[0] for row in cursor.fetchall()]
                 
@@ -1122,6 +1128,126 @@ class DatabaseManager:
             return False
         finally:
             self.disconnect()
+
+    def _ensure_system_settings_table(self, cursor) -> None:
+        """确保系统功能设置表存在（key-value 结构）。"""
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS app_system_settings (
+                setting_key VARCHAR(100) PRIMARY KEY,
+                setting_value VARCHAR(1000) NOT NULL DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+
+    def get_system_setting(self, key: str, default: str = None) -> Optional[str]:
+        """读取系统设置项。表不存在或键不存在时返回 default。"""
+        if not self.connect():
+            return default
+        try:
+            with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                self._ensure_system_settings_table(cursor)
+                cursor.execute(
+                    "SELECT setting_value FROM app_system_settings WHERE setting_key = %s",
+                    (key,)
+                )
+                row = cursor.fetchone()
+                return row['setting_value'] if row else default
+        except Exception as e:
+            self.logger.error(f"读取系统设置 [{key}] 失败: {e}")
+            return default
+        finally:
+            self.disconnect()
+
+    def set_system_setting(self, key: str, value: str) -> bool:
+        """写入或更新系统设置项。"""
+        if not self.connect():
+            return False
+        try:
+            with self.connection.cursor() as cursor:
+                self._ensure_system_settings_table(cursor)
+                cursor.execute("""
+                    INSERT INTO app_system_settings (setting_key, setting_value)
+                    VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)
+                """, (key, value))
+                self.connection.commit()
+                return True
+        except Exception as e:
+            self.logger.error(f"保存系统设置 [{key}] 失败: {e}")
+            self.connection.rollback()
+            return False
+        finally:
+            self.disconnect()
+
+    def get_local_ip(self) -> str:
+        """获取本机最适合系统的本地 IP 地址，支持在开启 VPN 时智能识别物理局域网 IP。"""
+        import socket
+        import netifaces
+
+        local_ips = []
+        try:
+            for iface in netifaces.interfaces():
+                iface_lower = iface.lower()
+                # 标记是否为常见的虚拟网卡/VPN适配器
+                is_virtual = any(x in iface_lower for x in ['tun', 'tap', 'vpn', 'ppp', 'virtual', 'vbox', 'vmnet', 'virtualbox', 'docker', 'tailscale', 'zerotier'])
+                ifaddrs = netifaces.ifaddresses(iface)
+                if netifaces.AF_INET in ifaddrs:
+                    for addr_info in ifaddrs[netifaces.AF_INET]:
+                        ip = addr_info['addr']
+                        if not ip.startswith('127.') and not ip.startswith('169.254.'):
+                            local_ips.append((ip, is_virtual))
+        except Exception as e:
+            self.logger.warning(f"获取本机网卡 IP 列表失败: {e}")
+
+        # 1. 优先比对数据库中已注册的用户 IP。若本机 IP 存在于注册列表中，且为物理网卡，优先使用
+        try:
+            users = self.get_users()
+            registered_ips = {u['ip'].strip() for u in users if u.get('ip')}
+            
+            matched_physical_ips = [ip for ip, is_virt in local_ips if ip in registered_ips and not is_virt]
+            if matched_physical_ips:
+                return matched_physical_ips[0]
+                
+            matched_any_ips = [ip for ip, is_virt in local_ips if ip in registered_ips]
+            if matched_any_ips:
+                return matched_any_ips[0]
+        except Exception as e:
+            self.logger.warning(f"获取已注册用户 IP 列表匹配失败: {e}")
+
+        # 2. 尝试通过 UDP 连接数据库主机，获取通信网卡 IP
+        try:
+            db_host = self.config.get('host')
+            if db_host and db_host not in ('localhost', '127.0.0.1'):
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.settimeout(1.0)
+                s.connect((db_host, 3306))
+                ip = s.getsockname()[0]
+                s.close()
+                if not ip.startswith('127.') and not ip.startswith('169.254.'):
+                    return ip
+        except Exception:
+            pass
+
+        # 3. 尝试通过 UDP 连接公网 DNS (8.8.8.8) 获取默认出口 IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(1.0)
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+            s.close()
+            if not ip.startswith('127.') and not ip.startswith('169.254.'):
+                return ip
+        except Exception:
+            pass
+
+        # 4. 兜底逻辑：返回网卡列表中第一个物理网卡 IP；若无，返回第一个虚拟网卡 IP
+        physical_ips = [ip for ip, is_virt in local_ips if not is_virt]
+        if physical_ips:
+            return physical_ips[0]
+        if local_ips:
+            return local_ips[0][0]
+
+        return '无法获取IP'
 
 # 全局数据库管理器实例
 db_manager = DatabaseManager()

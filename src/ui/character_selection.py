@@ -21,14 +21,7 @@ class CharacterSelection(QWidget):
         self.apply_styles()
 
     def get_local_ip(self):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(('8.8.8.8', 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except Exception:
-            return '无法获取IP'
+        return db_manager.get_local_ip()
 
     def setup_ui(self):
         # 外层居中布局
