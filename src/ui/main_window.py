@@ -345,6 +345,11 @@ def is_video_review_enabled() -> bool:
     val = db_manager.get_system_setting('video_review_enabled', default='1')
     return val == '1'
 
+def is_video_post_review_enabled() -> bool:
+    """读取视频后期审核功能开关，默认开启（True）。"""
+    val = db_manager.get_system_setting('video_post_review_enabled', default='1')
+    return val == '1'
+
 class AdminPasswordDialog(QDialog):
 
     def __init__(self, parent=None):
@@ -1109,7 +1114,7 @@ class MainWindow(QMainWindow):
         # 状态筛选
         self.status_filter = QComboBox()
         self.status_filter.addItem("全部状态")
-        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"])
+        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑", "后期已完成", "待上架", "已上架"])
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
@@ -1197,7 +1202,7 @@ class MainWindow(QMainWindow):
             controls_layout.addWidget(create_button)
 
         # 办理按钮
-        if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核"]:
+        if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]:
             op_button = QPushButton("办理")
             op_button.clicked.connect(self.handle_process_selected_order)
             controls_layout.addWidget(op_button)
@@ -1687,8 +1692,23 @@ class MainWindow(QMainWindow):
         vr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
         vr_desc.setWordWrap(True)
 
+        # 读取后期视频审核开关状态
+        _vpr_enabled = db_manager.get_system_setting('video_post_review_enabled', default='1') == '1'
+        self.video_post_review_checkbox = QCheckBox("启用视频后期审核功能")
+        self.video_post_review_checkbox.setChecked(_vpr_enabled)
+        self.video_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
+
+        vpr_desc = QLabel(
+            "开启时：剪辑师剪辑完视频后，需视频后期审核员审核通过后方可分发。\n"
+            "关闭时：剪辑师处理完直接可分发，跳过视频后期审核环节。"
+        )
+        vpr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
+        vpr_desc.setWordWrap(True)
+
         workflow_group_layout.addWidget(self.video_review_checkbox)
         workflow_group_layout.addWidget(vr_desc)
+        workflow_group_layout.addWidget(self.video_post_review_checkbox)
+        workflow_group_layout.addWidget(vpr_desc)
         features_layout.addWidget(workflow_group)
 
         # 保存按钮
@@ -1699,7 +1719,12 @@ class MainWindow(QMainWindow):
 
         def on_save_features():
             val = '1' if self.video_review_checkbox.isChecked() else '0'
-            if db_manager.set_system_setting('video_review_enabled', val):
+            val_post = '1' if self.video_post_review_checkbox.isChecked() else '0'
+            
+            success = db_manager.set_system_setting('video_review_enabled', val) and \
+                      db_manager.set_system_setting('video_post_review_enabled', val_post)
+                      
+            if success:
                 QMessageBox.information(self, "保存成功", "功能设置已保存并即时生效。")
             else:
                 QMessageBox.critical(self, "保存失败", "写入数据库失败，请检查数据库连接。")
@@ -4228,6 +4253,413 @@ class MainWindow(QMainWindow):
             pass_btn.clicked.connect(on_approve)
             reject_btn.clicked.connect(on_reject)
             dialog.exec()
+        # 视频后期审核弹窗
+        elif self.role == "视频后期审核":
+            # 检查视频后期审核功能开关
+            if not is_video_post_review_enabled():
+                QMessageBox.information(
+                    self, "功能已关闭",
+                    "视频后期审核功能当前已关闭。\n如需开启，请管理员前往【系统设置 → 功能设置】进行配置。"
+                )
+                return
+            # 只有状态为「视频后期审核中」才可审核
+            current_status = order_data.get('status', '')
+            if current_status != '视频后期审核中':
+                QMessageBox.information(
+                    self, "提示",
+                    f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】的工单才可进行后期审核。"
+                )
+                return
+                
+            edit_product_path = order_data.get('edit_product_path')
+            if not edit_product_path or not os.path.exists(edit_product_path):
+                QMessageBox.warning(
+                    self, "错误",
+                    f"找不到该工单的成品路径：\n{edit_product_path}\n请联系剪辑师确认是否已正确选择成品路径并提交。"
+                )
+                return
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"后期视频审核 - {order_data['id']}")
+            dialog.setMinimumWidth(1300)
+            dialog.setMinimumHeight(650)
+            # 设置弹窗样式
+            dialog.setStyleSheet(self.styleSheet() + """
+                QDialog {
+                    background-color: #2E2E2E;
+                    color: #FFFFFF;
+                }
+                QGroupBox {
+                    border: 1px solid #555555;
+                    border-radius: 5px;
+                    margin-top: 1ex;
+                    font-size: 14px;
+                    font-weight: bold;
+                    color: #FFFFFF;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    subcontrol-position: top left;
+                    padding: 0 10px;
+                    color: #FFFFFF;
+                }
+                QLineEdit, QTextEdit, QLabel {
+                    background-color: #3c3c3c;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    color: #FFFFFF;
+                    font-size: 14px;
+                }
+                QLabel {
+                    color: #FFFFFF;
+                    font-size: 14px;
+                }
+                QPushButton {
+                    background-color: #0078d4;
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 10px 24px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #106ebe;
+                }
+                QPushButton[type="cancel"] {
+                    background-color: #555555;
+                }
+                QPushButton[type="cancel"]:hover {
+                    background-color: #666666;
+                }
+            """)
+            main_layout = QVBoxLayout(dialog)
+            main_layout.setSpacing(15)
+            main_layout.setContentsMargins(25, 25, 25, 25)
+
+            title_label = QLabel(f"后期视频审核 - {order_data['id']}")
+            title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #FFFFFF; padding-bottom: 5px;")
+            title_label.setAlignment(Qt.AlignCenter)
+            main_layout.addWidget(title_label)
+
+            # 左右分栏布局
+            content_layout = QHBoxLayout()
+            content_layout.setSpacing(20)
+
+            # Left Layout
+            left_layout = QVBoxLayout()
+            left_layout.setSpacing(15)
+
+            # 工单基本信息
+            basic_group = QGroupBox("工单信息")
+            basic_layout = QFormLayout(basic_group)
+            basic_layout.setSpacing(8)
+            basic_layout.addRow("工单ID:", QLabel(order_data['id']))
+            basic_layout.addRow("产线/部门:", QLabel(order_data['department']))
+            basic_layout.addRow("型号:", QLabel(order_data['model']))
+            basic_layout.addRow("名称:", QLabel(order_data['name']))
+            basic_layout.addRow("当前状态:", QLabel(order_data.get('status', '')))
+            basic_layout.addRow("成品路径:", QLabel(edit_product_path))
+            left_layout.addWidget(basic_group)
+
+            # 不通过反馈原因输入
+            feedback_group = QGroupBox("退回反馈设置")
+            feedback_layout = QVBoxLayout(feedback_group)
+            reason_edit = QTextEdit()
+            reason_edit.setPlaceholderText("选择“退回重剪”时，必须在此输入退回的具体原因...")
+            reason_edit.setMinimumHeight(150)
+            feedback_layout.addWidget(reason_edit)
+            left_layout.addWidget(feedback_group)
+            left_layout.addStretch()
+
+            content_layout.addLayout(left_layout, 1) # 左侧权重 1
+
+            # 右侧素材列表分组
+            material_group = QGroupBox("剪辑提交的成品视频列表")
+            material_layout = QVBoxLayout(material_group)
+            
+            file_table = QTableWidget()
+            file_table.setColumnCount(2)
+            file_table.setHorizontalHeaderLabels(["选择", "视频文件名"])
+            file_table.setColumnWidth(0, 50)
+            file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+            file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            file_table.setEditTriggers(QTableWidget.NoEditTriggers)
+            
+            files_found = []
+            if os.path.exists(edit_product_path):
+                try:
+                    for item in os.listdir(edit_product_path):
+                        full_item_path = os.path.join(edit_product_path, item)
+                        if os.path.isfile(full_item_path):
+                            ext = os.path.splitext(item)[1].lower()
+                            if ext in VID_EXTS:
+                                files_found.append((item, full_item_path))
+                except Exception as e:
+                    logger.error(f"读取成品目录 {edit_product_path} 失败: {e}")
+
+            file_table.setRowCount(len(files_found))
+            checkboxes = []
+            for idx, (fname, fpath) in enumerate(files_found):
+                chk_widget = QWidget()
+                chk_layout = QHBoxLayout(chk_widget)
+                chk_layout.setContentsMargins(0, 0, 0, 0)
+                chk_layout.setAlignment(Qt.AlignCenter)
+                chk = QCheckBox()
+                chk.setStyleSheet("""
+                    QCheckBox::indicator {
+                        width: 20px;
+                        height: 20px;
+                    }
+                """)
+                chk_layout.addWidget(chk)
+                file_table.setCellWidget(idx, 0, chk_widget)
+                checkboxes.append(chk)
+
+                file_table.setItem(idx, 1, QTableWidgetItem(fname))
+
+            # 点击整格任意空白处即可勾选
+            def on_table_cell_clicked(row, column):
+                if column == 0:
+                    if row < len(checkboxes):
+                        chk = checkboxes[row]
+                        chk.setChecked(not chk.isChecked())
+            file_table.cellClicked.connect(on_table_cell_clicked)
+
+            # 操作控制条
+            top_bar_layout = QHBoxLayout()
+            top_bar_layout.setContentsMargins(0, 5, 0, 5)
+            
+            select_all_btn = QPushButton("全选")
+            deselect_all_btn = QPushButton("取消全选")
+            
+            tool_btn_style = """
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #FFFFFF;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 5px 12px;
+                    font-size: 13px;
+                    min-width: 70px;
+                }
+                QPushButton:hover {
+                    background-color: #505050;
+                }
+                QPushButton:pressed {
+                    background-color: #2b2b2b;
+                }
+            """
+            select_all_btn.setStyleSheet(tool_btn_style)
+            deselect_all_btn.setStyleSheet(tool_btn_style)
+            
+            def select_all_files():
+                for chk in checkboxes:
+                    chk.setChecked(True)
+            
+            def deselect_all_files():
+                for chk in checkboxes:
+                    chk.setChecked(False)
+                    
+            select_all_btn.clicked.connect(select_all_files)
+            deselect_all_btn.clicked.connect(deselect_all_files)
+            
+            top_bar_layout.addStretch()
+            top_bar_layout.addWidget(select_all_btn)
+            top_bar_layout.addWidget(deselect_all_btn)
+            
+            material_layout.addLayout(top_bar_layout)
+            material_layout.addWidget(file_table)
+            
+            # 双击使用系统程序播放文件
+            def on_file_double_clicked(row, column):
+                if row < len(files_found):
+                    _, fpath = files_found[row]
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(fpath))
+            file_table.cellDoubleClicked.connect(on_file_double_clicked)
+
+            content_layout.addWidget(material_group, 1)  # 中间权重 1
+
+            # 右侧预览面板
+            preview_panel = QGroupBox("文件预览")
+            preview_panel.setMinimumWidth(300)
+            preview_panel_layout = QVBoxLayout(preview_panel)
+            preview_panel_layout.setSpacing(8)
+
+            preview_label = QLabel("选择视频文件后\n在此预览")
+            preview_label.setAlignment(Qt.AlignCenter)
+            preview_label.setMinimumHeight(320)
+            preview_label.setStyleSheet("""
+                QLabel {
+                    background-color: #1a1a1a;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    color: #888888;
+                    font-size: 13px;
+                    padding: 8px;
+                }
+            """)
+            preview_label.setWordWrap(True)
+            preview_panel_layout.addWidget(preview_label, 1)
+
+            preview_filename_label = QLabel("")
+            preview_filename_label.setAlignment(Qt.AlignCenter)
+            preview_filename_label.setStyleSheet(
+                "background-color: transparent; border: none; color: #cccccc; font-size: 12px; padding: 2px;"
+            )
+            preview_filename_label.setWordWrap(True)
+            preview_panel_layout.addWidget(preview_filename_label)
+
+            nav_layout = QHBoxLayout()
+            nav_btn_style = """
+                QPushButton {
+                    background-color: #3c3c3c;
+                    color: #FFFFFF;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    padding: 6px 14px;
+                    font-size: 13px;
+                    min-width: 80px;
+                }
+                QPushButton:hover { background-color: #505050; }
+                QPushButton:disabled { background-color: #2b2b2b; color: #555555; border-color: #3a3a3a; }
+            """
+            prev_file_btn = QPushButton("▲ 上一个")
+            next_file_btn = QPushButton("▼ 下一个")
+            prev_file_btn.setStyleSheet(nav_btn_style)
+            next_file_btn.setStyleSheet(nav_btn_style)
+            prev_file_btn.setEnabled(False)
+            next_file_btn.setEnabled(False)
+            nav_layout.addWidget(prev_file_btn)
+            nav_layout.addWidget(next_file_btn)
+            preview_panel_layout.addLayout(nav_layout)
+
+            preview_state = {'index': -1}
+
+            def load_preview(idx):
+                if idx < 0 or idx >= len(files_found):
+                    return
+                preview_state['index'] = idx
+                file_table.selectRow(idx)
+                fname, fpath = files_found[idx]
+                preview_filename_label.setText(f"[{idx + 1}/{len(files_found)}]  {fname}")
+                preview_label.setPixmap(QPixmap())
+                preview_label.setText(f"🎬 视频成品文件\n\n{fname}\n\n双击表格行\n用播放器打开")
+                prev_file_btn.setEnabled(idx > 0)
+                next_file_btn.setEnabled(idx < len(files_found) - 1)
+
+            def on_prev_file():
+                load_preview(preview_state['index'] - 1)
+
+            def on_next_file():
+                load_preview(preview_state['index'] + 1)
+
+            prev_file_btn.clicked.connect(on_prev_file)
+            next_file_btn.clicked.connect(on_next_file)
+
+            # 点击表格行更新预览
+            original_cell_clicked = on_table_cell_clicked
+            def on_cell_clicked_with_preview(row, column):
+                original_cell_clicked(row, column)
+                load_preview(row)
+            file_table.cellClicked.disconnect(on_table_cell_clicked)
+            file_table.cellClicked.connect(on_cell_clicked_with_preview)
+
+            content_layout.addWidget(preview_panel, 1)  # 右侧预览
+
+            main_layout.addLayout(content_layout)
+
+            # 按钮区域
+            button_widget = QWidget()
+            button_layout = QHBoxLayout(button_widget)
+            button_layout.setSpacing(15)
+
+            pass_btn = QPushButton("审核通过")
+            pass_btn.setStyleSheet("background-color: #28a745; color: white;")
+            
+            reject_btn = QPushButton("退回重剪")
+            reject_btn.setStyleSheet("background-color: #dc3545; color: white;")
+            
+            cancel_btn = QPushButton("取消")
+            cancel_btn.setProperty("type", "cancel")
+            
+            button_layout.addWidget(pass_btn)
+            button_layout.addWidget(reject_btn)
+            button_layout.addStretch()
+            button_layout.addWidget(cancel_btn)
+            main_layout.addWidget(button_widget)
+
+            cancel_btn.clicked.connect(dialog.reject)
+
+            def on_approve():
+                new_status = '后期审核通过'
+                self.update_work_order_status_and_ui(order_data['id'], new_status)
+                api_response = api_manager.update_work_order_status(order_data['id'], new_status)
+                if api_response['success']:
+                    logger.info(f"API更新工单{order_data['id']}状态为后期审核通过成功")
+                else:
+                    logger.error(f"API更新工单状态失败: {api_response['error']}")
+                
+                self.log_action("视频后期审核通过", f"工单ID={order_data['id']}, 角色=视频后期审核, 成品路径={edit_product_path}")
+                send_notification(
+                    "工单后期审核通过通知",
+                    f"### 工单号：{order_data['id']}\n- 角色：视频后期审核\n- 操作：审核通过\n- 状态：后期审核通过\n- 提示：视频后期审核已通过，请剪辑师登录系统进行成品分发！",
+                    order_data.get('department')
+                )
+                QMessageBox.information(dialog, "成功", "后期视频审核已通过，已通知剪辑师分发！")
+                dialog.accept()
+
+            def on_reject():
+                reason = reason_edit.toPlainText().strip()
+                if not reason:
+                    QMessageBox.warning(dialog, "提示", "退回重剪必须填写退回原因")
+                    return
+                
+                selected_indices = [i for i, chk in enumerate(checkboxes) if chk.isChecked()]
+                if not selected_indices:
+                    QMessageBox.warning(dialog, "提示", "请选择至少一个不通过的视频文件")
+                    return
+
+                fail_count = 0
+                for i in selected_indices:
+                    fname, fpath = files_found[i]
+                    fail_dir = os.path.join(edit_product_path, "不通过")
+                    try:
+                        os.makedirs(fail_dir, exist_ok=True)
+                        dest_path = os.path.join(fail_dir, fname)
+                        shutil.move(fpath, dest_path)
+                        # 记录反馈
+                        db_manager.add_review_feedback(order_data['id'], fname, edit_product_path, reason)
+                        fail_count += 1
+                    except Exception as e:
+                        logger.error(f"退回移动视频 {fname} 失败: {e}")
+                        QMessageBox.warning(dialog, "错误", f"移动视频 {fname} 失败: {str(e)}")
+
+                if fail_count > 0:
+                    new_status = '后期重新剪辑'
+                    self.update_work_order_status_and_ui(order_data['id'], new_status)
+                    api_response = api_manager.update_work_order_status(order_data['id'], new_status)
+                    if api_response['success']:
+                        logger.info(f"API更新工单{order_data['id']}状态为后期重新剪辑成功")
+                    else:
+                        logger.error(f"API更新工单状态失败: {api_response['error']}")
+                        
+                    self.log_action("视频后期审核退回", f"工单ID={order_data['id']}, 角色=视频后期审核, 不通过文件数={fail_count}, 原因={reason}")
+                    send_notification(
+                        "工单后期审核退回通知",
+                        f"### 工单号：{order_data['id']}\n- 角色：视频后期审核\n- 操作：退回重剪\n- 状态：后期重新剪辑\n- 退回数量：{fail_count}个文件\n- 原因：{reason}",
+                        order_data.get('department')
+                    )
+                    QMessageBox.information(dialog, "提示", f"已成功将 {fail_count} 个不通过视频移至“不通过”文件夹，并通知剪辑师重新剪辑。")
+                    dialog.accept()
+                else:
+                    QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
+
+            pass_btn.clicked.connect(on_approve)
+            reject_btn.clicked.connect(on_reject)
+            dialog.exec()
         # 美工弹窗
         elif self.role == "美工":
             dialog = QDialog(self)
@@ -4919,19 +5351,11 @@ class MainWindow(QMainWindow):
             sales_label = self.create_path_status_label(sales_path, "分发销售路径", order_data, 'edit_dist_sales')
             
             # 检查成品路径状态
-            def check_product_path_status():
-                """检查成品路径是否有操作记录"""
-                logs = db_manager.get_logs_by_order_id(order_data['id'])
-                distribute_actions = ['剪辑分发运营', '剪辑分发销售']
-                
-                for log in logs:
-                    if log.get('action_type') in distribute_actions and f"工单ID={order_data['id']}" in log.get('details', ''):
-                        return True
-                return False
+            self.product_dir = order_data.get('edit_product_path')
             
-            # 根据是否有操作记录决定显示内容
-            if check_product_path_status():
-                product_label = QLabel("成品路径已设置")
+            # 根据是否有成品路径决定显示内容
+            if self.product_dir:
+                product_label = QLabel(self.product_dir)
                 product_label.setStyleSheet("""
                     QLabel {
                         color: #00ff00;
@@ -4957,7 +5381,7 @@ class MainWindow(QMainWindow):
             path_layout.addRow("分发销售路径:", sales_label)
             form_layout.addWidget(path_group)
             # 提示信息
-            info_label = QLabel("💡 提示：请先领取素材，然后选择成品路径，最后进行分发操作")
+            info_label = QLabel("💡 提示：请先领取素材，然后选择成品路径，最后进行提交审核或分发操作")
             info_label.setStyleSheet("""
                 QLabel {
                     font-size: 13px;
@@ -4973,9 +5397,38 @@ class MainWindow(QMainWindow):
             button_layout.setSpacing(15)
             get_material_btn = QPushButton("领取素材")
             select_product_btn = QPushButton("成品路径")
+            submit_review_btn = QPushButton("提交审核")
             distribute_ops_btn = QPushButton("分发运营")
             distribute_sales_btn = QPushButton("分发销售")
-            self.product_dir = None
+            
+            # 控制按钮启用状态与 ToolTip
+            current_status = order_data.get('status', '')
+            post_review_enabled = is_video_post_review_enabled()
+            
+            if post_review_enabled:
+                if current_status == '后期审核通过':
+                    submit_review_btn.setEnabled(False)
+                    submit_review_btn.setToolTip("成品视频已通过后期审核，可直接分发")
+                    distribute_ops_btn.setEnabled(True)
+                    distribute_sales_btn.setEnabled(True)
+                    distribute_ops_btn.setToolTip("")
+                    distribute_sales_btn.setToolTip("")
+                else:
+                    submit_review_btn.setEnabled(True)
+                    distribute_ops_btn.setEnabled(False)
+                    distribute_sales_btn.setEnabled(False)
+                    distribute_ops_btn.setToolTip("需要后期视频审核通过后方可分发")
+                    distribute_sales_btn.setToolTip("需要后期视频审核通过后方可分发")
+                    # 使用置灰的样式
+                    gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+                    distribute_ops_btn.setStyleSheet(gray_style)
+                    distribute_sales_btn.setStyleSheet(gray_style)
+            else:
+                submit_review_btn.setVisible(False)
+                distribute_ops_btn.setEnabled(True)
+                distribute_sales_btn.setEnabled(True)
+                distribute_ops_btn.setToolTip("")
+                distribute_sales_btn.setToolTip("")
             def on_get_material():
                 src = get_edit_get_video_src()
                 dest = get_edit_get_video_dest()
@@ -5040,6 +5493,8 @@ class MainWindow(QMainWindow):
                 if not dir_path:
                     return
                 self.product_dir = dir_path
+                # 写入数据库成品路径
+                db_manager.update_work_order_product_path(order_data['id'], dir_path)
                 # 记录剪辑结束时间
                 current_time = datetime.datetime.now()
                 formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -5062,6 +5517,41 @@ class MainWindow(QMainWindow):
                 msg.exec()
                 if msg.clickedButton() == open_btn:
                     QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
+
+            def on_submit_review():
+                if not self.product_dir or not os.path.exists(self.product_dir):
+                    QMessageBox.warning(dialog, "提示", "请先选择有效的成品路径！")
+                    return
+                # 将成品路径写入数据库
+                db_manager.update_work_order_product_path(order_data['id'], self.product_dir)
+                
+                # 更新工单状态为 视频后期审核中
+                new_status = '视频后期审核中'
+                self.update_work_order_status_and_ui(order_data['id'], new_status)
+                
+                # 调用API更新工单状态
+                api_response = api_manager.update_work_order_status(order_data['id'], new_status)
+                if api_response['success']:
+                    logger.info(f"API更新工单{order_data['id']}状态为视频后期审核中成功")
+                else:
+                    error_msg = f"API更新工单{order_data['id']}状态为视频后期审核中失败: {api_response['error']}"
+                    logger.error(error_msg)
+                    QMessageBox.warning(dialog, "API更新失败", error_msg)
+                
+                # 记录日志
+                self.log_action("提交视频后期审核", f"工单ID={order_data['id']}, 角色=剪辑, 成品路径={self.product_dir}")
+                
+                # 发送通知
+                department = order_data.get('department') or '相关'
+                send_notification(
+                    "工单后期审核提请通知",
+                    f"### 工单号：{order_data['id']}\n- 角色：剪辑\n- 操作：提请后期审核\n- 状态：视频后期审核中\n- 成品路径：{self.product_dir}\n- 提示：剪辑已完成视频并提交，请视频后期审核员登录系统进行审核！",
+                    order_data.get('department')
+                )
+                
+                self.refresh_work_orders()
+                QMessageBox.information(dialog, "提示", "已成功提交视频后期审核！")
+                dialog.accept()
             def on_distribute_ops():
                 if not self.product_dir:
                     QMessageBox.warning(dialog, "提示", "请先选择成品路径")
@@ -5172,10 +5662,12 @@ class MainWindow(QMainWindow):
                 )
             get_material_btn.clicked.connect(on_get_material)
             select_product_btn.clicked.connect(on_select_product)
+            submit_review_btn.clicked.connect(on_submit_review)
             distribute_ops_btn.clicked.connect(on_distribute_ops)
             distribute_sales_btn.clicked.connect(on_distribute_sales)
             button_layout.addWidget(get_material_btn)
             button_layout.addWidget(select_product_btn)
+            button_layout.addWidget(submit_review_btn)
             button_layout.addWidget(distribute_ops_btn)
             button_layout.addWidget(distribute_sales_btn)
             button_layout.addStretch()
@@ -6702,6 +7194,9 @@ class StatusProgressDelegate(QStyledItemDelegate):
             "重新拍摄": (220, 53, 69),     # 红色
             "后期待领取": (255, 140, 0),  # 深橙色
             "后期处理中": (180, 80, 255), # 紫色
+            "视频后期审核中": (245, 158, 11), # 驼升黄
+            "后期审核通过": (40, 167, 69),     # 绿色
+            "后期重新剪辑": (220, 53, 69),     # 红色
             "后期已完成": (0, 220, 120),  # 绿色
             "待上架": (255, 215, 0),      # 金色
             "已上架": (0, 255, 255)       # 亮青色

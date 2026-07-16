@@ -129,37 +129,42 @@ class WorkOrderDetailDialog(QDialog):
         self.setup_footer()
 
     def setup_review_feedback_section(self):
-        """展示重新拍摄（不通过）的反馈原因"""
+        """展示重新拍摄或后期重新剪辑（不通过）的反馈原因"""
         from src.core.database import db_manager
+        current_status = self.order_data.get('status')
+        if current_status not in ['重新拍摄', '后期重新剪辑']:
+            return
+            
         feedbacks = db_manager.get_review_feedback(self.order_data['id'])
-        if self.order_data.get('status') == '重新拍摄' and feedbacks:
-                feedback_widget = QWidget()
-                feedback_widget.setObjectName("ReviewFeedbackPanel")
-                # 暗红色背景、鲜红边框，白字/淡红字高亮
-                feedback_widget.setStyleSheet("""
-                    QWidget#ReviewFeedbackPanel {
-                        background-color: #3d1c1c;
-                        border: 1px solid #ef4444;
-                        border-radius: 8px;
-                    }
-                """)
-                layout = QVBoxLayout(feedback_widget)
-                layout.setContentsMargins(15, 12, 15, 12)
-                layout.setSpacing(8)
+        if feedbacks:
+            feedback_widget = QWidget()
+            feedback_widget.setObjectName("ReviewFeedbackPanel")
+            # 暗红色背景、鲜红边框，白字/淡红字高亮
+            feedback_widget.setStyleSheet("""
+                QWidget#ReviewFeedbackPanel {
+                    background-color: #3d1c1c;
+                    border: 1px solid #ef4444;
+                    border-radius: 8px;
+                }
+            """)
+            layout = QVBoxLayout(feedback_widget)
+            layout.setContentsMargins(15, 12, 15, 12)
+            layout.setSpacing(8)
 
-                title_label = QLabel("⚠️ 视频审核退回提示（需要重新拍摄）")
-                title_label.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 15px;")
-                layout.addWidget(title_label)
+            title_text = "⚠️ 视频审核退回提示（需要重新拍摄）" if current_status == '重新拍摄' else "⚠️ 视频后期审核退回提示（需要重新剪辑）"
+            title_label = QLabel(title_text)
+            title_label.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 15px;")
+            layout.addWidget(title_label)
 
-                # 添加退回的文件详情
-                for i, fb in enumerate(feedbacks):
-                    item_label = QLabel(f"• <b>文件</b>: {fb['file_name']}<br/>  <b>所在目录</b>: {fb['directory']}<br/>  <b>原因</b>: <span style='color: #ff8888;'>{fb['reason']}</span>")
-                    item_label.setStyleSheet("color: #e8eaed; font-size: 13px; line-height: 1.4;")
-                    item_label.setWordWrap(True)
-                    item_label.setTextFormat(Qt.RichText)
-                    layout.addWidget(item_label)
+            # 添加退回的文件详情
+            for i, fb in enumerate(feedbacks):
+                item_label = QLabel(f"• <b>文件</b>: {fb['file_name']}<br/>  <b>所在目录</b>: {fb['directory']}<br/>  <b>原因</b>: <span style='color: #ff8888;'>{fb['reason']}</span>")
+                item_label.setStyleSheet("color: #e8eaed; font-size: 13px; line-height: 1.4;")
+                item_label.setWordWrap(True)
+                item_label.setTextFormat(Qt.RichText)
+                layout.addWidget(item_label)
 
-                self.scroll_layout.addWidget(feedback_widget)
+            self.scroll_layout.addWidget(feedback_widget)
 
     def setup_header_section(self):
         """核心信息概览"""
@@ -493,8 +498,12 @@ class WorkOrderDetailDialog(QDialog):
         colors = {
             "拍摄中": "#ff9800",
             "拍摄完成": "#2196f3",
+            "视频审核中": "#f59e0b",
+            "视频后期审核中": "#f59e0b",
             "审核通过": "#4caf50",
+            "后期审核通过": "#4caf50",
             "重新拍摄": "#f44336",
+            "后期重新剪辑": "#f44336",
             "美工设计": "#2196f3",
             "视频剪辑": "#9c27b0",
             "已完成": "#4caf50",
@@ -515,7 +524,7 @@ class WorkOrderDetailDialog(QDialog):
                 finished_steps.add("拍摄完成")
             if "美工" in role and "分发" in content and ("运营" in content or "销售" in content):
                 finished_steps.add("美工分发")
-            if "剪辑" in role and "分发" in content and ("运营" in content or "销售" in content):
+            if ("剪辑" in role or "视频后期审核" in role) and ("分发" in content or "审核通过" in content) and ("运营" in content or "销售" in content or "视频" in content or "后期" in content):
                 finished_steps.add("剪辑分发")
             if "销售" in role and "领取" in content:
                 finished_steps.add("销售领取")
