@@ -126,11 +126,21 @@ class DatabaseManager:
                 # 如果表为空，插入初始版本
                 cursor.execute("SELECT COUNT(*) FROM mcs_by_takuya_versions")
                 if cursor.fetchone()[0] == 0:
-                    cursor.execute("INSERT INTO mcs_by_takuya_versions (version) VALUES ('v1.09')")
+                    cursor.execute("INSERT IGNORE INTO mcs_by_takuya_versions (version) VALUES ('v1.09')")
                 # 确保审核反馈表存在
                 self._ensure_review_feedback_table(cursor)
+
+                # 确保 mcs_by_takuya_work_orders 包含 edit_product_path 字段
+                try:
+                    cursor.execute("SHOW COLUMNS FROM mcs_by_takuya_work_orders LIKE 'edit_product_path'")
+                    if not cursor.fetchone():
+                        cursor.execute("ALTER TABLE mcs_by_takuya_work_orders ADD COLUMN edit_product_path VARCHAR(500) DEFAULT NULL")
+                        self.logger.info("数据库升级：成功为 mcs_by_takuya_work_orders 表添加 edit_product_path 字段")
+                except Exception as ex:
+                    self.logger.error(f"检查或添加 edit_product_path 字段失败: {ex}")
+
                 # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
                 for role in default_roles:
                     cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 # 默认部门
@@ -167,7 +177,7 @@ class DatabaseManager:
         try:
             with self.connection.cursor() as cursor:
                 # 确保默认角色存在（如数据库已建但缺少角色时）
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
                 for role in default_roles:
                     cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 self.connection.commit()
@@ -176,7 +186,7 @@ class DatabaseManager:
                 all_roles = [row[0] for row in cursor.fetchall()]
                 
                 # 按照指定顺序排序
-                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
+                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
                 ordered_roles = []
                 
                 # 先添加指定顺序的角色
@@ -515,6 +525,30 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
+    def update_work_order_product_path(self, order_id: str, product_path: str) -> bool:
+        """
+        更新工单的成品路径字段值。
+        :param order_id: 工单ID
+        :param product_path: 成品路径
+        :return: 是否成功
+        """
+        if not self.connect():
+            return False
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE mcs_by_takuya_work_orders SET edit_product_path=%s WHERE id=%s",
+                    (product_path, order_id)
+                )
+                self.connection.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            self.logger.error(f"更新工单成品路径失败: {e}")
+            self.connection.rollback()
+            return False
+        finally:
+            self.disconnect()
+
     def get_logs_by_order_id(self, order_id: str):
         if not self.connect():
             return []
@@ -597,7 +631,7 @@ class DatabaseManager:
                 
                 # 重新插入默认数据
                 # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
                 for role in default_roles:
                     cursor.execute("INSERT INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 

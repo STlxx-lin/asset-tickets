@@ -25,7 +25,15 @@ class CharacterSelection(QWidget):
 
     def setup_ui(self):
         # 外层居中布局
-        outer_layout = QVBoxLayout(self)
+        if self.layout() is not None:
+            self.clear_layout(self.layout())
+            outer_layout = self.layout()
+            # 清理 layout 中遗留的 stretch
+            while outer_layout.count() > 0:
+                outer_layout.takeAt(0)
+        else:
+            outer_layout = QVBoxLayout(self)
+            
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
         outer_layout.addStretch()
@@ -94,15 +102,15 @@ class CharacterSelection(QWidget):
             # 角色选择（多角色时显示）
             if len(roles) > 1:
                 role_group = QGroupBox("请选择角色")
-                role_layout = QHBoxLayout()
+                role_layout = QGridLayout()
                 role_layout.setSpacing(16)
                 self.role_buttons = []
-                for role in roles:
+                for i, role in enumerate(roles):
                     btn = QRadioButton(role)
                     if role == selected_role:
                         btn.setChecked(True)
                     self.role_buttons.append(btn)
-                    role_layout.addWidget(btn)
+                    role_layout.addWidget(btn, i // 4, i % 4)
                 role_group.setLayout(role_layout)
                 self.main_layout.addWidget(role_group)
 
@@ -426,6 +434,13 @@ class CharacterSelection(QWidget):
                 border-radius: 6px;
             }
         """)
+
+    def showEvent(self, event):
+        """窗口显示时重新加载数据并刷新UI"""
+        super().showEvent(event)
+        self.roles = db_manager.get_roles()
+        self.departments = db_manager.get_departments()
+        self.setup_ui()
 
     def closeEvent(self, event):
         """处理窗口关闭事件"""
