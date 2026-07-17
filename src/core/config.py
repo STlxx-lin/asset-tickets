@@ -1,6 +1,6 @@
 # 配置文件
 # 版本号统一管理
-APP_VERSION = "v1.15.50"
+APP_VERSION = "v1.16.0"
 
 # 数据库切换开关
 # 可选值：
@@ -49,4 +49,8 @@ else:
 DEFAULT_NOTIFICATION_TYPE = 'wechat_work'
 
 # 管理员登录密码配置
-ADMIN_PASSWORD = 'DBJX.8888' 
+ADMIN_PASSWORD = 'DBJX.8888'
+
+# 测试开关：是否跳过视频后期审核的状态校验（默认为True方便调试测试）
+# BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK = True #跳过
+BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK = False #不跳过

@@ -10,6 +10,10 @@ from PySide6.QtWidgets import (QMainWindow, QTableView, QVBoxLayout, QHBoxLayout
                              QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor, QPixmap
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtWidgets import QSlider
+from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
 import sys
 import os
 # 添加项目根目录到Python搜索路径
@@ -73,6 +77,35 @@ EDIT_DIST_SALES = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材
 EDIT_POST_REVIEW_TRANSIT = lambda dept, id_, model, name: os.path.join(VOLUMES, '02图像部', '02视频部', dept, '01待审核', f"{id_} {model} {name}")
 OPS_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 SALES_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
+
+def to_local_path(path_str):
+    """跨平台路径格式翻译（适配 Windows 的 \\dabadoc 和 macOS 的 /Volumes）"""
+    if not path_str:
+        return ""
+    
+    # 规整化斜杠，便于统一替换
+    norm_path = path_str.replace('\\', '/')
+    
+    # 检测是 Mac 格式前缀还是 Win 格式前缀
+    is_mac_root = norm_path.startswith('/Volumes')
+    is_win_root = norm_path.startswith('//dabadoc') or norm_path.startswith('//DABADOC')
+    
+    if platform.system() == 'Windows':
+        if is_mac_root:
+            # Mac 路径转 Win：/Volumes -> \\dabadoc
+            local_path = norm_path.replace('/Volumes', r'\\dabadoc', 1)
+        else:
+            local_path = norm_path
+        return os.path.normpath(local_path)
+    else:
+        # macOS 平台
+        if is_win_root:
+            # Win 路径转 Mac：//dabadoc -> /Volumes
+            local_path = re.sub(r'^//[dD][aA][bB][aA][dD][oO][cC]', '/Volumes', norm_path)
+        else:
+            local_path = norm_path
+        # macOS 必须是正斜杠
+        return os.path.normpath(local_path).replace('\\', '/')
 
 def to_local_path(path_str):
     """跨平台路径格式翻译（适配 Windows 的 \\dabadoc 和 macOS 的 /Volumes）"""
@@ -4089,10 +4122,17 @@ class MainWindow(QMainWindow):
 
             # ── 右侧预览面板 ──
             preview_panel = QGroupBox("文件预览")
-            preview_panel.setMinimumWidth(300)
+            preview_panel.setMinimumWidth(400)
             preview_panel_layout = QVBoxLayout(preview_panel)
             preview_panel_layout.setSpacing(8)
 
+            # 初始化播放器
+            player = QMediaPlayer(dialog)
+            audio_output = QAudioOutput(dialog)
+            player.setAudioOutput(audio_output)
+            audio_output.setVolume(0.5)
+
+            # 图片预览标签
             preview_label = QLabel("选择文件后\n在此预览")
             preview_label.setAlignment(Qt.AlignCenter)
             preview_label.setMinimumHeight(320)
@@ -4110,6 +4150,73 @@ class MainWindow(QMainWindow):
             preview_label.setScaledContents(False)
             preview_panel_layout.addWidget(preview_label, 1)
 
+            # 视频展示组件
+            video_widget = QVideoWidget()
+            video_widget.setMinimumHeight(320)
+            video_widget.setStyleSheet("background-color: #000000; border-radius: 4px;")
+            player.setVideoOutput(video_widget)
+            preview_panel_layout.addWidget(video_widget, 1)
+            video_widget.hide()
+
+            # 播放控制条容器
+            control_container = QWidget()
+            control_layout = QHBoxLayout(control_container)
+            control_layout.setContentsMargins(0, 0, 0, 0)
+            control_layout.setSpacing(6)
+
+            play_btn = QPushButton("▶")
+            play_btn.setFixedWidth(35)
+            play_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3c3c3c;
+                    border: 1px solid #555555;
+                    border-radius: 4px;
+                    color: white;
+                    font-size: 12px;
+                    min-width: 35px;
+                    padding: 4px;
+                }
+                QPushButton:hover { background-color: #505050; }
+            """)
+            control_layout.addWidget(play_btn)
+
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 0)
+            slider.setStyleSheet("""
+                QSlider::groove:horizontal {
+                    border: 1px solid #555555;
+                    height: 6px;
+                    background: #2b2b2b;
+                    border-radius: 3px;
+                }
+                QSlider::sub-page:horizontal {
+                    background: #0078d4;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    background: #ffffff;
+                    border: 1px solid #555555;
+                    width: 12px;
+                    margin-top: -3px;
+                    margin-bottom: -3px;
+                    border-radius: 6px;
+                }
+            """)
+            control_layout.addWidget(slider)
+
+            time_label = QLabel("00:00 / 00:00")
+            time_label.setStyleSheet("border: none; background: transparent; color: #cccccc; font-size: 11px; padding: 0px;")
+            control_layout.addWidget(time_label)
+
+            volume_btn = QPushButton("🔊")
+            volume_btn.setFixedWidth(35)
+            volume_btn.setStyleSheet(play_btn.styleSheet())
+            control_layout.addWidget(volume_btn)
+
+            preview_panel_layout.addWidget(control_container)
+            control_container.hide()
+
+            # 文件名展示
             preview_filename_label = QLabel("")
             preview_filename_label.setAlignment(Qt.AlignCenter)
             preview_filename_label.setStyleSheet(
@@ -4142,6 +4249,58 @@ class MainWindow(QMainWindow):
             nav_layout.addWidget(next_file_btn)
             preview_panel_layout.addLayout(nav_layout)
 
+            # 连接播放器槽函数
+            def toggle_play():
+                if player.playbackState() == QMediaPlayer.PlayingState:
+                    player.pause()
+                else:
+                    player.play()
+            play_btn.clicked.connect(toggle_play)
+
+            def on_state_changed(state):
+                if state == QMediaPlayer.PlayingState:
+                    play_btn.setText("⏸")
+                else:
+                    play_btn.setText("▶")
+            player.playbackStateChanged.connect(on_state_changed)
+
+            def format_time(ms):
+                s = ms // 1000
+                m = s // 60
+                s = s % 60
+                return f"{m:02d}:{s:02d}"
+
+            def on_duration_changed(duration):
+                slider.setRange(0, duration)
+                update_time_label(player.position(), duration)
+
+            def on_position_changed(position):
+                if not slider.isSliderDown():
+                    slider.setValue(position)
+                update_time_label(position, player.duration())
+
+            def update_time_label(pos, dur):
+                time_label.setText(f"{format_time(pos)} / {format_time(dur)}")
+
+            player.durationChanged.connect(on_duration_changed)
+            player.positionChanged.connect(on_position_changed)
+
+            def on_slider_moved(pos):
+                player.setPosition(pos)
+            slider.sliderMoved.connect(on_slider_moved)
+
+            def toggle_mute():
+                if audio_output.isMuted():
+                    audio_output.setMuted(False)
+                    volume_btn.setText("🔊")
+                else:
+                    audio_output.setMuted(True)
+                    volume_btn.setText("🔇")
+            volume_btn.clicked.connect(toggle_mute)
+
+            # 关闭对话框时释放播放器
+            dialog.finished.connect(player.stop)
+
             preview_state = {'index': -1}
             IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif'}
             VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.m4v', '.ts'}
@@ -4156,7 +4315,15 @@ class MainWindow(QMainWindow):
                 ext = os.path.splitext(fname)[1].lower()
                 w = max(preview_label.width() - 8, 260)
                 h = max(preview_label.height() - 8, 300)
+                
+                # 切换时停止播放
+                player.stop()
+                
                 if ext in IMAGE_EXTS and os.path.exists(fpath):
+                    video_widget.hide()
+                    control_container.hide()
+                    preview_label.show()
+                    
                     pix = QPixmap(fpath)
                     if not pix.isNull():
                         scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -4165,12 +4332,21 @@ class MainWindow(QMainWindow):
                     else:
                         preview_label.setPixmap(QPixmap())
                         preview_label.setText("❌ 无法加载图片")
-                elif ext in VIDEO_EXTS:
-                    preview_label.setPixmap(QPixmap())
-                    preview_label.setText(f"🎬 视频文件\n\n{fname}\n\n双击表格行\n用播放器打开")
+                elif ext in VIDEO_EXTS and os.path.exists(fpath):
+                    preview_label.hide()
+                    video_widget.show()
+                    control_container.show()
+                    
+                    player.setSource(QUrl.fromLocalFile(fpath))
+                    player.play()
                 else:
+                    video_widget.hide()
+                    control_container.hide()
+                    preview_label.show()
+                    
                     preview_label.setPixmap(QPixmap())
                     preview_label.setText(f"📄 {fname}")
+                    
                 prev_file_btn.setEnabled(idx > 0)
                 next_file_btn.setEnabled(idx < len(files_found) - 1)
 
@@ -4292,14 +4468,15 @@ class MainWindow(QMainWindow):
                     "视频后期审核功能当前已关闭。\n如需开启，请管理员前往【系统设置 → 功能设置】进行配置。"
                 )
                 return
-            # 只有状态为「视频后期审核中」才可审核
-            current_status = order_data.get('status', '')
-            if current_status != '视频后期审核中':
-                QMessageBox.information(
-                    self, "提示",
-                    f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】的工单才可进行后期审核。"
-                )
-                return
+            # 只有状态为「视频后期审核中」才可审核（支持通过配置跳过）
+            if not BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK:
+                current_status = order_data.get('status', '')
+                if current_status != '视频后期审核中':
+                    QMessageBox.information(
+                        self, "提示",
+                        f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】的工单才可进行后期审核。"
+                    )
+                    return
                 
             edit_product_path = order_data.get('edit_product_path')
             if edit_product_path:
@@ -4516,26 +4693,79 @@ class MainWindow(QMainWindow):
 
             # 右侧预览面板
             preview_panel = QGroupBox("文件预览")
-            preview_panel.setMinimumWidth(300)
+            preview_panel.setMinimumWidth(400)
             preview_panel_layout = QVBoxLayout(preview_panel)
             preview_panel_layout.setSpacing(8)
 
-            preview_label = QLabel("选择视频文件后\n在此预览")
-            preview_label.setAlignment(Qt.AlignCenter)
-            preview_label.setMinimumHeight(320)
-            preview_label.setStyleSheet("""
-                QLabel {
-                    background-color: #1a1a1a;
+            # 初始化播放器
+            player = QMediaPlayer(dialog)
+            audio_output = QAudioOutput(dialog)
+            player.setAudioOutput(audio_output)
+            audio_output.setVolume(0.5)
+
+            # 视频展示组件
+            video_widget = QVideoWidget()
+            video_widget.setMinimumHeight(300)
+            video_widget.setStyleSheet("background-color: #000000; border-radius: 4px;")
+            player.setVideoOutput(video_widget)
+            preview_panel_layout.addWidget(video_widget, 1)
+
+            # 播放控制条布局
+            control_layout = QHBoxLayout()
+            control_layout.setSpacing(6)
+
+            play_btn = QPushButton("▶")
+            play_btn.setFixedWidth(35)
+            play_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3c3c3c;
                     border: 1px solid #555555;
                     border-radius: 4px;
-                    color: #888888;
-                    font-size: 13px;
-                    padding: 8px;
+                    color: white;
+                    font-size: 12px;
+                    min-width: 35px;
+                    padding: 4px;
+                }
+                QPushButton:hover { background-color: #505050; }
+            """)
+            control_layout.addWidget(play_btn)
+
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 0)
+            slider.setStyleSheet("""
+                QSlider::groove:horizontal {
+                    border: 1px solid #555555;
+                    height: 6px;
+                    background: #2b2b2b;
+                    border-radius: 3px;
+                }
+                QSlider::sub-page:horizontal {
+                    background: #0078d4;
+                    border-radius: 3px;
+                }
+                QSlider::handle:horizontal {
+                    background: #ffffff;
+                    border: 1px solid #555555;
+                    width: 12px;
+                    margin-top: -3px;
+                    margin-bottom: -3px;
+                    border-radius: 6px;
                 }
             """)
-            preview_label.setWordWrap(True)
-            preview_panel_layout.addWidget(preview_label, 1)
+            control_layout.addWidget(slider)
 
+            time_label = QLabel("00:00 / 00:00")
+            time_label.setStyleSheet("border: none; background: transparent; color: #cccccc; font-size: 11px; padding: 0px;")
+            control_layout.addWidget(time_label)
+
+            volume_btn = QPushButton("🔊")
+            volume_btn.setFixedWidth(35)
+            volume_btn.setStyleSheet(play_btn.styleSheet())
+            control_layout.addWidget(volume_btn)
+
+            preview_panel_layout.addLayout(control_layout)
+
+            # 文件名展示
             preview_filename_label = QLabel("")
             preview_filename_label.setAlignment(Qt.AlignCenter)
             preview_filename_label.setStyleSheet(
@@ -4568,6 +4798,58 @@ class MainWindow(QMainWindow):
             nav_layout.addWidget(next_file_btn)
             preview_panel_layout.addLayout(nav_layout)
 
+            # 连接播放器槽函数
+            def toggle_play():
+                if player.playbackState() == QMediaPlayer.PlayingState:
+                    player.pause()
+                else:
+                    player.play()
+            play_btn.clicked.connect(toggle_play)
+
+            def on_state_changed(state):
+                if state == QMediaPlayer.PlayingState:
+                    play_btn.setText("⏸")
+                else:
+                    play_btn.setText("▶")
+            player.playbackStateChanged.connect(on_state_changed)
+
+            def format_time(ms):
+                s = ms // 1000
+                m = s // 60
+                s = s % 60
+                return f"{m:02d}:{s:02d}"
+
+            def on_duration_changed(duration):
+                slider.setRange(0, duration)
+                update_time_label(player.position(), duration)
+
+            def on_position_changed(position):
+                if not slider.isSliderDown():
+                    slider.setValue(position)
+                update_time_label(position, player.duration())
+
+            def update_time_label(pos, dur):
+                time_label.setText(f"{format_time(pos)} / {format_time(dur)}")
+
+            player.durationChanged.connect(on_duration_changed)
+            player.positionChanged.connect(on_position_changed)
+
+            def on_slider_moved(pos):
+                player.setPosition(pos)
+            slider.sliderMoved.connect(on_slider_moved)
+
+            def toggle_mute():
+                if audio_output.isMuted():
+                    audio_output.setMuted(False)
+                    volume_btn.setText("🔊")
+                else:
+                    audio_output.setMuted(True)
+                    volume_btn.setText("🔇")
+            volume_btn.clicked.connect(toggle_mute)
+
+            # 关闭对话框时释放播放器
+            dialog.finished.connect(player.stop)
+
             preview_state = {'index': -1}
 
             def load_preview(idx):
@@ -4577,8 +4859,11 @@ class MainWindow(QMainWindow):
                 file_table.selectRow(idx)
                 fname, fpath = files_found[idx]
                 preview_filename_label.setText(f"[{idx + 1}/{len(files_found)}]  {fname}")
-                preview_label.setPixmap(QPixmap())
-                preview_label.setText(f"🎬 视频成品文件\n\n{fname}\n\n双击表格行\n用播放器打开")
+                
+                # 播放新视频
+                player.setSource(QUrl.fromLocalFile(fpath))
+                player.play()
+                
                 prev_file_btn.setEnabled(idx > 0)
                 next_file_btn.setEnabled(idx < len(files_found) - 1)
 
