@@ -28,7 +28,11 @@ class DatabaseManager:
 
     def disconnect(self):
         if self.connection:
-            self.connection.close()
+            try:
+                self.connection.close()
+            except Exception:
+                pass
+            self.connection = None
             self.logger.info("数据库连接已关闭")
 
     def init_database(self):
@@ -230,7 +234,8 @@ class DatabaseManager:
                         SELECT wo.id, d.name as department, wo.model, wo.name, 
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content,
-                               wo.project_type_id, wo.project_content_id, wo.remarks
+                               wo.project_type_id, wo.project_content_id, wo.remarks,
+                               wo.edit_product_path
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
                         LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
@@ -244,7 +249,8 @@ class DatabaseManager:
                         SELECT wo.id, d.name as department, wo.model, wo.name, 
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content,
-                               wo.project_type_id, wo.project_content_id, wo.remarks
+                               wo.project_type_id, wo.project_content_id, wo.remarks,
+                               wo.edit_product_path
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
                         LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
