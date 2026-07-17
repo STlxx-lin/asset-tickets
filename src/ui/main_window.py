@@ -2932,8 +2932,6 @@ class MainWindow(QMainWindow):
             'log_action':    self.log_action,
         }
         _dispatch(self, order_data, callbacks)
-        db_manager.update_work_order_status(order_id, new_status)
-        self.refresh_work_orders()
     def handle_field_button(self, field, order_data):
         if field == "上传素材":
             parent_dialog = self.sender().parent()
