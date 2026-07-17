@@ -68,8 +68,8 @@ ART_DIST_OPS = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中
 ART_DIST_SALES = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
 EDIT_GET_VIDEO_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '01原始素材', '02美工待领取', dept, '02视频', f"{id_} {model} {name}")
 EDIT_GET_VIDEO_DEST = lambda dept, id_, model, name: os.path.join(VOLUMES, '02图像部', '02视频部', dept, '00待处理', f"{id_} {model} {name}")
-EDIT_DIST_OPS = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
-EDIT_DIST_SALES = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
+EDIT_DIST_OPS = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}", '02视频')
+EDIT_DIST_SALES = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}", '02视频')
 EDIT_POST_REVIEW_TRANSIT = lambda dept, id_, model, name: os.path.join(VOLUMES, '02图像部', '02视频部', dept, '01待审核', f"{id_} {model} {name}")
 OPS_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 SALES_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
@@ -4232,8 +4232,8 @@ class MainWindow(QMainWindow):
                     f"### 工单号：{order_data['id']}\n- 角色：视频审核\n- 操作：审核通过\n- 状态：审核通过\n- 提示：视频审核已通过，摄影师现在可以分发素材了！",
                     order_data.get('department')
                 )
-                QMessageBox.information(dialog, "成功", "工单已审核通过！")
                 dialog.accept()
+                QMessageBox.information(self, "成功", "工单已审核通过！")
 
             def on_reject():
                 reason = reason_edit.toPlainText().strip()
@@ -4275,8 +4275,8 @@ class MainWindow(QMainWindow):
                         f"### 工单号：{order_data['id']}\n- 角色：视频审核\n- 操作：退回重拍\n- 状态：重新拍摄\n- 退回数量：{fail_count}个文件\n- 原因：{reason}",
                         order_data.get('department')
                     )
-                    QMessageBox.information(dialog, "提示", f"已成功将 {fail_count} 个不通过素材移至“不通过”文件夹，并通知摄影师重新拍摄。")
                     dialog.accept()
+                    QMessageBox.information(self, "提示", f"已成功将 {fail_count} 个不通过素材移至“不通过”文件夹，并通知摄影师重新拍摄。")
                 else:
                     QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
 
@@ -4640,8 +4640,8 @@ class MainWindow(QMainWindow):
                     f"### 工单号：{order_data['id']}\n- 角色：视频后期审核\n- 操作：审核通过\n- 状态：后期审核通过\n- 提示：视频后期审核已通过，请剪辑师登录系统进行成品分发！",
                     order_data.get('department')
                 )
-                QMessageBox.information(dialog, "成功", "后期视频审核已通过，已通知剪辑师分发！")
                 dialog.accept()
+                QMessageBox.information(self, "成功", "后期视频审核已通过，已通知剪辑师分发！")
 
             def on_reject():
                 reason = reason_edit.toPlainText().strip()
@@ -4684,8 +4684,8 @@ class MainWindow(QMainWindow):
                         f"### 工单号：{order_data['id']}\n- 角色：视频后期审核\n- 操作：退回重剪\n- 状态：后期重新剪辑\n- 退回数量：{fail_count}个文件\n- 原因：{reason}",
                         order_data.get('department')
                     )
-                    QMessageBox.information(dialog, "提示", f"已成功将 {fail_count} 个不通过视频移至“不通过”文件夹，并通知剪辑师重新剪辑。")
                     dialog.accept()
+                    QMessageBox.information(self, "提示", f"已成功将 {fail_count} 个不通过视频移至“不通过”文件夹，并通知剪辑师重新剪辑。")
                 else:
                     QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
 
