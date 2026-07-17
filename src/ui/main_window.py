@@ -70,6 +70,7 @@ EDIT_GET_VIDEO_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '01原
 EDIT_GET_VIDEO_DEST = lambda dept, id_, model, name: os.path.join(VOLUMES, '02图像部', '02视频部', dept, '00待处理', f"{id_} {model} {name}")
 EDIT_DIST_OPS = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 EDIT_DIST_SALES = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
+EDIT_POST_REVIEW_TRANSIT = lambda dept, id_, model, name: os.path.join(VOLUMES, '02图像部', '02视频部', dept, '01待审核', f"{id_} {model} {name}")
 OPS_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 SALES_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
 
@@ -4272,6 +4273,8 @@ class MainWindow(QMainWindow):
                 return
                 
             edit_product_path = order_data.get('edit_product_path')
+            if edit_product_path:
+                edit_product_path = os.path.normpath(edit_product_path)
             if not edit_product_path or not os.path.exists(edit_product_path):
                 QMessageBox.warning(
                     self, "错误",
@@ -5352,6 +5355,8 @@ class MainWindow(QMainWindow):
             
             # 检查成品路径状态
             self.product_dir = order_data.get('edit_product_path')
+            if self.product_dir:
+                self.product_dir = os.path.normpath(self.product_dir)
             
             # 根据是否有成品路径决定显示内容
             if self.product_dir:
@@ -5493,8 +5498,6 @@ class MainWindow(QMainWindow):
                 if not dir_path:
                     return
                 self.product_dir = dir_path
-                # 写入数据库成品路径
-                db_manager.update_work_order_product_path(order_data['id'], dir_path)
                 # 记录剪辑结束时间
                 current_time = datetime.datetime.now()
                 formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -5522,36 +5525,71 @@ class MainWindow(QMainWindow):
                 if not self.product_dir or not os.path.exists(self.product_dir):
                     QMessageBox.warning(dialog, "提示", "请先选择有效的成品路径！")
                     return
-                # 将成品路径写入数据库
-                db_manager.update_work_order_product_path(order_data['id'], self.product_dir)
                 
-                # 更新工单状态为 视频后期审核中
-                new_status = '视频后期审核中'
-                self.update_work_order_status_and_ui(order_data['id'], new_status)
+                src = self.product_dir
+                # 计算中转目标目录
+                try:
+                    transit_dir = EDIT_POST_REVIEW_TRANSIT(order_data['department'], order_data['id'], order_data['model'], order_data['name'])
+                    os.makedirs(transit_dir, exist_ok=True)
+                except Exception as e:
+                    QMessageBox.critical(dialog, "错误", f"创建网络中转文件夹失败，请检查网络共享盘连接！\n原因: {e}")
+                    return
+
+                # 获取源路径中的所有内容（文件和文件夹）
+                all_items = []
+                if os.path.exists(src):
+                    for item in os.listdir(src):
+                        all_items.append(item)
                 
-                # 调用API更新工单状态
-                api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-                if api_response['success']:
-                    logger.info(f"API更新工单{order_data['id']}状态为视频后期审核中成功")
-                else:
-                    error_msg = f"API更新工单{order_data['id']}状态为视频后期审核中失败: {api_response['error']}"
-                    logger.error(error_msg)
-                    QMessageBox.warning(dialog, "API更新失败", error_msg)
+                if not all_items:
+                    QMessageBox.warning(dialog, "提示", "成品路径为空，没有视频可以上传！")
+                    return
+
+                # 使用任务管理器异步复制视频到中转路径
+                task_name = f"上传成品视频 - 工单{order_data['id']}"
                 
-                # 记录日志
-                self.log_action("提交视频后期审核", f"工单ID={order_data['id']}, 角色=剪辑, 成品路径={self.product_dir}")
-                
-                # 发送通知
-                department = order_data.get('department') or '相关'
-                send_notification(
-                    "工单后期审核提请通知",
-                    f"### 工单号：{order_data['id']}\n- 角色：剪辑\n- 操作：提请后期审核\n- 状态：视频后期审核中\n- 成品路径：{self.product_dir}\n- 提示：剪辑已完成视频并提交，请视频后期审核员登录系统进行审核！",
-                    order_data.get('department')
+                def update_status():
+                    # 上传成功后，将中转路径写入数据库成品路径
+                    db_manager.update_work_order_product_path(order_data['id'], transit_dir)
+                    self.product_dir = transit_dir
+                    product_label.setText(transit_dir)
+                    
+                    # 更新工单状态为 视频后期审核中
+                    new_status = '视频后期审核中'
+                    self.update_work_order_status_and_ui(order_data['id'], new_status)
+                    
+                    # 调用API更新工单状态
+                    api_response = api_manager.update_work_order_status(order_data['id'], new_status)
+                    if api_response['success']:
+                        logger.info(f"API更新工单{order_data['id']}状态为视频后期审核中成功")
+                    else:
+                        error_msg = f"API更新工单{order_data['id']}状态为视频后期审核中失败: {api_response['error']}"
+                        logger.error(error_msg)
+                        QMessageBox.warning(dialog, "API更新失败", error_msg)
+                    
+                    # 记录日志
+                    self.log_action("提交视频后期审核", f"工单ID={order_data['id']}, 角色=剪辑, 成品路径={transit_dir}, 原路径={src}")
+                    
+                    # 发送通知
+                    send_notification(
+                        "工单后期审核提请通知",
+                        f"### 工单号：{order_data['id']}\n- 角色：剪辑\n- 操作：提请后期审核\n- 状态：视频后期审核中\n- 成品路径：{transit_dir}\n- 提示：剪辑已完成视频并成功上传至中转路径，请视频后期审核员登录系统进行审核！",
+                        order_data.get('department')
+                    )
+                    
+                    self.refresh_work_orders()
+                    QMessageBox.information(dialog, "提示", f"成品视频已成功上传中转并提请审核！\n中转路径：\n{transit_dir}")
+                    dialog.accept()
+
+                self.add_file_task(
+                    name=task_name,
+                    files=all_items,
+                    src_dir=src,
+                    dest_dir=transit_dir,
+                    file_filter=lambda f: not (os.path.isdir(os.path.join(src, f)) and "源文件" in f),
+                    op_type="copy",
+                    update_status_func=update_status
                 )
-                
-                self.refresh_work_orders()
-                QMessageBox.information(dialog, "提示", "已成功提交视频后期审核！")
-                dialog.accept()
             def on_distribute_ops():
                 if not self.product_dir:
                     QMessageBox.warning(dialog, "提示", "请先选择成品路径")
