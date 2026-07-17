@@ -74,6 +74,35 @@ EDIT_POST_REVIEW_TRANSIT = lambda dept, id_, model, name: os.path.join(VOLUMES, 
 OPS_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 SALES_GET_SRC = lambda dept, id_, model, name: os.path.join(VOLUMES, '03素材中心', '02销售部', dept, f"{id_} {model} {name}")
 
+def to_local_path(path_str):
+    """跨平台路径格式翻译（适配 Windows 的 \\dabadoc 和 macOS 的 /Volumes）"""
+    if not path_str:
+        return ""
+    
+    # 规整化斜杠，便于统一替换
+    norm_path = path_str.replace('\\', '/')
+    
+    # 检测是 Mac 格式前缀还是 Win 格式前缀
+    is_mac_root = norm_path.startswith('/Volumes')
+    is_win_root = norm_path.startswith('//dabadoc') or norm_path.startswith('//DABADOC')
+    
+    if platform.system() == 'Windows':
+        if is_mac_root:
+            # Mac 路径转 Win：/Volumes -> \\dabadoc
+            local_path = norm_path.replace('/Volumes', r'\\dabadoc', 1)
+        else:
+            local_path = norm_path
+        return os.path.normpath(local_path)
+    else:
+        # macOS 平台
+        if is_win_root:
+            # Win 路径转 Mac：//dabadoc -> /Volumes
+            local_path = re.sub(r'^//[dD][aA][bB][aA][dD][oO][cC]', '/Volumes', norm_path)
+        else:
+            local_path = norm_path
+        # macOS 必须是正斜杠
+        return os.path.normpath(local_path).replace('\\', '/')
+
 # 钉钉机器人配置 - 按产线分拆
 DINGTALK_BOTS = {
     # 默认机器人（当产线未配置时使用）
@@ -4274,7 +4303,7 @@ class MainWindow(QMainWindow):
                 
             edit_product_path = order_data.get('edit_product_path')
             if edit_product_path:
-                edit_product_path = os.path.normpath(edit_product_path)
+                edit_product_path = to_local_path(edit_product_path)
             if not edit_product_path or not os.path.exists(edit_product_path):
                 QMessageBox.warning(
                     self, "错误",
@@ -5356,7 +5385,7 @@ class MainWindow(QMainWindow):
             # 检查成品路径状态
             self.product_dir = order_data.get('edit_product_path')
             if self.product_dir:
-                self.product_dir = os.path.normpath(self.product_dir)
+                self.product_dir = to_local_path(self.product_dir)
             
             # 根据是否有成品路径决定显示内容
             if self.product_dir:
