@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QMainWindow, QTableView, QVBoxLayout, QHBoxLayout
                              QSplitter, QGroupBox, QListWidget, QStackedWidget,
                              QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor, QPixmap
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate, QRect, QPoint
 from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
 from .video_preview import VideoPreviewWidget
 import sys
@@ -3624,62 +3624,89 @@ class MainWindow(QMainWindow):
 
 # 状态进度条委托
 class StatusProgressDelegate(QStyledItemDelegate):
-    STATUS_ORDER = ["拍摄中", "拍摄完成", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"]
+    STATUS_PROGRESS_MAP = {
+        "拍摄中": 15,
+        "拍摄完成": 25,
+        "视频审核中": 35,
+        "审核通过": 45,
+        "重新拍摄": 20,
+        "后期待领取": 50,
+        "后期处理中": 65,
+        "视频后期审核中": 75,
+        "后期重新剪辑": 60,
+        "后期审核通过": 85,
+        "后期已完成": 90,
+        "待上架": 95,
+        "已上架": 100
+    }
+
+    COLOR_MAP = {
+        "拍摄中": (255, 170, 0),        # 橙色
+        "拍摄完成": (0, 200, 255),      # 亮蓝色
+        "视频审核中": (245, 158, 11),    # 驼升黄
+        "审核通过": (40, 167, 69),       # 绿色
+        "重新拍摄": (220, 53, 69),       # 红色
+        "后期待领取": (255, 140, 0),    # 深橙色
+        "后期处理中": (180, 80, 255),   # 紫色
+        "视频后期审核中": (245, 158, 11), # 驼升黄
+        "后期审核通过": (40, 167, 69),   # 绿色
+        "后期重新剪辑": (220, 53, 69),   # 红色
+        "后期已完成": (0, 220, 120),    # 亮绿色
+        "待上架": (255, 215, 0),        # 金色
+        "已上架": (0, 255, 255)         # 亮青色
+    }
+
     def paint(self, painter, option, index):
         status = index.data()
-        # 计算进度百分比
-        if status in self.STATUS_ORDER:
-            start_idx = 0
-            if status in ["后期待领取", "后期处理中", "后期已完成", "待上架", "已上架"]:
-                start_idx = self.STATUS_ORDER.index("后期待领取")
-            total_steps = len(self.STATUS_ORDER) - start_idx
-            try:
-                current_idx = self.STATUS_ORDER.index(status)
-            except ValueError:
-                current_idx = 0
-            progress = max(0, current_idx - start_idx + 1)
-            percent = int(progress / total_steps * 100)
-        else:
-            percent = 0
-        # 进度条区域与单元格一样高
-        bar_rect = option.rect
+        percent = self.STATUS_PROGRESS_MAP.get(status, 0)
+        rgb = self.COLOR_MAP.get(status, (200, 200, 200))
+        
         painter.save()
-        radius = bar_rect.height() // 2
-        bg_color = option.palette.window()
         painter.setRenderHint(QPainter.Antialiasing)
+
+        # 单元格边距微调
+        rect = option.rect.adjusted(4, 4, -4, -4)
+        radius = rect.height() // 2
+
+        # 1. 绘制单元格槽底色（暗色半透明圆角背景胶囊）
+        bg_color = QColor(40, 44, 52, 180)
         painter.setPen(Qt.NoPen)
         painter.setBrush(bg_color)
-        painter.drawRoundedRect(bar_rect, radius, radius)
-        # 绘制进度条填充
+        painter.drawRoundedRect(rect, radius, radius)
+
+        # 2. 绘制半透明状态色彩进度条填充
         if percent > 0:
-            fill_rect = bar_rect.adjusted(0, 0, int((percent-100)*bar_rect.width()/100), 0)
-            fill_color = option.palette.color(QPalette.Highlight)
+            fill_width = max(radius * 2, int(rect.width() * percent / 100))
+            fill_rect = QRect(rect.left(), rect.top(), fill_width, rect.height())
+            fill_color = QColor(rgb[0], rgb[1], rgb[2], 50)
             painter.setBrush(fill_color)
+            painter.setPen(Qt.NoPen)
             painter.drawRoundedRect(fill_rect, radius, radius)
-        # 绘制状态文字（居中覆盖在进度条上）
-        color_map = {
-            "拍摄中": (255, 170, 0),      # 橙色
-            "拍摄完成": (0, 200, 255),    # 亮蓝色
-            "视频审核中": (245, 158, 11),  # 驼升黄
-            "审核通过": (40, 167, 69),     # 绿色
-            "重新拍摄": (220, 53, 69),     # 红色
-            "后期待领取": (255, 140, 0),  # 深橙色
-            "后期处理中": (180, 80, 255), # 紫色
-            "视频后期审核中": (245, 158, 11), # 驼升黄
-            "后期审核通过": (40, 167, 69),     # 绿色
-            "后期重新剪辑": (220, 53, 69),     # 红色
-            "后期已完成": (0, 220, 120),  # 绿色
-            "待上架": (255, 215, 0),      # 金色
-            "已上架": (0, 255, 255)       # 亮青色
-        }
-        rgb = color_map.get(status, (255,255,255))
+
+        # 3. 绘制左侧状态发光圆点 (Dot indicator)
+        dot_radius = 5
+        dot_x = rect.left() + 14
+        dot_y = rect.top() + rect.height() // 2
+        
+        # 绘制圆点外层发光晕
+        glow_color = QColor(rgb[0], rgb[1], rgb[2], 90)
+        painter.setBrush(glow_color)
+        painter.drawEllipse(QPoint(dot_x, dot_y), dot_radius + 2, dot_radius + 2)
+
+        # 绘制核心实心圆点
+        dot_color = QColor(*rgb)
+        painter.setBrush(dot_color)
+        painter.drawEllipse(QPoint(dot_x, dot_y), dot_radius, dot_radius)
+
+        # 4. 绘制状态文本与进度%
+        text_rect = QRect(rect.left() + 26, rect.top(), rect.width() - 30, rect.height())
         painter.setPen(QColor(*rgb))
         font = painter.font()
         font.setBold(True)
-        size = font.pointSize()
-        if size <= 0:
-            size = 12
-        font.setPointSize(size + 1)
+        font.setPointSize(10)
         painter.setFont(font)
-        painter.drawText(bar_rect, Qt.AlignCenter, status)
+        
+        display_text = f"{status}"
+        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, display_text)
+        
         painter.restore()

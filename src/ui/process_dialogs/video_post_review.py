@@ -28,9 +28,12 @@ from src.core.api_manager import api_manager
 import datetime
 from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
 from src.ui.video_preview import VideoPreviewWidget
+import logging
 import os
 import shutil
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def show_video_post_review_dialog(parent, order_data, callbacks):
@@ -78,8 +81,9 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle(f"后期视频审核 - {order_data['id']}")
-    dialog.setMinimumWidth(1300)
-    dialog.setMinimumHeight(650)
+    dialog.setMinimumWidth(1400)
+    dialog.setMinimumHeight(700)
+    dialog.resize(1400, 720)
     # 设置弹窗样式
     dialog.setStyleSheet(parent.styleSheet() + """
         QDialog {
@@ -145,8 +149,11 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     content_layout = QHBoxLayout()
     content_layout.setSpacing(20)
 
-    # Left Layout
-    left_layout = QVBoxLayout()
+    # Left Container & Layout
+    left_container = QWidget()
+    left_container.setMaximumWidth(360)
+    left_layout = QVBoxLayout(left_container)
+    left_layout.setContentsMargins(0, 0, 0, 0)
     left_layout.setSpacing(15)
 
     # 工单基本信息
@@ -171,7 +178,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     left_layout.addWidget(feedback_group)
     left_layout.addStretch()
 
-    content_layout.addLayout(left_layout, 1) # 左侧权重 1
+    content_layout.addWidget(left_container, 1) # 左侧权重 1（配合 MaximumWidth 360）
 
     # 右侧素材列表分组
     material_group = QGroupBox("剪辑提交的成品视频列表")
@@ -188,12 +195,15 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     files_found = []
     if os.path.exists(edit_product_path):
         try:
-            for item in os.listdir(edit_product_path):
-                full_item_path = os.path.join(edit_product_path, item)
-                if os.path.isfile(full_item_path):
-                    ext = os.path.splitext(item)[1].lower()
+            for root, dirs, files in os.walk(edit_product_path):
+                if "不通过" in dirs:
+                    dirs.remove("不通过")
+                for file in files:
+                    ext = os.path.splitext(file)[1].lower()
                     if ext in VID_EXTS:
-                        files_found.append((item, full_item_path))
+                        full_item_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(full_item_path, edit_product_path)
+                        files_found.append((rel_path, full_item_path))
         except Exception as e:
             logger.error(f"读取成品目录 {edit_product_path} 失败: {e}")
 
@@ -277,11 +287,11 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
             QDesktopServices.openUrl(QUrl.fromLocalFile(fpath))
     file_table.cellDoubleClicked.connect(on_file_double_clicked)
 
-    content_layout.addWidget(material_group, 1)  # 中间权重 1
+    content_layout.addWidget(material_group, 2)  # 中间素材列表权重提升至 2
 
     # 右侧预览面板
     preview_panel = QGroupBox("文件预览")
-    preview_panel.setMinimumWidth(400)
+    preview_panel.setMinimumWidth(380)
     preview_panel_layout = QVBoxLayout(preview_panel)
     preview_panel_layout.setSpacing(8)
 
@@ -358,7 +368,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     file_table.cellClicked.disconnect(on_table_cell_clicked)
     file_table.cellClicked.connect(on_cell_clicked_with_preview)
 
-    content_layout.addWidget(preview_panel, 1)  # 右侧预览
+    content_layout.addWidget(preview_panel, 2)  # 右侧预览权重 2
 
     main_layout.addLayout(content_layout)
 
@@ -420,6 +430,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
             try:
                 os.makedirs(fail_dir, exist_ok=True)
                 dest_path = os.path.join(fail_dir, fname)
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                 shutil.move(fpath, dest_path)
                 # 记录反馈
                 db_manager.add_review_feedback(order_data['id'], fname, edit_product_path, reason)

@@ -27,10 +27,12 @@ from src.core.notification import send_notification
 from src.core.api_manager import api_manager
 import datetime
 from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
-from src.ui.video_preview import VideoPreviewWidget
+import logging
 import os
 import shutil
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def show_art_dialog(parent, order_data, callbacks):
@@ -406,12 +408,13 @@ def show_art_dialog(parent, order_data, callbacks):
             #     f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：领取素材\n- 状态：后期处理中\n- 目标路径：{dest}"
             # )
     
-        # 获取源路径中的所有内容（文件和文件夹）
+        # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
         if os.path.exists(src):
-            for item in os.listdir(src):
-                item_path = os.path.join(src, item)
-                all_items.append(item)
+            for root, dirs, files in os.walk(src):
+                for file in files:
+                    rel_path = os.path.relpath(os.path.join(root, file), src)
+                    all_items.append(rel_path)
     
         _add_file_task(
             name=task_name,
@@ -503,19 +506,20 @@ def show_art_dialog(parent, order_data, callbacks):
             #     f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发运营\n- 状态：后期已完成\n- 目标路径：{dest}"
             # )
     
-        # 获取源路径中的所有内容（文件和文件夹）
+        # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
         if os.path.exists(src):
-            for item in os.listdir(src):
-                item_path = os.path.join(src, item)
-                all_items.append(item)
+            for root, dirs, files in os.walk(src):
+                for file in files:
+                    rel_path = os.path.relpath(os.path.join(root, file), src)
+                    all_items.append(rel_path)
     
         _add_file_task(
             name=task_name,
             files=all_items,
             src_dir=src,
             dest_dir=dest,
-            file_filter=lambda f: not (os.path.isdir(os.path.join(src, f)) and "源文件" in f),
+            file_filter=lambda f: "源文件" not in f,
             op_type="copy",
             update_status_func=update_status
         )
@@ -562,19 +566,20 @@ def show_art_dialog(parent, order_data, callbacks):
             #     f"### 工单号：{order_data['id']}\n- 角色：{parent.role}\n- 操作：分发销售\n- 状态：后期已完成\n- 目标路径：{dest}"
             # )
     
-        # 获取源路径中的所有内容（文件和文件夹）
+        # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
         if os.path.exists(src):
-            for item in os.listdir(src):
-                item_path = os.path.join(src, item)
-                all_items.append(item)
+            for root, dirs, files in os.walk(src):
+                for file in files:
+                    rel_path = os.path.relpath(os.path.join(root, file), src)
+                    all_items.append(rel_path)
     
         _add_file_task(
             name=task_name,
             files=all_items,
             src_dir=src,
             dest_dir=dest,
-            file_filter=lambda f: not (os.path.isdir(os.path.join(src, f)) and "源文件" in f),
+            file_filter=lambda f: "源文件" not in f,
             op_type="copy",
             update_status_func=update_status
         )
