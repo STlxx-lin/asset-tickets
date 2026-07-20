@@ -61,12 +61,12 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
             "视频后期审核功能当前已关闭。\n如需开启，请管理员前往【系统设置 → 功能设置】进行配置。"
         )
         return
-    # 只有状态为「视频后期审核中」才可审核（支持通过配置跳过）
+    # 只有状态为「视频后期审核中」或「后期已完成」才可审核（支持通过配置跳过）
     if not BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK:
         current_status = order_data.get('status', '')
-        if current_status != '视频后期审核中':
+        if current_status not in ['视频后期审核中', '后期已完成']:
             QMessageBox.information(parent, "提示",
-                f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】的工单才可进行后期审核。"
+                f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】或【后期已完成】的工单才可进行后期审核。"
             )
             return
     
