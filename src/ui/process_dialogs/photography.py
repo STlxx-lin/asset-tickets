@@ -31,6 +31,9 @@ from src.ui.video_preview import VideoPreviewWidget
 import os
 import shutil
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def show_photography_dialog(parent, order_data, callbacks):
@@ -403,16 +406,23 @@ def show_photography_dialog(parent, order_data, callbacks):
     distribute_img_btn = QPushButton("分发图片")
     distribute_vid_btn = QPushButton("分发视频")
 
-    # 仅在“审核通过”状态下才允许分发
-    is_approved = order_data.get('status') == '审核通过'
+    # 仅在“审核通过”状态下才允许分发。如果视频审核已关闭，允许“视频审核中”的工单进行分发。
+    status = order_data.get('status')
+    if is_video_review_enabled():
+        is_approved = status == '审核通过'
+        tooltip_text = "需要视频审核通过后方可分发"
+    else:
+        is_approved = status in ['审核通过', '视频审核中']
+        tooltip_text = "需要先上传素材方可分发"
+        
     distribute_img_btn.setEnabled(is_approved)
     distribute_vid_btn.setEnabled(is_approved)
     if not is_approved:
         gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
         distribute_img_btn.setStyleSheet(gray_style)
         distribute_vid_btn.setStyleSheet(gray_style)
-        distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
-        distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
+        distribute_img_btn.setToolTip(tooltip_text)
+        distribute_vid_btn.setToolTip(tooltip_text)
 
     def on_upload_material():
         # 验证摄影师是否已选择
@@ -523,7 +533,9 @@ def show_photography_dialog(parent, order_data, callbacks):
             return None
         return src_files
     def on_distribute_img():
-        if order_data.get('status') != '审核通过':
+        status = order_data.get('status')
+        allow_distribute = (status == '审核通过') or (not is_video_review_enabled() and status == '视频审核中')
+        if not allow_distribute:
             QMessageBox.warning(dialog, "提示", "工单未审核通过，无法分发！")
             return
         src_dir = get_upload_dir()
@@ -585,7 +597,9 @@ def show_photography_dialog(parent, order_data, callbacks):
             update_status_func=update_status
         )
     def on_distribute_vid():
-        if order_data.get('status') != '审核通过':
+        status = order_data.get('status')
+        allow_distribute = (status == '审核通过') or (not is_video_review_enabled() and status == '视频审核中')
+        if not allow_distribute:
             QMessageBox.warning(dialog, "提示", "工单未审核通过，无法分发！")
             return
         src_dir = get_upload_dir()
