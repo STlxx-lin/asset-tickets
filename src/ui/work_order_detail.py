@@ -263,30 +263,35 @@ class WorkOrderDetailDialog(QDialog):
     def setup_progress_section(self):
         """流转进度条"""
         progress_group = QGroupBox("处理进度")
-        progress_layout = QHBoxLayout(progress_group)
-        progress_layout.setContentsMargins(5, 15, 5, 15) # Reduced vertical margins
-        
-        # 计算已完成的步骤
-        finished_steps = self.calculate_finished_steps()
-        step_names = ["拍摄完成", "美工分发", "剪辑分发", "销售领取", "运营领取", "运营上架"]
-        
-        for i, step in enumerate(step_names):
-            # 步骤容器
+        progress_main_layout = QVBoxLayout(progress_group)
+        progress_main_layout.setContentsMargins(15, 15, 15, 15)
+        progress_main_layout.setSpacing(15)
+
+        # 检查各自的亮灯状态
+        art_finished, edit_finished = self.calculate_role_finished_steps()
+
+        # 1. 美工进度行
+        art_layout = QHBoxLayout()
+        art_title = QLabel("美工后期:")
+        art_title.setStyleSheet("font-weight: bold; color: #4fc3f7; font-size: 13px; min-width: 70px;")
+        art_layout.addWidget(art_title)
+
+        art_steps = ["美工待领取", "正在设计", "设计完成", "美工分发", "已被领取"]
+        for i, step in enumerate(art_steps):
             step_widget = QWidget()
             step_vbox = QVBoxLayout(step_widget)
-            step_vbox.setSpacing(4) # Tighter spacing
+            step_vbox.setSpacing(4)
             step_vbox.setContentsMargins(0, 0, 0, 0)
-            
-            # 图标/圆点
-            is_done = step in finished_steps
+
+            is_done = step in art_finished
             dot_text = "✓" if is_done else str(i+1)
             dot_color = "#4caf50" if is_done else "#555555"
             text_color = "#4caf50" if is_done else "#888888"
             font_weight = "bold" if is_done else "normal"
-            
+
             dot = QLabel(dot_text)
             dot.setAlignment(Qt.AlignCenter)
-            dot.setFixedSize(22, 22) # Slightly smaller
+            dot.setFixedSize(22, 22)
             dot.setStyleSheet(f"""
                 background-color: {dot_color};
                 color: white;
@@ -294,24 +299,69 @@ class WorkOrderDetailDialog(QDialog):
                 font-weight: bold;
                 font-size: 12px;
             """)
-            
-            # 文字
+
             label = QLabel(step)
             label.setAlignment(Qt.AlignCenter)
             label.setStyleSheet(f"color: {text_color}; font-weight: {font_weight}; font-size: 12px;")
-            
+
             step_vbox.addWidget(dot, 0, Qt.AlignCenter)
             step_vbox.addWidget(label, 0, Qt.AlignCenter)
-            progress_layout.addWidget(step_widget)
-            
-            # 箭头 (除了最后一个)
-            if i < len(step_names) - 1:
+            art_layout.addWidget(step_widget)
+
+            if i < len(art_steps) - 1:
                 line = QFrame()
                 line.setFrameShape(QFrame.HLine)
                 line.setFixedHeight(2)
                 line.setStyleSheet(f"background-color: {dot_color};")
-                progress_layout.addWidget(line)
+                art_layout.addWidget(line)
 
+        # 2. 剪辑进度行
+        edit_layout = QHBoxLayout()
+        edit_title = QLabel("剪辑后期:")
+        edit_title.setStyleSheet("font-weight: bold; color: #9c27b0; font-size: 13px; min-width: 70px;")
+        edit_layout.addWidget(edit_title)
+
+        edit_steps = ["剪辑待领取", "正在剪辑", "视频审核中", "后期审完", "剪辑分发", "已被领取"]
+        for i, step in enumerate(edit_steps):
+            step_widget = QWidget()
+            step_vbox = QVBoxLayout(step_widget)
+            step_vbox.setSpacing(4)
+            step_vbox.setContentsMargins(0, 0, 0, 0)
+
+            is_done = step in edit_finished
+            dot_text = "✓" if is_done else str(i+1)
+            dot_color = "#4caf50" if is_done else "#555555"
+            text_color = "#4caf50" if is_done else "#888888"
+            font_weight = "bold" if is_done else "normal"
+
+            dot = QLabel(dot_text)
+            dot.setAlignment(Qt.AlignCenter)
+            dot.setFixedSize(22, 22)
+            dot.setStyleSheet(f"""
+                background-color: {dot_color};
+                color: white;
+                border-radius: 11px;
+                font-weight: bold;
+                font-size: 12px;
+            """)
+
+            label = QLabel(step)
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet(f"color: {text_color}; font-weight: {font_weight}; font-size: 12px;")
+
+            step_vbox.addWidget(dot, 0, Qt.AlignCenter)
+            step_vbox.addWidget(label, 0, Qt.AlignCenter)
+            edit_layout.addWidget(step_widget)
+
+            if i < len(edit_steps) - 1:
+                line = QFrame()
+                line.setFrameShape(QFrame.HLine)
+                line.setFixedHeight(2)
+                line.setStyleSheet(f"background-color: {dot_color};")
+                edit_layout.addWidget(line)
+
+        progress_main_layout.addLayout(art_layout)
+        progress_main_layout.addLayout(edit_layout)
         self.scroll_layout.addWidget(progress_group)
 
     def setup_logs_section(self):
@@ -511,28 +561,95 @@ class WorkOrderDetailDialog(QDialog):
         }
         return colors.get(status, "#757575")
 
-    def calculate_finished_steps(self):
-        finished_steps = set()
-        # 复用原有的逻辑，但稍作封装
+    def calculate_role_finished_steps(self):
+        art_finished = set()
+        edit_finished = set()
+        
+        status = self.order_data.get('status', '')
+        art_start = self.order_data.get('art_start_time')
+        art_end = self.order_data.get('art_end_time')
+        edit_start = self.order_data.get('edit_start_time')
+        edit_end = self.order_data.get('edit_end_time')
+        
+        # 1. 基础后期流转判定
+        is_post_phase = status not in ['拍摄中', '重新拍摄', '视频审核中', '拍摄完成', '审核通过']
+        
+        # 美工链基础亮灯
+        if is_post_phase:
+            art_finished.add("美工待领取")
+        if art_start:
+            art_finished.add("正在设计")
+        if art_end:
+            art_finished.add("设计完成")
+            
+        # 剪辑链基础亮灯
+        if is_post_phase:
+            edit_finished.add("剪辑待领取")
+        if edit_start:
+            edit_finished.add("正在剪辑")
+
+        # 2. 扫描日志
+        has_art_dist = False
+        has_edit_dist = False
+        has_art_ops_collected = False
+        has_art_sales_collected = False
+        has_edit_ops_collected = False
+        has_edit_sales_collected = False
+
         for log in self.logs:
             role = log.get('role', '')
             action = log.get('action_type', '')
             details = log.get('details', '')
             content = action + details
-            
-            if "摄影" in role and action == "上传素材":
-                finished_steps.add("拍摄完成")
-            if "美工" in role and "分发" in content and ("运营" in content or "销售" in content):
-                finished_steps.add("美工分发")
+
+            # 美工分发
+            if "美工" in role and "分发" in content:
+                has_art_dist = True
+            # 剪辑分发
             if ("剪辑" in role or "视频后期审核" in role) and ("分发" in content or "审核通过" in content) and ("运营" in content or "销售" in content or "视频" in content or "后期" in content):
-                finished_steps.add("剪辑分发")
-            if "销售" in role and "领取" in content:
-                finished_steps.add("销售领取")
-            if "运营" in role and "领取" in content:
-                finished_steps.add("运营领取")
-            if "运营" in role and action == "添加产品信息":
-                finished_steps.add("运营上架")
-        return finished_steps
+                has_edit_dist = True
+                
+            # 运营/销售领取
+            if ("运营" in role or "销售" in role) and "领取" in content and f"工单ID={self.order_data['id']}" in details:
+                if "02视频" in details:
+                    if "运营" in role:
+                        has_edit_ops_collected = True
+                    else:
+                        has_edit_sales_collected = True
+                else:
+                    if "运营" in role:
+                        has_art_ops_collected = True
+                    else:
+                        has_art_sales_collected = True
+
+        if status in ['后期已完成', '待上架', '已上架']:
+            has_art_dist = True
+            has_edit_dist = True
+
+        if has_art_dist:
+            art_finished.add("美工分发")
+        if has_edit_dist:
+            edit_finished.add("剪辑分发")
+
+        # 是否已被领取（只要有任一部门领取了算该链完成已被领取）
+        if has_art_ops_collected or has_art_sales_collected or status in ['待上架', '已上架']:
+            art_finished.add("已被领取")
+            
+        if has_edit_ops_collected or has_edit_sales_collected or status in ['待上架', '已上架']:
+            edit_finished.add("已被领取")
+
+        # 剪辑特有审核状态亮灯
+        if status == '视频后期审核中':
+            edit_finished.add("视频审核中")
+        elif status == '后期审核通过':
+            edit_finished.add("视频审核中")
+            edit_finished.add("后期审完")
+        elif status in ['后期已完成', '待上架', '已上架']:
+            edit_finished.add("视频审核中")
+            edit_finished.add("后期审完")
+
+        return art_finished, edit_finished
+
 
     def format_time(self, time_str):
         if not time_str:
