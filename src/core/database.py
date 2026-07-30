@@ -235,7 +235,9 @@ class DatabaseManager:
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content,
                                wo.project_type_id, wo.project_content_id, wo.remarks,
-                               wo.edit_product_path
+                               wo.edit_product_path,
+                               wo.art_start_time, wo.art_end_time,
+                               wo.edit_start_time, wo.edit_end_time
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
                         LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
@@ -250,7 +252,9 @@ class DatabaseManager:
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content,
                                wo.project_type_id, wo.project_content_id, wo.remarks,
-                               wo.edit_product_path
+                               wo.edit_product_path,
+                               wo.art_start_time, wo.art_end_time,
+                               wo.edit_start_time, wo.edit_end_time
                         FROM mcs_by_takuya_work_orders wo
                         JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
                         LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
@@ -572,6 +576,38 @@ class DatabaseManager:
             return []
         finally:
             self.disconnect()
+
+    def get_logs_by_order_ids(self, order_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        if not order_ids:
+            return {}
+        if not self.connect():
+            return {}
+        try:
+            conditions = " OR ".join(["details LIKE %s"] * len(order_ids))
+            params = [f"%工单ID={oid}%" for oid in order_ids]
+            query = f"""
+                SELECT role, user_name, action_type, details, timestamp
+                FROM mcs_by_takuya_logs
+                WHERE {conditions}
+                ORDER BY timestamp DESC
+            """
+            result = {oid: [] for oid in order_ids}
+            with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                for row in rows:
+                    details = row.get('details', '')
+                    for oid in order_ids:
+                        if f"工单ID={oid}" in details:
+                            result[oid].append(row)
+                            break
+            return result
+        except Exception as e:
+            self.logger.error(f"批量获取工单日志失败: {e}")
+            return {}
+        finally:
+            self.disconnect()
+
 
     def save_product_info(self, work_order_id: str, products: List[Dict[str, str]]) -> bool:
         """保存产品信息到数据库"""

@@ -3479,36 +3479,144 @@ class MainWindow(QMainWindow):
         index = self.creator_filter.findText(current_creator)
         if index >= 0:
             self.creator_filter.setCurrentIndex(index)
+    def calculate_art_status(self, order, logs):
+        global_status = order.get('status', '')
+        
+        # 1. 已上架
+        if global_status == '已上架':
+            return "已上架"
+            
+        # 2. 待上架
+        if global_status == '待上架':
+            return "待上架"
+            
+        # 3. 美工已完成分发
+        if global_status == '后期已完成':
+            return "美工已完成"
+        has_distribute = False
+        for log in logs:
+            action = log.get('action_type', '')
+            details = log.get('details', '')
+            if action in ['美工分发运营', '美工分发销售'] and f"工单ID={order['id']}" in details:
+                has_distribute = True
+                break
+        if has_distribute:
+            return "美工已完成"
+            
+        # 4. 重新拍摄
+        if global_status == '重新拍摄':
+            return "重新拍摄"
+            
+        # 5. 美工待分发 (已选成品)
+        if order.get('art_end_time'):
+            return "美工待分发"
+            
+        # 6. 美工设计中
+        if order.get('art_start_time'):
+            return "美工设计中"
+            
+        # 7. 美工待领取
+        if global_status not in ['拍摄中', '视频审核中', '拍摄完成', '审核通过']:
+            return "美工待领取"
+            
+        # 8. 美工未开始
+        return "美工未开始"
+
+    def calculate_edit_status(self, order, logs):
+        global_status = order.get('status', '')
+        
+        # 1. 已上架
+        if global_status == '已上架':
+            return "已上架"
+            
+        # 2. 待上架
+        if global_status == '待上架':
+            return "待上架"
+            
+        # 3. 剪辑已完成分发
+        if global_status == '后期已完成':
+            return "剪辑已完成"
+        has_distribute = False
+        for log in logs:
+            action = log.get('action_type', '')
+            details = log.get('details', '')
+            if action in ['剪辑分发运营', '剪辑分发销售'] and f"工单ID={order['id']}" in details:
+                has_distribute = True
+                break
+        if has_distribute:
+            return "剪辑已完成"
+            
+        # 4. 重新拍摄
+        if global_status == '重新拍摄':
+            return "重新拍摄"
+            
+        # 5. 后期审完
+        if global_status == '后期审核通过':
+            return "后期审完"
+            
+        # 6. 后期审核中
+        if global_status == '视频后期审核中':
+            return "后期审核中"
+            
+        # 7. 重新剪辑
+        if global_status == '后期重新剪辑':
+            return "重新剪辑"
+            
+        # 8. 剪辑处理中
+        if order.get('edit_start_time'):
+            return "剪辑处理中"
+            
+        # 9. 剪辑待领取
+        if global_status not in ['拍摄中', '视频审核中', '拍摄完成', '审核通过']:
+            return "剪辑待领取"
+            
+        # 10. 剪辑未开始
+        return "剪辑未开始"
+
     def setup_work_orders_table(self):
         self.model.clear()
-        self.model.setHorizontalHeaderLabels(['ID', '产线', '型号', '名称', '发起人', '需求人', '状态'])
+        self.model.setHorizontalHeaderLabels(['ID', '产线', '型号', '名称', '发起人', '需求人', '美工进度', '剪辑进度'])
         self.table_view.setModel(self.model)
         # 使用当前筛选后的数据，如果没有则从数据库获取用户所属部门的工单
         if not hasattr(self, 'work_orders_data') or self.work_orders_data is None:
             self.work_orders_data = db_manager.get_work_orders(self.departments)
+            
+        order_ids = [order['id'] for order in self.work_orders_data] if self.work_orders_data else []
+        all_logs_dict = db_manager.get_logs_by_order_ids(order_ids) if order_ids else {}
+        
         for order in self.work_orders_data:
-            # 对需求人字段进行特殊处理，None值显示为"没有设置"
             items = []
-            for k in ['id', 'department', 'model', 'name', 'creator', 'requester', 'status']:
+            for k in ['id', 'department', 'model', 'name', 'creator', 'requester']:
                 value = order.get(k, '')
                 # 当字段是requester且值为None或空字符串时，显示"没有设置"
                 if k == 'requester' and (value is None or value == ''):
                     items.append(QStandardItem("没有设置"))
                 else:
                     items.append(QStandardItem(str(value)))
+                    
+            order_logs = all_logs_dict.get(order['id'], [])
+            art_status = self.calculate_art_status(order, order_logs)
+            edit_status = self.calculate_edit_status(order, order_logs)
+            
+            items.append(QStandardItem(art_status))
+            items.append(QStandardItem(edit_status))
+            
             items[0].setData(order, Qt.UserRole)
             self.model.appendRow(items)
+            
         self.table_view.setColumnWidth(0, 160)
         self.table_view.setColumnWidth(1, 150)
         self.table_view.setColumnWidth(2, 120)
         self.table_view.setColumnWidth(4, 100)
         self.table_view.setColumnWidth(5, 100)
         self.table_view.setColumnWidth(6, 180)
+        self.table_view.setColumnWidth(7, 180)
         self.table_view.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table_view.setEditTriggers(QTableView.NoEditTriggers)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         # 设置状态列自定义委托
         self.table_view.setItemDelegateForColumn(6, StatusProgressDelegate(self.table_view))
+        self.table_view.setItemDelegateForColumn(7, StatusProgressDelegate(self.table_view))
         self.expanded_row = None
     def on_work_order_row_double_clicked(self, index):
         row = index.row()
@@ -3637,7 +3745,21 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "后期审核通过": 85,
         "后期已完成": 90,
         "待上架": 95,
-        "已上架": 100
+        "已上架": 100,
+        
+        "美工未开始": 0,
+        "美工待领取": 20,
+        "美工设计中": 60,
+        "美工待分发": 85,
+        "美工已完成": 90,
+        
+        "剪辑未开始": 0,
+        "剪辑待领取": 20,
+        "剪辑处理中": 50,
+        "重新剪辑": 60,
+        "后期审核中": 75,
+        "后期审完": 90,
+        "剪辑已完成": 95
     }
 
     COLOR_MAP = {
@@ -3653,7 +3775,21 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "后期重新剪辑": (220, 53, 69),   # 红色
         "后期已完成": (0, 220, 120),    # 亮绿色
         "待上架": (255, 215, 0),        # 金色
-        "已上架": (0, 255, 255)         # 亮青色
+        "已上架": (0, 255, 255),         # 亮青色
+        
+        "美工未开始": (120, 120, 120),    # 灰色
+        "美工待领取": (255, 140, 0),      # 深橙色
+        "美工设计中": (180, 80, 255),     # 紫色
+        "美工待分发": (245, 158, 11),     # 驼升黄
+        "美工已完成": (0, 220, 120),      # 亮绿色
+        
+        "剪辑未开始": (120, 120, 120),    # 灰色
+        "剪辑待领取": (255, 140, 0),      # 深橙色
+        "剪辑处理中": (180, 80, 255),     # 紫色
+        "重新剪辑": (220, 53, 69),        # 红色
+        "后期审核中": (245, 158, 11),     # 驼升黄
+        "后期审完": (40, 167, 69),        # 绿色
+        "剪辑已完成": (0, 255, 255)       # 亮青色
     }
 
     def paint(self, painter, option, index):
