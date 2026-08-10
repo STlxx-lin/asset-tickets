@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -15,6 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStatusUpdater(QObject):
@@ -61,8 +64,8 @@ class Task(QThread):
     def run(self):
         """运行任务"""
         total = len(self.files)
-        processed = 0
         move_successful = True  # 标记移动操作是否成功
+        skipped_existing = []  # 目标已存在而被跳过的文件（目标有完整副本，可安全清理）
 
         for i, fname in enumerate(self.files):
             if self._is_canceled:
@@ -78,8 +81,9 @@ class Task(QThread):
             src_file = os.path.join(self.src_dir, fname)
             dest_file = os.path.join(self.dest_dir, fname)
 
-            # 如果目标文件已存在，跳过
+            # 如果目标文件已存在，跳过（目标已有副本，源文件稍后确认后可清理）
             if os.path.exists(dest_file):
+                skipped_existing.append(fname)
                 continue
 
             try:
@@ -95,32 +99,46 @@ class Task(QThread):
                         shutil.copy2(src_file, dest_file)
                     else:  # move
                         shutil.move(src_file, dest_file)
-                processed += 1
             except Exception as e:
                 msg = f"处理文件 {fname} 时出错: {e}"
-                print(msg)
+                logger.error(msg)
                 self.errors.append(msg)
                 move_successful = False
                 continue
 
             self.progress_changed.emit(int((i + 1) / total * 100))
 
-        # 只有在移动操作成功且源文件夹存在时才删除
+        # 清理源目录：仅在所有文件均已成功移动/确认目标有副本后执行
         if self.op_type == "move" and move_successful and os.path.exists(self.src_dir):
             try:
-                # 检查源文件夹是否为空
                 remaining_files = os.listdir(self.src_dir)
-                if not remaining_files:
-                    # 如果为空，直接删除
+                # 仅删除“目标已存在”被跳过的重复项（目标有完整副本）
+                removable = [f for f in remaining_files if f in skipped_existing]
+                for f in removable:
+                    path = os.path.join(self.src_dir, f)
+                    try:
+                        if os.path.isdir(path):
+                            shutil.rmtree(path)
+                        else:
+                            os.remove(path)
+                        logger.info(f"已删除源目录重复文件: {f}")
+                    except Exception as e:
+                        msg = f"删除源目录重复文件 {f} 时出错: {e}"
+                        logger.error(msg)
+                        self.errors.append(msg)
+                # 其余文件（新增/隐藏/未在任务列表中的）一律保留，不删除
+                still_remaining = [f for f in os.listdir(self.src_dir) if f not in removable]
+                if still_remaining:
+                    msg = f"源目录仍有 {len(still_remaining)} 个文件未移动，已保留: {', '.join(still_remaining[:5])}"
+                    logger.warning(msg)
+                    self.errors.append(msg)
+                # 目录已空则移除
+                if not os.listdir(self.src_dir):
                     os.rmdir(self.src_dir)
-                    print(f"已删除空文件夹: {self.src_dir}")
-                else:
-                    # 如果不为空，说明有重复文件被跳过，强制删除整个文件夹
-                    shutil.rmtree(self.src_dir)
-                    print(f"已删除源文件夹（包含重复文件）: {self.src_dir}")
+                    logger.info(f"已删除空文件夹: {self.src_dir}")
             except Exception as e:
-                msg = f"删除源文件夹时出错: {e}"
-                print(msg)
+                msg = f"清理源文件夹时出错: {e}"
+                logger.error(msg)
                 self.errors.append(msg)
 
         if self.status_updater:
