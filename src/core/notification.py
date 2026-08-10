@@ -204,7 +204,7 @@ def send_dingtalk_markdown(title: str, text: str, department: str = None) -> Non
     webhook = bot_config.get("webhook", "")
     secret = bot_config.get("secret", "")
     if not webhook:
-        print(f"钉钉推送已跳过 - 产线: {department or 'default'}, 原因: 未配置Webhook")
+        logger.info(f"钉钉推送已跳过 - 产线: {department or 'default'}, 原因: 未配置Webhook")
         return
 
     webhook_url = webhook
@@ -221,9 +221,9 @@ def send_dingtalk_markdown(title: str, text: str, department: str = None) -> Non
     }
     try:
         requests.post(webhook_url, json=data, headers={"Content-Type": "application/json"}, timeout=3)
-        print(f"钉钉推送成功 - 产线: {department or 'default'}")
+        logger.info(f"钉钉推送成功 - 产线: {department or 'default'}")
     except Exception as e:
-        print(f"钉钉推送失败 - 产线: {department or 'default'}, 错误: {e}")
+        logger.error(f"钉钉推送失败 - 产线: {department or 'default'}, 错误: {e}")
 
 
 def send_wechat_work_markdown(title: str, text: str, department: str = None) -> None:
@@ -235,7 +235,7 @@ def send_wechat_work_markdown(title: str, text: str, department: str = None) -> 
 
     webhook = bot_config.get("webhook", "")
     if not webhook:
-        print(f"企业微信推送已跳过 - 产线: {department or 'default'}, 原因: 未配置Webhook")
+        logger.info(f"企业微信推送已跳过 - 产线: {department or 'default'}, 原因: 未配置Webhook")
         return
 
     data = {
@@ -244,9 +244,9 @@ def send_wechat_work_markdown(title: str, text: str, department: str = None) -> 
     }
     try:
         requests.post(webhook, json=data, headers={"Content-Type": "application/json"}, timeout=3)
-        print(f"企业微信推送成功 - 产线: {department or 'default'}")
+        logger.info(f"企业微信推送成功 - 产线: {department or 'default'}")
     except Exception as e:
-        print(f"企业微信推送失败 - 产线: {department or 'default'}, 错误: {e}")
+        logger.error(f"企业微信推送失败 - 产线: {department or 'default'}, 错误: {e}")
 
 
 def send_notification(title: str, text: str, department: str = None) -> None:

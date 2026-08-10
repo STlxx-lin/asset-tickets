@@ -3056,66 +3056,6 @@ class MainWindow(QMainWindow):
             )
         else:
             QMessageBox.information(self, "操作", f"点击了按钮：{field}")
-    def on_get_material(self, src, dest, order_data, role):
-        """领取素材通用方法"""
-        if not os.path.exists(src):
-            QMessageBox.warning(self, "提示", f"素材文件夹不存在: {src}")
-            return
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        # 使用任务管理器处理文件移动
-        task_name = f"{role}领取素材 - 工单{order_data['id']}"
-        # 根据角色设置不同的状态更新
-        new_status = '后期处理中' if role in ['美工', '剪辑'] else '待上架'
-        def update_status():
-            self.update_work_order_status_and_ui(order_data['id'], new_status)
-            self.log_action(f"{role}领取素材", f"工单ID={order_data['id']}, 角色={role}, 源路径={src}, 目标路径={dest}")
-            # 显示完成消息
-            msg = QMessageBox(self)
-            msg.setWindowTitle("领取完成")
-            msg.setText(f"素材已移动到：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ButtonRole.ActionRole)
-            msg.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
-            msg.exec()
-            if msg.clickedButton() == open_btn:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
-        self.add_file_task(
-            name=task_name,
-            files=os.listdir(src),
-            src_dir=src,
-            dest_dir=dest,
-            op_type="move",
-            update_status_func=update_status
-        )
-    def on_distribute_files(self, src, dest, order_data, role, file_filter=None, new_status=None):
-        """分发文件通用方法"""
-        if not os.path.exists(src):
-            QMessageBox.warning(self, "提示", f"源文件夹不存在: {src}")
-            return
-        os.makedirs(dest, exist_ok=True)
-        # 使用任务管理器处理文件复制
-        task_name = f"{role}分发文件 - 工单{order_data['id']}"
-        def update_status():
-            if new_status:
-                self.update_work_order_status_and_ui(order_data['id'], new_status)
-            self.log_action(f"{role}分发文件", f"工单ID={order_data['id']}, 角色={role}, 源路径={src}, 目标路径={dest}")
-            # 显示完成消息
-            msg = QMessageBox(self)
-            msg.setWindowTitle("分发完成")
-            msg.setText(f"成功分发到：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ButtonRole.ActionRole)
-            msg.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
-            msg.exec()
-            if msg.clickedButton() == open_btn:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
-        self.add_file_task(
-            name=task_name,
-            files=os.listdir(src),
-            src_dir=src,
-            dest_dir=dest,
-            file_filter=file_filter,
-            op_type="copy",
-            update_status_func=update_status
-        )
     def handle_edit_selected_order(self):
         index = self.table_view.currentIndex()
         if not index.isValid():
