@@ -2,35 +2,29 @@
 show_sales_dialog — 销售 工单处理对话框
 从 main_window.py 重构迁移而来，不改变任何业务逻辑。
 """
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLabel,
-    QMessageBox, QHeaderView, QSplitter, QGroupBox, QListWidget,
-    QTabWidget, QLineEdit, QComboBox, QFormLayout, QDialogButtonBox,
-    QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog,
-    QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea,
-    QFrame, QProgressDialog, QCheckBox, QGridLayout, QApplication,
-)
-from PySide6.QtGui import (
-    QStandardItemModel, QStandardItem, QFont, QDesktopServices,
-    QPainter, QColor, QPixmap,
-)
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
-from src.core.paths import (
-    VOLUMES, IMG_EXTS, VID_EXTS,
-    PHOTOGRAPHY_UPLOAD, PHOTOGRAPHY_DIST_IMG, PHOTOGRAPHY_DIST_VIDEO,
-    ART_GET_IMG_SRC, ART_GET_IMG_DEST, ART_DIST_OPS, ART_DIST_SALES,
-    EDIT_GET_VIDEO_SRC, EDIT_GET_VIDEO_DEST, EDIT_DIST_OPS, EDIT_DIST_SALES,
-    EDIT_POST_REVIEW_TRANSIT, OPS_GET_SRC, SALES_GET_SRC, to_local_path,
-)
-from src.core.database import db_manager
-from src.core.notification import send_notification
-from src.core.api_manager import api_manager
-import datetime
-from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
-from src.ui.video_preview import VideoPreviewWidget
 import os
-import shutil
-import re
+
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import (
+    QDesktopServices,
+)
+from PySide6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.core.paths import (
+    SALES_GET_SRC,
+)
+from src.ui.dialog_helpers import show_path_result
 
 
 def show_sales_dialog(parent, order_data, callbacks):
@@ -230,14 +224,7 @@ def show_sales_dialog(parent, order_data, callbacks):
             return
         parent.store_dir = dir_path
         store_path_label.setText(dir_path)
-        msg = QMessageBox(dialog)
-        msg.setWindowTitle("已选择")
-        msg.setText(f"存放路径：\n{dir_path}")
-        open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-        msg.addButton("确定", QMessageBox.AcceptRole)
-        msg.exec()
-        if msg.clickedButton() == open_btn:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
+        show_path_result(dialog, "已选择", f"存放路径：\n{dir_path}", dir_path)
     def on_get_material():
         src = get_sales_get_src()
         if not parent.store_dir:
@@ -252,18 +239,17 @@ def show_sales_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件移动
         task_name = f"销售领取素材 - 工单{order_data['id']}"
         def update_status():
+            # 对话框可能已被用户关闭，防护访问已销毁控件
+            try:
+                if not dialog.isVisible():
+                    return
+            except RuntimeError:
+                return
             _log_action("销售领取素材", f"工单ID={order_data['id']}, 角色=销售, 源路径={src}, 目标路径={dest}")
             # 更新工单状态为“已领取”并刷新UI
             # _update_status(order_data['id'], '已领取')
             # 显示完成消息
-            msg = QMessageBox(dialog)
-            msg.setWindowTitle("领取完成")
-            msg.setText(f"素材已领取到：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-            msg.addButton("确定", QMessageBox.AcceptRole)
-            msg.exec()
-            if msg.clickedButton() == open_btn:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
+            show_path_result(dialog, "领取完成", f"素材已领取到：\n{dest}", dest)
             # 以销售领取素材为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",

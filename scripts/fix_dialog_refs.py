@@ -12,10 +12,10 @@
 - self.product_dir                      -> parent.product_dir
 - self.store_dir                        -> parent.store_dir
 """
-import sys
 import io
 import os
 import re
+import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 

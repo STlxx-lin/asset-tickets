@@ -1,10 +1,12 @@
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import json
-from src.core.api_manager import api_manager
 import logging
+
 import requests
+
+from src.core.api_manager import api_manager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -101,7 +103,7 @@ def update_work_order_status_and_times(order_id, status, file_distribution_time,
 
         return True
     except Exception as e:
-        logger.error(f"更新素材工单{order_id}信息发生异常: {str(e)}")
+        logger.error(f"更新素材工单{order_id}信息发生异常: {e!s}")
         return False
 
 def main():

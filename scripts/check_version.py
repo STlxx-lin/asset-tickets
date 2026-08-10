@@ -3,6 +3,7 @@ import re
 import subprocess
 import sys
 
+
 def get_version_from_content(content):
     m = re.search(r"APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]", content)
     return m.group(1) if m else None

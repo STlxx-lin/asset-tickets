@@ -1,10 +1,11 @@
-import sys
 import os
+import sys
 
 # 将项目路径加入 PYTHONPATH 搜索路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.core.database import db_manager
+
 
 def upgrade_database():
     """手动执行数据库字段增量升级"""

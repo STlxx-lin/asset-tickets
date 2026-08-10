@@ -4,10 +4,9 @@ patch_main_window.py — 一次性完成 main_window.py 的三处修改：
   2. 删除 L79-L135  两份 to_local_path 函数定义
   3. 替换 L3275-L6532 show_process_order_dialog 方法体 → 3 行调度代理
 """
-import sys
 import io
 import shutil
-import os
+import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 

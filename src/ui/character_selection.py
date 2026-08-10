@@ -1,13 +1,24 @@
-import sys
-from PySide6.QtWidgets import (QWidget, QPushButton, QLabel, QVBoxLayout,
-                             QHBoxLayout, QGroupBox, QRadioButton, QCheckBox,
-                             QGridLayout, QDialog, QLineEdit, QMessageBox, QFrame)
-from src.core.database import db_manager
-import socket
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 # 从配置文件导入版本号
 from src.core.config import APP_VERSION
+from src.core.database import db_manager
+
 
 class CharacterSelection(QWidget):
     def __init__(self):
@@ -24,6 +35,8 @@ class CharacterSelection(QWidget):
         return db_manager.get_local_ip()
 
     def setup_ui(self):
+        # 重建UI时重置角色按钮列表，避免残留已销毁的控件引用
+        self.role_buttons = []
         # 外层居中布局
         if self.layout() is not None:
             self.clear_layout(self.layout())
@@ -104,7 +117,6 @@ class CharacterSelection(QWidget):
                 role_group = QGroupBox("请选择角色")
                 role_layout = QGridLayout()
                 role_layout.setSpacing(16)
-                self.role_buttons = []
                 for i, role in enumerate(roles):
                     btn = QRadioButton(role)
                     if role == selected_role:

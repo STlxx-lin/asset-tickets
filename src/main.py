@@ -1,9 +1,11 @@
-import sys
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QApplication
+
 from src.ui.character_selection import CharacterSelection
 
 ICON_FILE_NAME = "logo-ykohqv-s3wb4i-pck6c0.png"

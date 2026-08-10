@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# BLE001/S110/S112: 业务代码统一捕获 Exception 并记录日志，保持现有防御式风格
+# DTZ005/DTZ007: 使用本地时区 naive datetime 入库（TIMESTAMP 列语义），不引入 tz 行为变更
+# RUF013: 兼容既有 `x=None` 默认参数风格
+# SIM102: 保留嵌套 if 的可读性
+ignore = ["BLE001", "S110", "S112", "DTZ005", "DTZ007", "RUF013", "SIM102"]
+
+[tool.pyright]
+extraPaths = ["."]
+

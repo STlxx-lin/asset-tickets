@@ -1,9 +1,10 @@
-import requests
 import logging
 import time
-import pymysql
-from .config import DB_CONFIG
-import traceback
+from typing import ClassVar
+
+import requests
+
+from .database import db_manager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -13,7 +14,7 @@ class APIManager:
     """API管理器，封装创建工单和更新工单系统信息的API调用"""
     _instance = None
     _token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInJvbGVOYW1lIjoiYWRtaW4iLCJpYXQiOjE3NTU4Mzk3NTcsImV4cCI6MzMzMTM0Mzk3NTd9.4xYz71zgKO2S_iluTwCY7i2h1nRpHE1cuMKa20E7grw"
-    _headers = {
+    _headers: ClassVar[dict] = {
         "Authorization": _token,
         "Content-Type": "application/json"
     }
@@ -23,7 +24,7 @@ class APIManager:
     def __new__(cls):
         """单例模式实现"""
         if cls._instance is None:
-            cls._instance = super(APIManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def _convert_time_to_timestamp(self, time_str):
@@ -62,14 +63,8 @@ class APIManager:
             project_type_name = ""
             project_content_name = ""
             
-            # 尝试从数据库获取项目类型和项目内容的名称
+            # 尝试从数据库获取项目类型和项目内容的名称（复用 db_manager，避免重复直连）
             try:
-                # 直接连接数据库查询
-                conn = pymysql.connect(**DB_CONFIG)
-                cursor = conn.cursor()
-                
-                logger.info(f"尝试从数据库获取项目类型和内容信息")
-                
                 # 1. 首先检查order_data中是否有project_type_id或project_content_id
                 project_type_id = api_order_data.get('project_type_id') or api_order_data.get('projecttype_id')
                 project_content_id = api_order_data.get('project_content_id') or api_order_data.get('projectcontent_id')
@@ -83,90 +78,16 @@ class APIManager:
                 logger.info(f"查询参数: project_type_id={project_type_id}, project_content_id={project_content_id}")
                 
                 # 查询项目类型名称
-                if project_type_id:
-                    try:
-                        # 首先检查表结构
-                        cursor.execute("DESCRIBE mcs_by_takuya_project_types")
-                        columns = cursor.fetchall()
-                        logger.info(f"项目类型表结构: {[col[0] for col in columns]}")
-                        
-                        # 尝试不同的字段名查询
-                        # 方法1：尝试查询所有列
-                        query = "SELECT * FROM mcs_by_takuya_project_types WHERE id = %s LIMIT 1"
-                        cursor.execute(query, (project_type_id,))
-                        result = cursor.fetchone()
-                        
-                        if result:
-                            # 尝试不同的可能的名称字段
-                            for field_idx, field_name in enumerate([col[0] for col in columns]):
-                                if field_name.lower() in ['name', 'title', 'label', 'display_name']:
-                                    project_type_name = str(result[field_idx])
-                                    logger.info(f"通过字段 {field_name} 成功获取项目类型名称: {project_type_name}")
-                                    break
-                            
-                            # 如果没有找到专门的名称字段，尝试使用ID作为名称
-                            if not project_type_name:
-                                project_type_name = str(project_type_id)
-                                logger.warning(f"未找到明确的名称字段，使用ID作为项目类型名称: {project_type_name}")
-                        else:
-                            # 查询所有项目类型数据以便调试
-                            cursor.execute("SELECT * FROM mcs_by_takuya_project_types LIMIT 5")
-                            all_types = cursor.fetchall()
-                            logger.info(f"查询到的项目类型数据示例: {all_types}")
-                            
-                            # 如果没有找到，尝试将ID作为名称使用
-                            project_type_name = str(project_type_id)
-                            logger.warning(f"未找到项目类型ID {project_type_id} 对应的记录，使用ID作为名称")
-                    except Exception as e:
-                        logger.error(f"查询项目类型失败: {e}")
-                        logger.debug(traceback.format_exc())
-                        # 异常时使用ID作为名称
-                        project_type_name = str(project_type_id)
+                project_type_name = db_manager.get_project_type_name(project_type_id)
+                if project_type_id and not project_type_name:
+                    project_type_name = str(project_type_id)
+                    logger.warning(f"未找到项目类型ID {project_type_id} 对应的记录，使用ID作为名称")
                 
                 # 查询项目内容名称
-                if project_content_id:
-                    try:
-                        # 首先检查表结构
-                        cursor.execute("DESCRIBE mcs_by_takuya_project_contents")
-                        columns = cursor.fetchall()
-                        logger.info(f"项目内容表结构: {[col[0] for col in columns]}")
-                        
-                        # 尝试不同的字段名查询
-                        # 方法1：尝试查询所有列
-                        query = "SELECT * FROM mcs_by_takuya_project_contents WHERE id = %s LIMIT 1"
-                        cursor.execute(query, (project_content_id,))
-                        result = cursor.fetchone()
-                        
-                        if result:
-                            # 尝试不同的可能的名称字段
-                            for field_idx, field_name in enumerate([col[0] for col in columns]):
-                                if field_name.lower() in ['name', 'title', 'label', 'display_name']:
-                                    project_content_name = str(result[field_idx])
-                                    logger.info(f"通过字段 {field_name} 成功获取项目内容名称: {project_content_name}")
-                                    break
-                            
-                            # 如果没有找到专门的名称字段，尝试使用ID作为名称
-                            if not project_content_name:
-                                project_content_name = str(project_content_id)
-                                logger.warning(f"未找到明确的名称字段，使用ID作为项目内容名称: {project_content_name}")
-                        else:
-                            # 查询所有项目内容数据以便调试
-                            cursor.execute("SELECT * FROM mcs_by_takuya_project_contents LIMIT 5")
-                            all_contents = cursor.fetchall()
-                            logger.info(f"查询到的项目内容数据示例: {all_contents}")
-                            
-                            # 如果没有找到，尝试将ID作为名称使用
-                            project_content_name = str(project_content_id)
-                            logger.warning(f"未找到项目内容ID {project_content_id} 对应的记录，使用ID作为名称")
-                    except Exception as e:
-                        logger.error(f"查询项目内容失败: {e}")
-                        logger.debug(traceback.format_exc())
-                        # 异常时使用ID作为名称
-                        project_content_name = str(project_content_id)
-                
-                # 关闭数据库连接
-                cursor.close()
-                conn.close()
+                project_content_name = db_manager.get_project_content_name(project_content_id)
+                if project_content_id and not project_content_name:
+                    project_content_name = str(project_content_id)
+                    logger.warning(f"未找到项目内容ID {project_content_id} 对应的记录，使用ID作为名称")
                 
             except Exception as db_error:
                 logger.error(f"数据库操作异常: {db_error}")
@@ -177,17 +98,7 @@ class APIManager:
             # 如果仍然没有获取到值，尝试从工单表中查询
             if not project_type_name or not project_content_name:
                 try:
-                    conn = pymysql.connect(**DB_CONFIG)
-                    cursor = conn.cursor(pymysql.cursors.DictCursor)
-                    
-                    # 从工单表中查询项目类型和内容
-                    query = """
-                        SELECT project_type, project_content 
-                        FROM mcs_by_takuya_work_orders 
-                        WHERE id = %s
-                    """
-                    cursor.execute(query, (api_order_data['id'],))
-                    order_info = cursor.fetchone()
+                    order_info = db_manager.get_work_order_project_names(api_order_data['id'])
                     
                     if order_info:
                         if not project_type_name and order_info.get('project_type'):
@@ -196,9 +107,6 @@ class APIManager:
                         if not project_content_name and order_info.get('project_content'):
                             project_content_name = str(order_info['project_content'])
                             logger.info(f"从工单表获取项目内容: {project_content_name}")
-                    
-                    cursor.close()
-                    conn.close()
                 except Exception as e:
                     logger.error(f"从工单表查询项目信息失败: {e}")
             
@@ -245,7 +153,7 @@ class APIManager:
             logger.error(f"创建工单{order_data['id']}发生异常: {e}")
             return {
                 "success": False,
-                "error": f"创建工单发生异常: {str(e)}"
+                "error": f"创建工单发生异常: {e!s}"
             }
 
     def update_work_order_status(self, order_id, status):
@@ -290,7 +198,7 @@ class APIManager:
             logger.error(f"更新工单{order_id}的状态发生异常: {e}")
             return {
                 "success": False,
-                "error": f"更新工单状态发生异常: {str(e)}"
+                "error": f"更新工单状态发生异常: {e!s}"
             }
 
     def update_work_order_time(self, order_id, time_field, time_value):
@@ -359,7 +267,7 @@ class APIManager:
             logger.error(f"更新工单{order_id}的{time_field}发生异常: {e}")
             return {
                 "success": False,
-                "error": f"更新工单时间发生异常: {str(e)}"
+                "error": f"更新工单时间发生异常: {e!s}"
             }
 
 # 创建单例实例

@@ -1,57 +1,102 @@
-import sys
 import logging
+import sys
 
 # 配置日志记录
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-from PySide6.QtWidgets import (QMainWindow, QTableView, QVBoxLayout, QHBoxLayout, 
-                             QWidget, QPushButton, QLabel, QMessageBox, QHeaderView,
-                             QSplitter, QGroupBox, QListWidget, QStackedWidget,
-                             QTabWidget, QLineEdit, QDialog, QComboBox, QFormLayout, QDialogButtonBox, QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog, QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea, QFrame, QProgressDialog, QCheckBox, QGridLayout, QStyledItemDelegate, QStyleOptionProgressBar, QStyle, QApplication)
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QFont, QDesktopServices, QPainter, QPalette, QColor, QPixmap
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate, QRect, QPoint
-from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
-from .video_preview import VideoPreviewWidget
-import sys
+import datetime
 import os
+import platform
+import re
+import shutil
+from typing import ClassVar
+
+from PySide6.QtCore import QDate, QPoint, QRect, Qt, QTimer, QUrl
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QPainter,
+    QStandardItem,
+    QStandardItemModel,
+)
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDateEdit,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QStackedWidget,
+    QStyledItemDelegate,
+    QTableView,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.core.api_manager import api_manager
+
+# 导入配置模块
+from src.core.config import APP_VERSION, DEFAULT_NOTIFICATION_TYPE
+
 # 添加项目根目录到Python搜索路径
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.database import db_manager
+
 from .task_manager import Task, TaskManagerDialog
 from .work_order_detail import WorkOrderDetailDialog
-import datetime
-import netifaces
-import os
-import shutil
-import platform
-import re
-from src.core.api_manager import api_manager
-import time
-
-# 导入配置模块
-from src.core.config import APP_VERSION, DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
 
 # 为兼容现有调用保留变量名，统一使用配置模块中的单一默认值
 NOTIFICATION_TYPE = DEFAULT_NOTIFICATION_TYPE
 
-ADMIN_PASSWORD = "Db65109032"
+# 管理员密码统一由 src.core.config 提供
 # 路径常量与工具函数 — 统一由 src.core.paths 提供
-from src.core.paths import (
-    VOLUMES, RAW_ROOT, ART_ROOT, VIDEO_ROOT, CENTER_ROOT,
-    IMG_EXTS, VID_EXTS,
-    PHOTOGRAPHY_UPLOAD, PHOTOGRAPHY_DIST_IMG, PHOTOGRAPHY_DIST_VIDEO,
-    ART_GET_IMG_SRC, ART_GET_IMG_DEST, ART_DIST_OPS, ART_DIST_SALES,
-    EDIT_GET_VIDEO_SRC, EDIT_GET_VIDEO_DEST, EDIT_DIST_OPS, EDIT_DIST_SALES,
-    EDIT_POST_REVIEW_TRANSIT, OPS_GET_SRC, SALES_GET_SRC, to_local_path,
-)
 # 消息推送 — 统一由 src.core.notification 提供
 from src.core.notification import (
-    DINGTALK_BOTS, WECHAT_WORK_BOTS, LINE_NOTIFICATION_SETTINGS,
-    NOTIFICATION_TYPE,
-    get_department_line_names, load_notification_settings,
-    apply_notification_settings, save_notification_settings,
-    send_dingtalk_markdown, send_wechat_work_markdown, send_notification,
+    LINE_NOTIFICATION_SETTINGS,
+    apply_notification_settings,
+    get_department_line_names,
+    load_notification_settings,
+    save_notification_settings,
+    send_notification,
 )
+from src.core.paths import (
+    ART_DIST_OPS,
+    ART_DIST_SALES,
+    ART_GET_IMG_DEST,
+    ART_GET_IMG_SRC,
+    EDIT_DIST_OPS,
+    EDIT_DIST_SALES,
+    EDIT_GET_VIDEO_DEST,
+    EDIT_GET_VIDEO_SRC,
+    OPS_GET_SRC,
+    PHOTOGRAPHERS,
+    PHOTOGRAPHY_DIST_IMG,
+    PHOTOGRAPHY_DIST_VIDEO,
+    PHOTOGRAPHY_UPLOAD,
+    SALES_GET_SRC,
+)
+
+
 def is_video_review_enabled() -> bool:
     """读取视频审核功能开关，默认开启（True）。"""
     val = db_manager.get_system_setting('video_review_enabled', default='1')
@@ -61,25 +106,6 @@ def is_video_post_review_enabled() -> bool:
     """读取视频后期审核功能开关，默认开启（True）。"""
     val = db_manager.get_system_setting('video_post_review_enabled', default='1')
     return val == '1'
-
-class AdminPasswordDialog(QDialog):
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("管理员验证")
-        self.setMinimumWidth(300)
-        layout = QVBoxLayout(self)
-        self.label = QLabel("请输入管理员密码：")
-        self.edit = QLineEdit()
-        self.edit.setEchoMode(QLineEdit.Password)
-        layout.addWidget(self.label)
-        layout.addWidget(self.edit)
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        layout.addWidget(button_box)
-    def get_password(self):
-        return self.edit.text().strip()
 
 class FileOperationDialog(QDialog):
     def __init__(self, html_content, parent=None, title="确认删除", header_text="⚠️ 警告：此操作不可恢复！将要删除以下路径：", footer_text="是否确认删除上述所有文件及数据库记录？", is_confirmation=True, confirm_button_text="确认删除"):
@@ -278,7 +304,7 @@ class CreateWorkOrderDialog(QDialog):
                 padding: 10px 0;
             }
         """)
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
         # 表单区域
         form_widget = QWidget()
@@ -288,7 +314,7 @@ class CreateWorkOrderDialog(QDialog):
         basic_group = QGroupBox("工单基本信息")
         basic_layout = QFormLayout(basic_group)
         basic_layout.setSpacing(12)
-        basic_layout.setLabelAlignment(Qt.AlignRight)
+        basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         # 创建字段
         self.id_field = QLineEdit()
         self.id_field.setText(datetime.datetime.now().strftime("%y%m%d%H%M"))
@@ -544,7 +570,7 @@ class CreateWorkOrderDialog(QDialog):
                    filter_text.lower() in user['name'].lower() or \
                    filter_text.lower() in user['ip'].lower():
                     user_item = QListWidgetItem(user_text)
-                    user_item.setData(Qt.UserRole, user['name'])
+                    user_item.setData(Qt.ItemDataRole.UserRole, user['name'])
                     user_list.addItem(user_item)
         
         # 初始填充用户列表
@@ -567,11 +593,12 @@ class CreateWorkOrderDialog(QDialog):
         layout.addLayout(button_layout)
         
         # 处理选择结果
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             selected_items = user_list.selectedItems()
             if selected_items:
-                self.requester_field.setText(selected_items[0].data(Qt.UserRole))
+                self.requester_field.setText(selected_items[0].data(Qt.ItemDataRole.UserRole))
 from packaging import version
+
 
 class MainWindow(QMainWindow):
     def show_error_dialog(self, error_content):
@@ -581,24 +608,27 @@ class MainWindow(QMainWindow):
         """
         # 创建自定义对话框
         msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setIcon(QMessageBox.Icon.Critical)
         msg_box.setWindowTitle("错误")
         msg_box.setText(f"{error_content}\n\n点击复制按钮内容发送给管理员")
         
         # 添加复制按钮
         copy_button = QPushButton("复制")
-        msg_box.addButton(copy_button, QMessageBox.ActionRole)
+        msg_box.addButton(copy_button, QMessageBox.ButtonRole.ActionRole)
         
         # 添加确定按钮
         ok_button = QPushButton("确定")
-        msg_box.addButton(ok_button, QMessageBox.AcceptRole)
+        msg_box.addButton(ok_button, QMessageBox.ButtonRole.AcceptRole)
         
         # 连接复制按钮信号
         def on_copy_clicked():
             clipboard = QApplication.clipboard()
             clipboard.setText(f"{error_content}")
-            # 可以添加一个短暂的提示
-            QMessageBox.information(None, "提示", "内容已复制到剪贴板")
+            # 按钮就地反馈"已复制"，避免弹出嵌套对话框
+            copy_button.setText("已复制 ✓")
+            copy_button.setEnabled(False)
+            # 短暂延迟后自动关闭对话框
+            QTimer.singleShot(800, msg_box.accept)
         
         copy_button.clicked.connect(on_copy_clicked)
         
@@ -606,23 +636,31 @@ class MainWindow(QMainWindow):
         msg_box.exec()
     
     def __init__(self, role, departments, is_admin=False, parent=None, logout_callback=None, user_name=None):
-        # 检查版本
+        # 检查版本（版本号格式异常时跳过检查，避免启动崩溃）
         latest_version_info = db_manager.get_latest_version()
-        # 只有当数据库版本大于当前版本时才显示过期提示
-        if latest_version_info and latest_version_info.get('version') and version.parse(latest_version_info.get('version')) > version.parse(APP_VERSION):
+        outdated = False
+        try:
+            # 只有当数据库版本大于当前版本时才提示过期
+            if latest_version_info and latest_version_info.get('version') and version.parse(latest_version_info.get('version')) > version.parse(APP_VERSION):
+                outdated = True
+        except Exception as e:
+            logger.warning(f"版本检查失败，跳过: {e}")
+            outdated = False
+
+        if outdated:
             # 创建自定义对话框
             msg_box = QMessageBox()
-            msg_box.setIcon(QMessageBox.Critical)
+            msg_box.setIcon(QMessageBox.Icon.Critical)
             msg_box.setWindowTitle("版本过期")
             msg_box.setText(f"当前版本：{APP_VERSION}\n最新版本：{latest_version_info.get('version')}")
             
             # 添加下载按钮
             download_button = QPushButton("下载最新版本")
-            msg_box.addButton(download_button, QMessageBox.ActionRole)
+            msg_box.addButton(download_button, QMessageBox.ButtonRole.ActionRole)
             
             # 添加退出按钮
             exit_button = QPushButton("退出")
-            msg_box.addButton(exit_button, QMessageBox.RejectRole)
+            msg_box.addButton(exit_button, QMessageBox.ButtonRole.RejectRole)
             
             # 连接按钮信号
             def on_download_clicked():
@@ -632,11 +670,11 @@ class MainWindow(QMainWindow):
                 msg_box.close()
             
             download_button.clicked.connect(on_download_clicked)
+            # 仅点击“退出”按钮才退出程序；关闭弹窗（X）或下载后继续运行
             exit_button.clicked.connect(sys.exit)
             
             # 显示对话框
             msg_box.exec()
-            sys.exit(0)
         super().__init__(parent)
         self.role = role
         self.departments = departments
@@ -645,8 +683,6 @@ class MainWindow(QMainWindow):
         self.user_name = user_name  # 新增：用户姓名
         self.work_orders_data = []
         self.ip_address = self.get_ip_address()
-        self.admin_verified_logs = False
-        self.admin_verified_settings = False
         self.task_manager = TaskManagerDialog(self)  # 添加任务管理器
         self.version_label = QLabel(f"版本：{APP_VERSION}")
         self.version_label.setStyleSheet("font-size: 13px; color: #888;")
@@ -795,12 +831,6 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(sep)
         header_layout.addLayout(right_layout, 0)  # 右侧不拉伸，自然尺寸
         return header_widget
-    def verify_admin(self):
-        dialog = AdminPasswordDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            if dialog.get_password() == ADMIN_PASSWORD:
-                return True
-        return False
     def create_dashboard_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -894,7 +924,7 @@ class MainWindow(QMainWindow):
             btn.clicked.connect(self.apply_filters)
             filter_layout.addWidget(btn)
         layout.addLayout(filter_layout)
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
         history_group = QGroupBox("实时操作记录")
         history_layout = QVBoxLayout(history_group)
@@ -939,11 +969,13 @@ class MainWindow(QMainWindow):
                 
                 row = selected[0].row()
                 order_item = self.model.item(row, 0)
-                order_data = order_item.data(Qt.UserRole)
+                if not order_item:
+                    return
+                order_data = order_item.data(Qt.ItemDataRole.UserRole)
                 
                 # 调用API创建工单反馈
-                import sys
                 import os
+                import sys
                 # 添加根目录到Python路径
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                 from src.core.api_manager import api_manager
@@ -951,7 +983,7 @@ class MainWindow(QMainWindow):
                 
                 # 显示操作结果
                 if response['success']:
-                    QMessageBox.information(self, "成功", response['message'])
+                    QMessageBox.information(self, "成功", str(response.get('message', '')))
                 else:
                     self.show_error_dialog(f"失败: {response.get('error', '未知错误')}")
             
@@ -971,7 +1003,9 @@ class MainWindow(QMainWindow):
                     return
                 row = selected[0].row()
                 order_item = self.model.item(row, 0)
-                order_data = order_item.data(Qt.UserRole)
+                if not order_item:
+                    return
+                order_data = order_item.data(Qt.ItemDataRole.UserRole)
                 order_id = order_data['id']
                 id_ = order_data['id']
                 dept = order_data['department']
@@ -980,7 +1014,7 @@ class MainWindow(QMainWindow):
                 # 生成所有相关路径
                 all_paths = []
                 # 摄影上传
-                for photographer in ["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项","08Arin"]:
+                for photographer in PHOTOGRAPHERS:
                     path = PHOTOGRAPHY_UPLOAD(photographer, dept, id_, model, name)
                     all_paths.append((path, os.path.exists(path)))
                 # 美工/剪辑/运营/销售所有流转路径
@@ -1003,16 +1037,21 @@ class MainWindow(QMainWindow):
                 # 构建路径及存在性信息
                 rows = []
                 for p, exists in all_paths:
-                    status_html = f"<span style='color: #4caf50; font-weight: bold;'>存在</span>" if exists else f"<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+                    status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
                     rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='60' align='center'>{status_html}</td></tr>")
                 
                 msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(rows)}</table>"
                 
                 # 使用自定义对话框显示
                 dialog = FileOperationDialog(msg, self)
-                if dialog.exec() != QDialog.Accepted:
+                if dialog.exec() != QDialog.DialogCode.Accepted:
                     return
                 
+                # 先删除数据库工单，成功后再删除文件，避免 DB 失败导致文件丢失
+                if not db_manager.delete_work_order(order_id):
+                    self.show_error_dialog("失败: 删除工单失败，未删除任何文件，请重试或联系管理员")
+                    return
+
                 # 执行删除操作
                 delete_results = []
                 for path, exists in all_paths:
@@ -1024,31 +1063,27 @@ class MainWindow(QMainWindow):
                             delete_results.append((path, f"删除失败: {e}", "#ff4d4f"))
                     else:
                         delete_results.append((path, "不存在", "#ff4d4f"))
+
+                # 构建结果HTML
+                res_rows = []
+                for p, status, color in delete_results:
+                    res_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
+
+                result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(res_rows)}</table>"
+
+                # 显示结果对话框
+                res_dialog = FileOperationDialog(
+                    result_msg, 
+                    self, 
+                    title="删除结果", 
+                    header_text=f"工单 {order_id} 及相关文件删除结果：", 
+                    footer_text=None, 
+                    is_confirmation=False
+                )
+                res_dialog.exec()
                 
-                # 删除数据库工单
-                if db_manager.delete_work_order(order_id):
-                    # 构建结果HTML
-                    res_rows = []
-                    for p, status, color in delete_results:
-                        res_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
-                    
-                    result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(res_rows)}</table>"
-                    
-                    # 显示结果对话框
-                    res_dialog = FileOperationDialog(
-                        result_msg, 
-                        self, 
-                        title="删除结果", 
-                        header_text=f"工单 {order_id} 及相关文件删除结果：", 
-                        footer_text=None, 
-                        is_confirmation=False
-                    )
-                    res_dialog.exec()
-                    
-                    self.log_action("删除工单", f"ID={order_id}")
-                    self.refresh_work_orders()
-                else:
-                    self.show_error_dialog("失败: 删除工单失败，请重试或联系管理员")
+                self.log_action("删除工单", f"ID={order_id}")
+                self.refresh_work_orders()
             delete_button.clicked.connect(on_delete_order)
             controls_layout.addWidget(delete_button)
         controls_layout.addStretch()
@@ -1088,12 +1123,12 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.critical(self, "数据库错误", "创建工单失败，请检查ID是否唯一或联系管理员。")
     def log_action(self, action_type, details):
-        db_manager.add_log(self.role, action_type, details, self.ip_address, self.user_name)
+        db_manager.add_log(self.role, action_type, details, self.ip_address, self.user_name or "")
         self.update_history_list()
     def create_reports_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setAlignment(Qt.AlignCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label = QLabel("报表中心正在紧锣密鼓开发中...")
         label.setFont(QFont("Arial", 24))
         layout.addWidget(label)
@@ -1311,15 +1346,15 @@ class MainWindow(QMainWindow):
         self.users_table.setColumnCount(5)
         self.users_table.setHorizontalHeaderLabels(["ID", "内网IP", "姓名", "角色", "部门"])
         # self.users_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # 注释掉全局拉伸
-        self.users_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.users_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.users_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.users_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.users_table.setColumnWidth(0, 60)  # ID列窄
         self.users_table.setColumnWidth(1, 180) # IP列宽
         header = self.users_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         for col in range(2, 5):
-            header.setSectionResizeMode(col, QHeaderView.Stretch)
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
         # 添加双击事件处理
         self.users_table.cellDoubleClicked.connect(self.on_user_double_clicked)
         users_layout.addWidget(self.users_table)
@@ -1536,7 +1571,7 @@ class MainWindow(QMainWindow):
             return
 
         # 先取当前产线配置，若不存在则回退到 default 行
-        settings = LINE_NOTIFICATION_SETTINGS.get(line_name, LINE_NOTIFICATION_SETTINGS.get("default", {}))
+        settings = LINE_NOTIFICATION_SETTINGS.get(line_name) or LINE_NOTIFICATION_SETTINGS.get("default") or {}
 
         # 回填通知类型
         notify_type = settings.get("notification_type", NOTIFICATION_TYPE)
@@ -1708,9 +1743,11 @@ class MainWindow(QMainWindow):
                 current_roles_list.takeItem(current_roles_list.row(item))
                 role_exists = False
                 for i in range(roles_container_layout.count()):
-                    widget = roles_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = roles_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == role_name:
                             role_exists = True
                             break
@@ -1727,9 +1764,11 @@ class MainWindow(QMainWindow):
                         return
                     current_roles_list.addItem(current_role)
                     for j in range(roles_container_layout.count()):
-                        available_widget = roles_container_layout.itemAt(j).widget()
-                        if available_widget and available_widget.layout():
-                            available_label = available_widget.layout().itemAt(0).widget()
+                        item = roles_container_layout.itemAt(j)
+                        available_widget = item.widget() if item else None
+                        if available_widget and (layout := available_widget.layout()):
+                            item0 = layout.itemAt(0)
+                            available_label = item0.widget() if item0 else None
                             if available_label and isinstance(available_label, QLabel) and available_label.text() == current_role:
                                 available_widget.hide()
                                 available_widget.deleteLater()
@@ -1776,16 +1815,18 @@ class MainWindow(QMainWindow):
             add_role_btn.setMaximumWidth(60)
             
             # 添加角色的函数
-            def add_role_func(checked=False, current_role=str(role)):
+            def add_role_func(checked=False, current_role=role):
                 existing_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
                 if current_role in existing_roles:
                     return
                 current_roles_list.addItem(current_role)
                 # 添加后从右侧移除
                 for i in range(roles_container_layout.count()):
-                    widget = roles_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = roles_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == current_role:
                             widget.hide()
                             widget.deleteLater()
@@ -1830,9 +1871,11 @@ class MainWindow(QMainWindow):
                 current_depts_list.takeItem(current_depts_list.row(item))
                 dept_exists = False
                 for i in range(depts_container_layout.count()):
-                    widget = depts_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = depts_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == dept_name:
                             dept_exists = True
                             break
@@ -1849,9 +1892,11 @@ class MainWindow(QMainWindow):
                         return
                     current_depts_list.addItem(current_dept)
                     for j in range(depts_container_layout.count()):
-                        available_widget = depts_container_layout.itemAt(j).widget()
-                        if available_widget and available_widget.layout():
-                            available_label = available_widget.layout().itemAt(0).widget()
+                        item = depts_container_layout.itemAt(j)
+                        available_widget = item.widget() if item else None
+                        if available_widget and (layout := available_widget.layout()):
+                            item0 = layout.itemAt(0)
+                            available_label = item0.widget() if item0 else None
                             if available_label and isinstance(available_label, QLabel) and available_label.text() == current_dept:
                                 available_widget.hide()
                                 available_widget.deleteLater()
@@ -1898,16 +1943,18 @@ class MainWindow(QMainWindow):
             add_dept_btn.setMaximumWidth(60)
             
             # 添加部门的函数
-            def add_dept_func(checked=False, current_dept=str(dept)):
+            def add_dept_func(checked=False, current_dept=dept):
                 existing_depts = [current_depts_list.item(i).text() for i in range(current_depts_list.count())]
                 if current_dept in existing_depts:
                     return
                 current_depts_list.addItem(current_dept)
                 # 添加后从右侧移除
                 for i in range(depts_container_layout.count()):
-                    widget = depts_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = depts_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == current_dept:
                             widget.hide()
                             widget.deleteLater()
@@ -1968,11 +2015,17 @@ class MainWindow(QMainWindow):
         if selected < 0:
             QMessageBox.warning(self, "提示", "请先选择要编辑的用户！")
             return
-        user_id = int(self.users_table.item(selected, 0).text())
-        ip = self.users_table.item(selected, 1).text()
-        name = self.users_table.item(selected, 2).text()
-        roles = self.users_table.item(selected, 3).text().split(',')
-        depts = self.users_table.item(selected, 4).text().split(',')
+        item0 = self.users_table.item(selected, 0)
+        item1 = self.users_table.item(selected, 1)
+        item2 = self.users_table.item(selected, 2)
+        item3 = self.users_table.item(selected, 3)
+        item4 = self.users_table.item(selected, 4)
+        
+        user_id = int(item0.text()) if item0 else 0
+        ip = item1.text() if item1 else ""
+        name = item2.text() if item2 else ""
+        roles = item3.text().split(',') if item3 else []
+        depts = item4.text().split(',') if item4 else []
         
         # 过滤掉空字符串
         roles = [role for role in roles if role.strip()]
@@ -2102,9 +2155,11 @@ class MainWindow(QMainWindow):
                 current_roles_list.takeItem(current_roles_list.row(item))
                 role_exists = False
                 for i in range(roles_container_layout.count()):
-                    widget = roles_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = roles_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == role_name:
                             role_exists = True
                             break
@@ -2121,9 +2176,11 @@ class MainWindow(QMainWindow):
                         return
                     current_roles_list.addItem(current_role)
                     for j in range(roles_container_layout.count()):
-                        available_widget = roles_container_layout.itemAt(j).widget()
-                        if available_widget and available_widget.layout():
-                            available_label = available_widget.layout().itemAt(0).widget()
+                        item = roles_container_layout.itemAt(j)
+                        available_widget = item.widget() if item else None
+                        if available_widget and (layout := available_widget.layout()):
+                            item0 = layout.itemAt(0)
+                            available_label = item0.widget() if item0 else None
                             if available_label and isinstance(available_label, QLabel) and available_label.text() == current_role:
                                 available_widget.hide()
                                 available_widget.deleteLater()
@@ -2171,16 +2228,18 @@ class MainWindow(QMainWindow):
             add_role_btn.setMaximumWidth(60)
             
             # 添加角色的函数
-            def add_role_func(checked=False, current_role=str(role)):
+            def add_role_func(checked=False, current_role=role):
                 existing_roles = [current_roles_list.item(i).text() for i in range(current_roles_list.count())]
                 if current_role in existing_roles:
                     return
                 current_roles_list.addItem(current_role)
                 # 添加后从右侧移除
                 for i in range(roles_container_layout.count()):
-                    widget = roles_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = roles_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == current_role:
                             widget.hide()
                             widget.deleteLater()
@@ -2227,9 +2286,11 @@ class MainWindow(QMainWindow):
                 current_depts_list.takeItem(current_depts_list.row(item))
                 dept_exists = False
                 for i in range(depts_container_layout.count()):
-                    widget = depts_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = depts_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == dept_name:
                             dept_exists = True
                             break
@@ -2243,9 +2304,11 @@ class MainWindow(QMainWindow):
                 def add_dept_func(checked=False, d=dept_name):
                     current_depts_list.addItem(d)
                     for j in range(depts_container_layout.count()):
-                        available_widget = depts_container_layout.itemAt(j).widget()
-                        if available_widget and available_widget.layout():
-                            available_label = available_widget.layout().itemAt(0).widget()
+                        item = depts_container_layout.itemAt(j)
+                        available_widget = item.widget() if item else None
+                        if available_widget and (layout := available_widget.layout()):
+                            item0 = layout.itemAt(0)
+                            available_label = item0.widget() if item0 else None
                             if available_label and isinstance(available_label, QLabel) and available_label.text() == d:
                                 available_widget.hide()
                                 available_widget.deleteLater()
@@ -2297,9 +2360,11 @@ class MainWindow(QMainWindow):
                 current_depts_list.addItem(d)
                 # 添加后从右侧移除
                 for i in range(depts_container_layout.count()):
-                    widget = depts_container_layout.itemAt(i).widget()
-                    if widget and widget.layout():
-                        label = widget.layout().itemAt(0).widget()
+                    item = depts_container_layout.itemAt(i)
+                    widget = item.widget() if item else None
+                    if widget and (layout := widget.layout()):
+                        item0 = layout.itemAt(0)
+                        label = item0.widget() if item0 else None
                         if label and isinstance(label, QLabel) and label.text() == d:
                             widget.hide()
                             widget.deleteLater()
@@ -2360,9 +2425,12 @@ class MainWindow(QMainWindow):
         if selected < 0:
             QMessageBox.warning(self, "提示", "请先选择要删除的用户！")
             return
-        user_id = int(self.users_table.item(selected, 0).text())
-        reply = QMessageBox.question(self, "确认删除", "确定要删除该用户吗？", QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+        item = self.users_table.item(selected, 0)
+        if not item:
+            return
+        user_id = int(item.text())
+        reply = QMessageBox.question(self, "确认删除", "确定要删除该用户吗？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             db_manager.delete_user(user_id)
             self.refresh_users_table()
     def create_management_layout(self, title, get_func, add_func, remove_func):
@@ -2518,7 +2586,7 @@ class MainWindow(QMainWindow):
                 padding: 10px 0;
             }
         """)
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
         # 表单区域
         form_widget = QWidget()
@@ -2528,7 +2596,7 @@ class MainWindow(QMainWindow):
         basic_group = QGroupBox("工单基本信息")
         basic_layout = QFormLayout(basic_group)
         basic_layout.setSpacing(12)
-        basic_layout.setLabelAlignment(Qt.AlignRight)
+        basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         # 创建字段
         id_label = QLabel(order_data['id'])
         dept_combo = QComboBox()
@@ -2588,7 +2656,7 @@ class MainWindow(QMainWindow):
                        filter_text.lower() in user['name'].lower() or \
                        filter_text.lower() in user['ip'].lower():
                         user_item = QListWidgetItem(user_text)
-                        user_item.setData(Qt.UserRole, user['name'])
+                        user_item.setData(Qt.ItemDataRole.UserRole, user['name'])
                         user_list.addItem(user_item)
             
             # 初始填充用户列表
@@ -2611,10 +2679,10 @@ class MainWindow(QMainWindow):
             layout.addLayout(button_layout)
             
             # 处理选择结果
-            if user_dialog.exec() == QDialog.Accepted:
+            if user_dialog.exec() == QDialog.DialogCode.Accepted:
                 selected_items = user_list.selectedItems()
                 if selected_items:
-                    creator_edit.setText(selected_items[0].data(Qt.UserRole))
+                    creator_edit.setText(selected_items[0].data(Qt.ItemDataRole.UserRole))
         
         # 连接选择按钮信号
         select_creator_btn.clicked.connect(select_creator)
@@ -2678,7 +2746,7 @@ class MainWindow(QMainWindow):
                        filter_text.lower() in user['name'].lower() or \
                        filter_text.lower() in user['ip'].lower():
                         user_item = QListWidgetItem(user_text)
-                        user_item.setData(Qt.UserRole, user['name'])
+                        user_item.setData(Qt.ItemDataRole.UserRole, user['name'])
                         user_list.addItem(user_item)
             
             # 初始填充用户列表
@@ -2701,10 +2769,10 @@ class MainWindow(QMainWindow):
             layout.addLayout(button_layout)
             
             # 处理选择结果
-            if user_dialog.exec() == QDialog.Accepted:
+            if user_dialog.exec() == QDialog.DialogCode.Accepted:
                 selected_items = user_list.selectedItems()
                 if selected_items:
-                    requester_edit.setText(selected_items[0].data(Qt.UserRole))
+                    requester_edit.setText(selected_items[0].data(Qt.ItemDataRole.UserRole))
         
         # 连接选择按钮信号
         select_requester_btn.clicked.connect(select_requester)
@@ -2802,7 +2870,7 @@ class MainWindow(QMainWindow):
             # 生成所有相关路径的原-新映射
             path_pairs = []
             # 摄影上传
-            for photographer in ["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项","08Arin"]:
+            for photographer in PHOTOGRAPHERS:
                 old_path = PHOTOGRAPHY_UPLOAD(photographer, old_dept, id_, old_model, old_name)
                 new_path = PHOTOGRAPHY_UPLOAD(photographer, new_dept, id_, new_model, new_name)
                 path_pairs.append((old_path, new_path))
@@ -2830,7 +2898,7 @@ class MainWindow(QMainWindow):
             if not path_checks:
                 # 没有需要移动/重命名的路径，直接保存
                 if db_manager.update_work_order_full(
-                order_data['id'], new_dept, new_model, new_name, new_creator,
+                order_data['id'], new_dept, new_model, new_name, new_creator, new_requester,
                 new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
             ):
                     self.log_action("编辑工单", f"ID={order_data['id']}（无路径变更）")
@@ -2843,8 +2911,8 @@ class MainWindow(QMainWindow):
             check_rows = []
             check_rows.append("<tr><th style='padding: 4px; border-bottom: 1px solid #555; text-align:left;'>路径</th><th style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>原路径</th><th style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>目标路径</th></tr>")
             for old_path, new_path, old_exists, new_exists in path_checks:
-                old_status_html = f"<span style='color: #4caf50; font-weight: bold;'>存在</span>" if old_exists else f"<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
-                new_status_html = f"<span style='color: #4caf50; font-weight: bold;'>存在</span>" if new_exists else f"<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+                old_status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if old_exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+                new_status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if new_exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
                 display_path = f"{old_path} → {new_path}"
                 check_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{display_path}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>{old_status_html}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>{new_status_html}</td></tr>")
             check_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(check_rows)}</table>"
@@ -2857,15 +2925,17 @@ class MainWindow(QMainWindow):
                 is_confirmation=True,
                 confirm_button_text="确认保存"
             )
-            if confirm_dialog.exec() != QDialog.Accepted:
+            if confirm_dialog.exec() != QDialog.DialogCode.Accepted:
                 return
             # 执行移动/重命名
             move_results = []
-            for old_path, new_path, old_exists, _ in path_checks:
+            for old_path, new_path, old_exists, new_exists in path_checks:
                 if old_exists:
+                    if new_exists:
+                        # 目标已存在，跳过移动，避免静默删除已有数据
+                        move_results.append((f"{old_path} → {new_path}", "目标已存在，未覆盖", "#ff4d4f"))
+                        continue
                     try:
-                        if os.path.exists(new_path):
-                            shutil.rmtree(new_path, ignore_errors=True)
                         os.makedirs(os.path.dirname(new_path), exist_ok=True)
                         shutil.move(old_path, new_path)
                         move_results.append((f"{old_path} → {new_path}", "已移动/重命名", "#4caf50"))
@@ -2877,7 +2947,7 @@ class MainWindow(QMainWindow):
                     move_results.append((f"{old_path} → {new_path}", "不存在", "#ff4d4f"))
             # 保存工单信息
             if db_manager.update_work_order_full(
-                order_data['id'], new_dept, new_model, new_name, new_creator,
+                order_data['id'], new_dept, new_model, new_name, new_creator, new_requester,
                 new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
             ):
                 self.log_action("编辑工单", f"ID={order_data['id']}，产线/型号/名称变更")
@@ -3003,8 +3073,8 @@ class MainWindow(QMainWindow):
             msg = QMessageBox(self)
             msg.setWindowTitle("领取完成")
             msg.setText(f"素材已移动到：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-            msg.addButton("确定", QMessageBox.AcceptRole)
+            open_btn = msg.addButton("打开", QMessageBox.ButtonRole.ActionRole)
+            msg.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
             msg.exec()
             if msg.clickedButton() == open_btn:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
@@ -3032,8 +3102,8 @@ class MainWindow(QMainWindow):
             msg = QMessageBox(self)
             msg.setWindowTitle("分发完成")
             msg.setText(f"成功分发到：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-            msg.addButton("确定", QMessageBox.AcceptRole)
+            open_btn = msg.addButton("打开", QMessageBox.ButtonRole.ActionRole)
+            msg.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
             msg.exec()
             if msg.clickedButton() == open_btn:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
@@ -3055,7 +3125,7 @@ class MainWindow(QMainWindow):
         if not item:
             QMessageBox.warning(self, "提示", "选中工单无效")
             return
-        order_data = item.data(Qt.UserRole)
+        order_data = item.data(Qt.ItemDataRole.UserRole)
         self.show_edit_order_dialog(order_data)
     def handle_process_selected_order(self):
         index = self.table_view.currentIndex()
@@ -3066,7 +3136,7 @@ class MainWindow(QMainWindow):
         if not item:
             QMessageBox.warning(self, "提示", "选中工单无效")
             return
-        order_data = item.data(Qt.UserRole)
+        order_data = item.data(Qt.ItemDataRole.UserRole)
         self.show_process_order_dialog(order_data)
     def apply_styles(self):
         self.setStyleSheet("""
@@ -3359,7 +3429,9 @@ class MainWindow(QMainWindow):
         """)
     def showMaximized(self):
         super().showMaximized()
-        self.centralWidget().findChild(QSplitter).setSizes([250, int(self.width() * 0.6), 200]) 
+        splitter = self.centralWidget().findChild(QSplitter)
+        if splitter:
+            splitter.setSizes([250, int(self.width() * 0.6), 200]) 
     def logout(self):
         # 注销，回到角色选择窗口
         self.log_action("注销", "用户注销")
@@ -3440,20 +3512,10 @@ class MainWindow(QMainWindow):
         self.task_manager.add_task(task)
         self.show_task_manager()
     def refresh_work_orders(self):
-        self.log_action("刷新工单", "刷新了工单列表")
-        # 重置筛选条件
-        self.search_edit.clear()
-        self.dept_filter.setCurrentIndex(0)
-        self.status_filter.setCurrentIndex(0)
-        
-        # 重新获取所有数据
+        # 保留当前搜索与筛选条件，重新拉取数据并重新应用筛选
         self.work_orders_data = db_manager.get_work_orders(self.departments)
-        
-        # 更新发起人下拉框
         self.update_creator_filter()
-        
-        self.setup_work_orders_table()
-        self.update_statistics()
+        self.apply_filters()
     
     def update_creator_filter(self):
         """更新发起人筛选下拉框的选项"""
@@ -3601,7 +3663,7 @@ class MainWindow(QMainWindow):
             items.append(QStandardItem(art_status))
             items.append(QStandardItem(edit_status))
             
-            items[0].setData(order, Qt.UserRole)
+            items[0].setData(order, Qt.ItemDataRole.UserRole)
             self.model.appendRow(items)
             
         self.table_view.setColumnWidth(0, 160)
@@ -3611,9 +3673,9 @@ class MainWindow(QMainWindow):
         self.table_view.setColumnWidth(5, 100)
         self.table_view.setColumnWidth(6, 180)
         self.table_view.setColumnWidth(7, 180)
-        self.table_view.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.table_view.setEditTriggers(QTableView.NoEditTriggers)
-        self.table_view.setSelectionBehavior(QTableView.SelectRows)
+        self.table_view.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         # 设置状态列自定义委托
         self.table_view.setItemDelegateForColumn(6, StatusProgressDelegate(self.table_view))
         self.table_view.setItemDelegateForColumn(7, StatusProgressDelegate(self.table_view))
@@ -3621,7 +3683,9 @@ class MainWindow(QMainWindow):
     def on_work_order_row_double_clicked(self, index):
         row = index.row()
         order_item = self.model.item(row, 0)
-        order_data = order_item.data(Qt.UserRole)
+        if not order_item:
+            return
+        order_data = order_item.data(Qt.ItemDataRole.UserRole)
         logs = db_manager.get_logs_by_order_id(order_data['id'])
         
         # 使用新的详情窗口
@@ -3726,13 +3790,15 @@ class MainWindow(QMainWindow):
                 }
             """)
             label.setToolTip(f"双击打开：{tooltip_text}")
-            label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            def on_label_press(event):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            label.mousePressEvent = on_label_press
         
         return label
 
 # 状态进度条委托
 class StatusProgressDelegate(QStyledItemDelegate):
-    STATUS_PROGRESS_MAP = {
+    STATUS_PROGRESS_MAP: ClassVar[dict] = {
         "拍摄中": 15,
         "拍摄完成": 25,
         "视频审核中": 35,
@@ -3762,7 +3828,7 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "剪辑已完成": 95
     }
 
-    COLOR_MAP = {
+    COLOR_MAP: ClassVar[dict] = {
         "拍摄中": (255, 170, 0),        # 橙色
         "拍摄完成": (0, 200, 255),      # 亮蓝色
         "视频审核中": (245, 158, 11),    # 驼升黄
@@ -3798,7 +3864,7 @@ class StatusProgressDelegate(QStyledItemDelegate):
         rgb = self.COLOR_MAP.get(status, (200, 200, 200))
         
         painter.save()
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # 单元格边距微调
         rect = option.rect.adjusted(4, 4, -4, -4)
@@ -3806,7 +3872,7 @@ class StatusProgressDelegate(QStyledItemDelegate):
 
         # 1. 绘制单元格槽底色（暗色半透明圆角背景胶囊）
         bg_color = QColor(40, 44, 52, 180)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bg_color)
         painter.drawRoundedRect(rect, radius, radius)
 
@@ -3816,7 +3882,7 @@ class StatusProgressDelegate(QStyledItemDelegate):
             fill_rect = QRect(rect.left(), rect.top(), fill_width, rect.height())
             fill_color = QColor(rgb[0], rgb[1], rgb[2], 50)
             painter.setBrush(fill_color)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.drawRoundedRect(fill_rect, radius, radius)
 
         # 3. 绘制左侧状态发光圆点 (Dot indicator)
@@ -3843,6 +3909,6 @@ class StatusProgressDelegate(QStyledItemDelegate):
         painter.setFont(font)
         
         display_text = f"{status}"
-        painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, display_text)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, display_text)
         
         painter.restore()

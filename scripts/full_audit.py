@@ -1,7 +1,12 @@
 """
 全面审计脚本：检查重构后项目的完整性。
 """
-import sys, io, re, ast, os
+import ast
+import io
+import os
+import re
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, r'e:\2025\pyproj')
 
@@ -23,7 +28,8 @@ all_files = [
 ok = True
 for fp in all_files:
     try:
-        src = open(fp, encoding='utf-8').read()
+        with open(fp, encoding='utf-8') as f:
+            src = f.read()
         ast.parse(src)
         print(f'  [OK] {os.path.basename(fp)}')
     except SyntaxError as e:
@@ -142,12 +148,12 @@ missing_methods = bak_methods - cur_methods
 known_relocated = set()  # 没有方法整体搬移到别处，只是把内联代码抽走了
 
 if missing_methods:
-    print(f'  [!!] 以下方法在 .bak 中存在但当前缺失:')
+    print('  [!!] 以下方法在 .bak 中存在但当前缺失:')
     for m in sorted(missing_methods):
         print(f'       def {m}')
     ok = False
 else:
-    print(f'  [OK] 所有 MainWindow 方法均完整')
+    print('  [OK] 所有 MainWindow 方法均完整')
 
 print()
 print('='*60)

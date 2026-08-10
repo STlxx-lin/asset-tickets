@@ -6,8 +6,8 @@
 从 main_window.py 顶部迁移而来，请勿在 main_window.py 中重复定义。
 """
 import os
-import re
 import platform
+import re
 
 # ---------------------------------------------------------------------------
 # 平台路径根前缀
@@ -39,6 +39,9 @@ VID_EXTS = {
     '.mp4', '.mov', '.avi', '.wmv', '.flv', '.mkv', '.webm',
     '.m4v', '.3gp', '.mpeg', '.mpg',
 }
+
+# 摄影师列表（新增摄影师时只需在此处追加，删除/迁移工单路径会自动覆盖）
+PHOTOGRAPHERS = ["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项", "08Arin"]
 
 # ---------------------------------------------------------------------------
 # 路径模板 lambda（共 13 个）
@@ -99,7 +102,7 @@ def to_local_path(path_str: str) -> str:
 
     # 检测是 Mac 格式前缀还是 Win 格式前缀
     is_mac_root = norm_path.startswith('/Volumes')
-    is_win_root = norm_path.startswith('//dabadoc') or norm_path.startswith('//DABADOC')
+    is_win_root = norm_path.startswith(('//dabadoc', '//DABADOC'))
 
     if platform.system() == 'Windows':
         if is_mac_root:
