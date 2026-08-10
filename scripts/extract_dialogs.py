@@ -1,10 +1,9 @@
 """
 提取脚本：将 main_window.py 中各角色代码块写入 process_dialogs/ 子包。
 """
-import sys
 import io
 import os
-import re
+import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
@@ -80,22 +79,22 @@ for start, end, module, func, label in SEGMENTS:
 
     content_parts = [
         f'"""\n{func} — {label} 工单处理对话框\n',
-        f'从 main_window.py 重构迁移而来，不改变任何业务逻辑。\n"""\n',
+        '从 main_window.py 重构迁移而来，不改变任何业务逻辑。\n"""\n',
         HEADER,
         '\n\n',
         f'def {func}(parent, order_data, callbacks):\n',
-        f'    """\n',
-        f'    处理工单对话框入口。\n\n',
-        f'    Args:\n',
-        f'        parent: 父窗口（MainWindow 实例）\n',
-        f'        order_data: 工单数据字典\n',
-        f'        callbacks: 回调字典，含 update_status / add_file_task / log_action\n',
-        f'    """\n',
-        f"    # ---- 解包 callbacks ----\n",
-        f"    _update_status = callbacks['update_status']\n",
-        f"    _add_file_task = callbacks['add_file_task']\n",
-        f"    _log_action    = callbacks['log_action']\n",
-        f'\n',
+        '    """\n',
+        '    处理工单对话框入口。\n\n',
+        '    Args:\n',
+        '        parent: 父窗口（MainWindow 实例）\n',
+        '        order_data: 工单数据字典\n',
+        '        callbacks: 回调字典，含 update_status / add_file_task / log_action\n',
+        '    """\n',
+        "    # ---- 解包 callbacks ----\n",
+        "    _update_status = callbacks['update_status']\n",
+        "    _add_file_task = callbacks['add_file_task']\n",
+        "    _log_action    = callbacks['log_action']\n",
+        '\n',
         body,
     ]
     content = ''.join(content_parts)

@@ -2,35 +2,37 @@
 show_art_dialog — 美工 工单处理对话框
 从 main_window.py 重构迁移而来，不改变任何业务逻辑。
 """
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLabel,
-    QMessageBox, QHeaderView, QSplitter, QGroupBox, QListWidget,
-    QTabWidget, QLineEdit, QComboBox, QFormLayout, QDialogButtonBox,
-    QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog,
-    QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea,
-    QFrame, QProgressDialog, QCheckBox, QGridLayout, QApplication,
-)
-from PySide6.QtGui import (
-    QStandardItemModel, QStandardItem, QFont, QDesktopServices,
-    QPainter, QColor, QPixmap,
-)
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
-from src.core.paths import (
-    VOLUMES, IMG_EXTS, VID_EXTS,
-    PHOTOGRAPHY_UPLOAD, PHOTOGRAPHY_DIST_IMG, PHOTOGRAPHY_DIST_VIDEO,
-    ART_GET_IMG_SRC, ART_GET_IMG_DEST, ART_DIST_OPS, ART_DIST_SALES,
-    EDIT_GET_VIDEO_SRC, EDIT_GET_VIDEO_DEST, EDIT_DIST_OPS, EDIT_DIST_SALES,
-    EDIT_POST_REVIEW_TRANSIT, OPS_GET_SRC, SALES_GET_SRC, to_local_path,
-)
-from src.core.database import db_manager
-from src.core.notification import send_notification
-from src.core.api_manager import api_manager
 import datetime
-from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
 import logging
 import os
-import shutil
-import re
+
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import (
+    QDesktopServices,
+)
+from PySide6.QtWidgets import (
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.core.api_manager import api_manager
+from src.core.database import db_manager
+from src.core.notification import send_notification
+from src.core.paths import (
+    ART_DIST_OPS,
+    ART_DIST_SALES,
+    ART_GET_IMG_DEST,
+    ART_GET_IMG_SRC,
+)
+from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +375,12 @@ def show_art_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件移动
         task_name = f"美工领取素材 - 工单{order_data['id']}"
         def update_status():
+            # 对话框可能已被用户关闭，防护访问已销毁控件
+            try:
+                if not dialog.isVisible():
+                    return
+            except RuntimeError:
+                return
             _log_action("美工领取素材", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             # 自动变更状态为"后期处理中"
             # db_manager.update_work_order_status(order_data['id'], '后期处理中')
@@ -388,17 +396,10 @@ def show_art_dialog(parent, order_data, callbacks):
             else:
                 error_msg = f"API更新工单{order_data['id']}美工开始时间失败: {api_response['error']}"
                 logger.error(error_msg)
-                QMessageBox.warning(dialog, "API更新失败", error_msg)
+                show_api_update_error(dialog, error_msg)
             parent.refresh_work_orders()
             # 显示完成消息
-            msg = QMessageBox(dialog)
-            msg.setWindowTitle("领取完成")
-            msg.setText(f"素材已移动到：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-            msg.addButton("确定", QMessageBox.AcceptRole)
-            msg.exec()
-            if msg.clickedButton() == open_btn:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
+            show_path_result(dialog, "领取完成", f"素材已移动到：\n{dest}", dest)
             # 更新路径显示
             get_src_label.setText(dest)
             get_dest_label.setText(dest)
@@ -441,7 +442,7 @@ def show_art_dialog(parent, order_data, callbacks):
         else:
             error_msg = f"API更新工单{order_data['id']}美工结束时间失败: {api_response['error']}"
             logger.error(error_msg)
-            QMessageBox.warning(dialog, "API更新失败", error_msg)
+            show_api_update_error(dialog, error_msg)
         # 更新成品路径显示
         product_label.setText(dir_path)
         product_label.setStyleSheet("""
@@ -455,14 +456,7 @@ def show_art_dialog(parent, order_data, callbacks):
         """)
         product_label.setToolTip("双击打开路径")
         product_label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
-        msg = QMessageBox(dialog)
-        msg.setWindowTitle("已选择")
-        msg.setText(f"成品路径：\n{dir_path}")
-        open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-        msg.addButton("确定", QMessageBox.AcceptRole)
-        msg.exec()
-        if msg.clickedButton() == open_btn:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
+        show_path_result(dialog, "已选择", f"成品路径：\n{dir_path}", dir_path)
     def on_distribute_ops():
         if not parent.product_dir:
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
@@ -473,7 +467,14 @@ def show_art_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件复制
         task_name = f"美工分发运营 - 工单{order_data['id']}"
         def update_status():
+            # 对话框可能已被用户关闭，防护访问已销毁控件
+            try:
+                if not dialog.isVisible():
+                    return
+            except RuntimeError:
+                return
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
+            old_status = order_data['status']
             db_manager.update_work_order_status(order_data['id'], '后期已完成')
             # 调用API更新工单状态
             api_response = api_manager.update_work_order_status(order_data['id'], '后期已完成')
@@ -482,7 +483,9 @@ def show_art_dialog(parent, order_data, callbacks):
             else:
                 error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
                 logger.error(error_msg)
-                QMessageBox.warning(dialog, "API更新失败", error_msg)
+                # API 失败时回滚本地状态，避免两端不一致
+                db_manager.update_work_order_status(order_data['id'], old_status)
+                show_api_update_error(dialog, error_msg)
             parent.refresh_work_orders()
             # 发送通知：美工分发运营
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -492,14 +495,7 @@ def show_art_dialog(parent, order_data, callbacks):
                 order_data.get('department')
             )
             # 显示完成消息
-            msg = QMessageBox(dialog)
-            msg.setWindowTitle("分发完成")
-            msg.setText(f"成功分发到运营部：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-            msg.addButton("确定", QMessageBox.AcceptRole)
-            msg.exec()
-            if msg.clickedButton() == open_btn:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
+            show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
             # 以美工分发运营为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",
@@ -533,7 +529,14 @@ def show_art_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件复制
         task_name = f"美工分发销售 - 工单{order_data['id']}"
         def update_status():
+            # 对话框可能已被用户关闭，防护访问已销毁控件
+            try:
+                if not dialog.isVisible():
+                    return
+            except RuntimeError:
+                return
             _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
+            old_status = order_data['status']
             db_manager.update_work_order_status(order_data['id'], '后期已完成')
             # 调用API更新工单状态
             api_response = api_manager.update_work_order_status(order_data['id'], '后期已完成')
@@ -542,7 +545,9 @@ def show_art_dialog(parent, order_data, callbacks):
             else:
                 error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
                 logger.error(error_msg)
-                QMessageBox.warning(dialog, "API更新失败", error_msg)
+                # API 失败时回滚本地状态，避免两端不一致
+                db_manager.update_work_order_status(order_data['id'], old_status)
+                show_api_update_error(dialog, error_msg)
             parent.refresh_work_orders()
             # 发送通知：美工分发销售
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -552,14 +557,7 @@ def show_art_dialog(parent, order_data, callbacks):
                 order_data.get('department')
             )
             # 显示完成消息
-            msg = QMessageBox(dialog)
-            msg.setWindowTitle("分发完成")
-            msg.setText(f"成功分发到销售部：\n{dest}")
-            open_btn = msg.addButton("打开", QMessageBox.ActionRole)
-            msg.addButton("确定", QMessageBox.AcceptRole)
-            msg.exec()
-            if msg.clickedButton() == open_btn:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(dest))
+            show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
             # 以分发销售为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",

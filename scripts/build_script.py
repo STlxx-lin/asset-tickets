@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 工单管理系统打包脚本
 支持 Windows 和 macOS 平台的单文件可执行程序打包
 python scripts/build_script.py --release
 """
 
+import argparse
 import os
-import sys
 import platform
 import subprocess
-import argparse
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 导入版本号
@@ -93,8 +93,8 @@ def build_mac(onefile=False):
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
-import shutil
 import re
+
 
 def increment_version():
     """读取 config.py，增加版本号，并保存"""
@@ -125,11 +125,11 @@ def increment_version():
 
 def release_version(skip_push=False):
     """发布新版本：自动增加版本号、打标签并推送到远程仓库"""
-    print(f"正在准备发布新版本...")
+    print("正在准备发布新版本...")
     
     try:
         # 检查是否安装了 git
-        subprocess.run(["git", "--version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(["git", "--version"], check=True, capture_output=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("错误: 未找到 git 命令，请确保已安装 Git。")
         sys.exit(1)
@@ -139,7 +139,7 @@ def release_version(skip_push=False):
         new_version = increment_version()
         
         # 2. 提交版本号变更
-        print(f"正在提交版本号变更...")
+        print("正在提交版本号变更...")
         subprocess.run(["git", "add", "src/core/config.py"], check=True)
         subprocess.run(["git", "commit", "-m", f"chore: bump version to {new_version}"], check=True)
         
@@ -156,13 +156,13 @@ def release_version(skip_push=False):
 
         # 4. 推送代码与标签
         try:
-            print(f"正在推送代码变更...")
+            print("正在推送代码变更...")
             subprocess.run(["git", "push", "origin", "main"], check=True)
-            print(f"正在推送标签...")
+            print("正在推送标签...")
             subprocess.run(["git", "push", "origin", new_version], check=True)
             print(f"\n成功发布版本 {new_version}！")
             print("GitHub Actions 将自动开始构建并发布 Release。")
-            print(f"查看进度: https://github.com/STlxx-lin/20250914/actions")
+            print("查看进度: https://github.com/STlxx-lin/20250914/actions")
         except subprocess.CalledProcessError:
             print("\n警告: 网络异常导致推送失败，但本地版本提交与标签已创建。")
             print("请网络恢复后手动执行：")

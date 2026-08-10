@@ -14,12 +14,13 @@ notification.py — 消息推送模块。
     LINE_NOTIFICATION_SETTINGS             → 运行时缓存（dict）
     NOTIFICATION_TYPE                      → 当前全局通知类型（str）
 """
+import base64
+import hashlib
+import hmac
 import logging
 import time
-import hmac
-import hashlib
-import base64
 import urllib.parse
+
 import requests
 
 from src.core.config import DEFAULT_NOTIFICATION_TYPE
@@ -34,51 +35,54 @@ NOTIFICATION_TYPE = DEFAULT_NOTIFICATION_TYPE
 LINE_NOTIFICATION_SETTINGS: dict = {}
 
 # ── 钉钉机器人配置 - 按产线分拆 ──────────────────────────────────────────
+# 安全说明：webhook/secret 仅存于数据库（app_notification_line_settings 表），
+# 模块加载时由 load_notification_settings() 从数据库读取并覆盖本常量。
+# 此处仅保留空默认值，避免密钥提交进代码仓库。
 DINGTALK_BOTS = {
     # 默认机器人（当产线未配置时使用）
     "default": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=f8f3fca934e63b2771b3b5ac90362f9d40890d4b3026d776fcf7c0921752384e",
-        "secret": "SEC34b86bcc26edaf4a578463bd196d05e45563891439a65392e4d506d1aa77472b"
+        "webhook": "",
+        "secret": ""
     },
     # 01标签机械
     "01标签机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=f78301316a57069ed3aea13dc11575dc62d7272bb2b14b55c8313837ea1f3e1d",
-        "secret": "SEC7fb47f63b4063809a11b22afc79d350b025ccf2e2031f6d77aad043a97baa13e"
+        "webhook": "",
+        "secret": ""
     },
     # 02标签材料
     "02标签材料": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=b09ed28b9bfb908dcc060fcab64e4ea6b39f947440d7dd919f47e2f4adb70be0",
-        "secret": "SEC993358f80b4018dc694d8e7948cbbb9b83d8259fcb8ace5e978a2cb71cc17bc0"
+        "webhook": "",
+        "secret": ""
     },
     # 03软包机械
     "03软包机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=6d2304f20f3b6f8a456e375aad0eaf522f26f5124f9283eacca0610c9004e8b2",
-        "secret": "SEC84683c43e5f3c4a7c27d3918d4736e91eb7abd3345a0d000c412f5bd505eef5e"
+        "webhook": "",
+        "secret": ""
     },
     # 04塑料机械
     "04塑料机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=48644a18544f840e921707ac4b2897d1433bd69dff0020f3cfa1277fa61e3b09",
-        "secret": "SEC000c57c9f13c270b61ac23f3b6a80820479ece19f0e3619478057482926f3805"
+        "webhook": "",
+        "secret": ""
     },
     # 05纸容器机械
     "05纸容器机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=3fbcda6baf9c32ef1853449cb2efbffee9cd25f780d43937343850224a23cf26",
-        "secret": "SEC0702be6f875f311a7297f96690d28801fce6f32ec432dda52deb0dea12315de5"
+        "webhook": "",
+        "secret": ""
     },
     # 06硬包机械
     "06硬包机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=4673857c444041ec8bbe3d6b5bf3a31bf19202b2442df02d4d7e8258d31f0a9f",
-        "secret": "SEC332ff1e73f6498100ae7ff13eb0e323771d4b6a4b90d678a94eb77400c2285c4"
+        "webhook": "",
+        "secret": ""
     },
     # 07农用机械
     "07农用机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=aa09ba0e539e8804fb40b9e7abdb559ad04e7f02307fd810616b7dd3d2e9cf5f",
-        "secret": "SECebf2eb43238a0b88514670df81660ac52f9cec651a2e764140471546421b484a"
+        "webhook": "",
+        "secret": ""
     },
     # 08包装机械
     "08包装机械": {
-        "webhook": "https://oapi.dingtalk.com/robot/send?access_token=3377632c97e05c29a9b063f7d1b7420c91891aa6af1c5cc4d709cefc3cb5a5e8",
-        "secret": "SEC2c7e9a5bb6e0fa6fc6d1063832bc4fd3a0daad920fa6363de009463f15dde7bc"
+        "webhook": "",
+        "secret": ""
     },
 }
 
@@ -90,23 +94,23 @@ WECHAT_WORK_BOTS = {
     },
     # 01标签机械
     "01标签机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=791b78c2-63e2-4795-88d9-62eae5a9dfbe"
+        "webhook": ""
     },
     # 02标签材料
     "02标签材料": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=c675c3cd-125a-4cc2-bcb4-d24fd6ca06cc"
+        "webhook": ""
     },
     # 03软包机械
     "03软包机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=e9601e62-bcf1-4215-8a9e-034bde2d3709"
+        "webhook": ""
     },
     # 04塑料机械
     "04塑料机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=41134839-49b8-48a0-bc97-95da269c8bd4"
+        "webhook": ""
     },
     # 05纸容器机械
     "05纸容器机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=41134839-49b8-48a0-bc97-95da269c8bd4"
+        "webhook": ""
     },
     # 06硬包机械
     "06硬包机械": {
@@ -114,7 +118,7 @@ WECHAT_WORK_BOTS = {
     },
     # 07农用机械
     "07农用机械": {
-        "webhook": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=f26afc32-1298-4335-9014-17d9d0cfbbe7"
+        "webhook": ""
     },
     # 08包装机械
     "08包装机械": {

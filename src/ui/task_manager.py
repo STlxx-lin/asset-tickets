@@ -1,8 +1,21 @@
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QWidget,
-                             QPushButton, QListWidget, QListWidgetItem, QProgressBar, QLabel, QMessageBox)
-from PySide6.QtCore import QThread, Signal, Qt, QObject, QSize, QTimer
 import os
 import shutil
+
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
 
 class TaskStatusUpdater(QObject):
     """任务状态更新器，用于在主线程中更新状态"""
@@ -264,7 +277,7 @@ class TaskManagerDialog(QDialog):
                 if end_idx == -1:
                     end_idx = len(task.name)
                 work_order_id = task.name[start_idx:end_idx]
-            except:
+            except (IndexError, ValueError):
                 pass
         item = QListWidgetItem(task.name)
         item.setSizeHint(QSize(0, 80))
@@ -321,8 +334,25 @@ class TaskManagerDialog(QDialog):
                 if len(task.errors) > 10:
                     error_msg += f"\n... (还有 {len(task.errors)-10} 个错误)"
                 
-                # 显示错误提示
-                QMessageBox.warning(self, "任务执行出错", f"任务 {task.name} 执行过程中出现错误：\n{error_msg}")
+                # 显示错误提示（带复制完整错误信息按钮）
+                msg_box = QMessageBox(self)
+                msg_box.setIcon(QMessageBox.Warning)
+                msg_box.setWindowTitle("任务执行出错")
+                msg_box.setText(f"任务 {task.name} 执行过程中出现错误：\n{error_msg}")
+                
+                copy_button = msg_box.addButton("复制完整错误", QMessageBox.ActionRole)
+                msg_box.addButton("确定", QMessageBox.AcceptRole)
+                
+                full_error = f"任务 {task.name} 执行过程中出现错误：\n" + "\n".join(task.errors)
+                
+                def on_copy_clicked():
+                    QApplication.clipboard().setText(full_error)
+                    copy_button.setText("已复制 ✓")
+                    copy_button.setEnabled(False)
+                    QTimer.singleShot(800, msg_box.accept)
+                
+                copy_button.clicked.connect(on_copy_clicked)
+                msg_box.exec()
             else:
                 item.setText(f"{task.name}（已完成）")
                 # 更新工单ID标签显示为已完成状态

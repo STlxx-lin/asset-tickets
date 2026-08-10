@@ -2,36 +2,39 @@
 show_video_review_dialog — 视频审核 工单处理对话框
 从 main_window.py 重构迁移而来，不改变任何业务逻辑。
 """
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QLabel,
-    QMessageBox, QHeaderView, QSplitter, QGroupBox, QListWidget,
-    QTabWidget, QLineEdit, QComboBox, QFormLayout, QDialogButtonBox,
-    QListWidgetItem, QTableWidget, QTableWidgetItem, QFileDialog,
-    QProgressBar, QTextBrowser, QTextEdit, QDateEdit, QScrollArea,
-    QFrame, QProgressDialog, QCheckBox, QGridLayout, QApplication,
-)
-from PySide6.QtGui import (
-    QStandardItemModel, QStandardItem, QFont, QDesktopServices,
-    QPainter, QColor, QPixmap,
-)
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QDate
-from src.core.paths import (
-    VOLUMES, IMG_EXTS, VID_EXTS,
-    PHOTOGRAPHY_UPLOAD, PHOTOGRAPHY_DIST_IMG, PHOTOGRAPHY_DIST_VIDEO,
-    ART_GET_IMG_SRC, ART_GET_IMG_DEST, ART_DIST_OPS, ART_DIST_SALES,
-    EDIT_GET_VIDEO_SRC, EDIT_GET_VIDEO_DEST, EDIT_DIST_OPS, EDIT_DIST_SALES,
-    EDIT_POST_REVIEW_TRANSIT, OPS_GET_SRC, SALES_GET_SRC, to_local_path,
-)
-from src.core.database import db_manager
-from src.core.notification import send_notification
-from src.core.api_manager import api_manager
-import datetime
-from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
-from src.ui.video_preview import VideoPreviewWidget
 import logging
 import os
 import shutil
-import re
+
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import (
+    QDesktopServices,
+)
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.core.api_manager import api_manager
+from src.core.database import db_manager
+from src.core.notification import send_notification
+from src.core.paths import (
+    PHOTOGRAPHY_UPLOAD,
+)
+from src.ui.dialog_helpers import show_api_update_error
+from src.ui.video_preview import VideoPreviewWidget
 
 logger = logging.getLogger(__name__)
 
@@ -338,7 +341,7 @@ def show_video_review_dialog(parent, order_data, callbacks):
             return
         preview_state['index'] = idx
         file_table.selectRow(idx)
-        fname, pg_name, fpath, udir = files_found[idx]
+        fname, _, fpath, _ = files_found[idx]
         preview_filename_label.setText(f"[{idx + 1}/{len(files_found)}]  {fname}")
     
         # 直接交给通用预览组件去渲染/播放
@@ -392,12 +395,17 @@ def show_video_review_dialog(parent, order_data, callbacks):
 
     def on_approve():
         new_status = '审核通过'
+        old_status = order_data['status']
         _update_status(order_data['id'], new_status)
         api_response = api_manager.update_work_order_status(order_data['id'], new_status)
         if api_response['success']:
             logger.info(f"API更新工单{order_data['id']}状态为审核通过成功")
         else:
-            logger.error(f"API更新工单状态失败: {api_response['error']}")
+            error_msg = f"API更新工单{order_data['id']}状态为审核通过失败: {api_response['error']}"
+            logger.error(error_msg)
+            # API 失败时回滚本地状态，避免两端不一致
+            db_manager.update_work_order_status(order_data['id'], old_status)
+            show_api_update_error(dialog, error_msg)
     
         _log_action("视频审核通过", f"工单ID={order_data['id']}, 角色=视频审核")
         send_notification(
@@ -419,9 +427,12 @@ def show_video_review_dialog(parent, order_data, callbacks):
             QMessageBox.warning(dialog, "提示", "请选择至少一个不通过的素材文件")
             return
 
+        # 先停止预览，释放文件句柄，避免移动失败
+        preview_widget.stop()
+
         fail_count = 0
         for i in selected_indices:
-            fname, pg_name, fpath, udir = files_found[i]
+            fname, _, fpath, udir = files_found[i]
             fail_dir = os.path.join(udir, "不通过")
             try:
                 os.makedirs(fail_dir, exist_ok=True)
@@ -432,16 +443,22 @@ def show_video_review_dialog(parent, order_data, callbacks):
                 fail_count += 1
             except Exception as e:
                 logger.error(f"退回移动文件 {fname} 失败: {e}")
-                QMessageBox.warning(dialog, "错误", f"移动文件 {fname} 失败: {str(e)}")
+                QMessageBox.warning(dialog, "错误", f"移动文件 {fname} 失败: {e!s}")
 
+        # 仅当有文件成功退回时才变更状态
         if fail_count > 0:
             new_status = '重新拍摄'
+            old_status = order_data['status']
             _update_status(order_data['id'], new_status)
             api_response = api_manager.update_work_order_status(order_data['id'], new_status)
             if api_response['success']:
                 logger.info(f"API更新工单{order_data['id']}状态为重新拍摄成功")
             else:
-                logger.error(f"API更新工单状态失败: {api_response['error']}")
+                error_msg = f"API更新工单{order_data['id']}状态为重新拍摄失败: {api_response['error']}"
+                logger.error(error_msg)
+                # API 失败时回滚本地状态，避免两端不一致
+                db_manager.update_work_order_status(order_data['id'], old_status)
+                show_api_update_error(dialog, error_msg)
             
             _log_action("视频审核退回", f"工单ID={order_data['id']}, 角色=视频审核, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(

@@ -1,5 +1,9 @@
 """验证 notification 拆分结果。"""
-import sys, io, ast, os
+import ast
+import io
+import os
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, r'e:\2025\pyproj')
 
@@ -11,7 +15,8 @@ files = [
 ok = True
 for fpath in files:
     try:
-        src = open(fpath, encoding='utf-8').read()
+        with open(fpath, encoding='utf-8') as f:
+            src = f.read()
         ast.parse(src)
         lines = src.count('\n')
         print(f'[OK] {os.path.basename(fpath)}  ({lines} 行)')

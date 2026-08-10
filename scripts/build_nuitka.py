@@ -1,11 +1,13 @@
-import sys
 import os
-import subprocess
-import shutil
-import time
 import platform
+import shutil
+import subprocess
+import sys
+import time
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.config import APP_VERSION
+
 
 def remove_build_artifacts():
     """

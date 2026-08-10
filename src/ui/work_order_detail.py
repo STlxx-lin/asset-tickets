@@ -1,8 +1,18 @@
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QWidget, QLabel, 
-                             QGroupBox, QScrollArea, QGridLayout, QPushButton, QFrame, 
-                             QToolButton, QSizePolicy, QApplication)
-from PySide6.QtCore import Qt, QSize, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
+from PySide6.QtWidgets import (
+    QDialog,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
 
 class CollapsibleBox(QWidget):
     def __init__(self, title="", parent=None):
@@ -494,7 +504,7 @@ class WorkOrderDetailDialog(QDialog):
                     row_html = f'<span style="{styles["key"]}">{key}:</span> <span style="{styles["value"]}">{value}</span>'
                 
                 formatted_rows.append(row_html)
-            except:
+            except (KeyError, TypeError, ValueError):
                 continue
                 
         if not formatted_rows:
@@ -569,7 +579,6 @@ class WorkOrderDetailDialog(QDialog):
         art_start = self.order_data.get('art_start_time')
         art_end = self.order_data.get('art_end_time')
         edit_start = self.order_data.get('edit_start_time')
-        edit_end = self.order_data.get('edit_end_time')
         
         # 1. 基础后期流转判定
         is_post_phase = status not in ['拍摄中', '重新拍摄', '视频审核中', '拍摄完成', '审核通过']
@@ -641,10 +650,7 @@ class WorkOrderDetailDialog(QDialog):
         # 剪辑特有审核状态亮灯
         if status == '视频后期审核中':
             edit_finished.add("视频审核中")
-        elif status == '后期审核通过':
-            edit_finished.add("视频审核中")
-            edit_finished.add("后期审完")
-        elif status in ['后期已完成', '待上架', '已上架']:
+        elif status == '后期审核通过' or status in ['后期已完成', '待上架', '已上架']:
             edit_finished.add("视频审核中")
             edit_finished.add("后期审完")
 

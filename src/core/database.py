@@ -1,10 +1,11 @@
-import pymysql
-from typing import List, Dict, Any, Optional
 import logging
-import pymysql
-from .api_manager import api_manager
 from datetime import datetime
+from typing import Any
+
+import pymysql
+
 from .config import DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
+
 
 class DatabaseManager:
     def __init__(self):
@@ -18,6 +19,19 @@ class DatabaseManager:
         self.logger = logging.getLogger(__name__)
 
     def connect(self):
+        """获取数据库连接；若已有存活连接则复用，否则重新连接。"""
+        # 复用存活连接，避免每次查询都新建连接
+        if self.connection is not None:
+            try:
+                self.connection.ping(reconnect=True)
+                return True
+            except Exception:
+                # 连接已失效（如数据库重启），关闭后重新建立
+                try:
+                    self.connection.close()
+                except Exception:
+                    pass
+                self.connection = None
         try:
             self.connection = pymysql.connect(**self.config)
             self.logger.info("数据库连接成功")
@@ -175,7 +189,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_roles(self) -> List[str]:
+    def get_roles(self) -> list[str]:
         if not self.connect():
             return []
         try:
@@ -210,7 +224,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_departments(self) -> List[str]:
+    def get_departments(self) -> list[str]:
         if not self.connect():
             return []
         try:
@@ -223,7 +237,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_work_orders(self, user_departments: List[str] = None) -> List[Dict[str, Any]]:
+    def get_work_orders(self, user_departments: list[str] = None) -> list[dict[str, Any]]:
         if not self.connect():
             return []
         try:
@@ -340,7 +354,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_logs(self, limit: int = 200, role: str = None, user_name: str = None, action_type: str = None, ip_address: str = None, start_time: str = None, end_time: str = None, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_logs(self, limit: int = 200, role: str | None = None, user_name: str | None = None, action_type: str | None = None, ip_address: str | None = None, start_time: str | None = None, end_time: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
         if not self.connect(): return []
         try:
             sql = "SELECT role, user_name, action_type, details, timestamp, ip_address FROM mcs_by_takuya_logs"
@@ -378,7 +392,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def add_work_order(self, order_data: Dict[str, Any]) -> bool:
+    def add_work_order(self, order_data: dict[str, Any]) -> bool:
         if not self.connect(): return False
         try:
             with self.connection.cursor() as cursor:
@@ -459,7 +473,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def update_work_orders_status_bulk(self, ids: List[str], new_status: str) -> int:
+    def update_work_orders_status_bulk(self, ids: list[str], new_status: str) -> int:
         """
         批量更新工单状态。
         :param ids: 工单ID列表
@@ -577,7 +591,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_logs_by_order_ids(self, order_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    def get_logs_by_order_ids(self, order_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
         if not order_ids:
             return {}
         if not self.connect():
@@ -609,7 +623,7 @@ class DatabaseManager:
             self.disconnect()
 
 
-    def save_product_info(self, work_order_id: str, products: List[Dict[str, str]]) -> bool:
+    def save_product_info(self, work_order_id: str, products: list[dict[str, str]]) -> bool:
         """保存产品信息到数据库"""
         if not self.connect():
             return False
@@ -633,7 +647,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_product_info(self, work_order_id: str) -> List[Dict[str, str]]:
+    def get_product_info(self, work_order_id: str) -> list[dict[str, str]]:
         """获取工单的产品信息"""
         if not self.connect():
             return []
@@ -711,7 +725,7 @@ class DatabaseManager:
             self.disconnect()
 
     def delete_work_order(self, order_id: str) -> bool:
-        """根据工单ID删除工单及其相关数据（产品信息、日志等通过外键自动删除）"""
+        """根据工单ID删除工单（产品信息通过外键 ON DELETE CASCADE 自动删除；日志表无外键，历史日志保留）"""
         if not self.connect():
             return False
         try:
@@ -726,7 +740,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def update_work_order_full(self, order_id: str, department: str, model: str, name: str, creator: str, project_type: str = "", project_content: str = "", projecttype_id: int = None, project_contentid: int = None, remarks: str = "") -> bool:
+    def update_work_order_full(self, order_id: str, department: str, model: str, name: str, creator: str, requester: str = "", project_type: str = "", project_content: str = "", projecttype_id: int = None, project_contentid: int = None, remarks: str = "") -> bool:
         if not self.connect(): return False
         try:
             with self.connection.cursor() as cursor:
@@ -763,19 +777,24 @@ class DatabaseManager:
                 # 更新工单信息
                 cursor.execute("""
                     UPDATE mcs_by_takuya_work_orders 
-                    SET department_id = %s, model = %s, name = %s, creator = %s, 
+                    SET department_id = %s, model = %s, name = %s, creator = %s, requester = %s,
                         project_type_id = %s, project_content_id = %s, remarks = %s 
                     WHERE id = %s
-                """, (dept_id, model, name, creator, project_type_id, project_content_id, remarks, order_id))
-                
+                """, (dept_id, model, name, creator, requester, project_type_id, project_content_id, remarks, order_id))
+
+                self.connection.commit()
                 return cursor.rowcount > 0
         except Exception as e:
             self.logger.error(f"更新工单失败: {e}")
+            try:
+                self.connection.rollback()
+            except Exception:
+                pass
             return False
         finally:
             self.disconnect()
 
-    def get_users(self, name: str = None, ip: str = None, role: str = None, department: str = None) -> List[Dict[str, Any]]:
+    def get_users(self, name: str | None = None, ip: str | None = None, role: str | None = None, department: str | None = None) -> list[dict[str, Any]]:
         if not self.connect():
             return []
         try:
@@ -916,7 +935,7 @@ class DatabaseManager:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
-    def get_all_notification_settings(self) -> Dict[str, Dict[str, str]]:
+    def get_all_notification_settings(self) -> dict[str, dict[str, str]]:
         """获取所有产线的通知配置。"""
         if not self.connect():
             return {}
@@ -947,7 +966,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def upsert_notification_setting(self, line_name: str, settings: Dict[str, str]) -> bool:
+    def upsert_notification_setting(self, line_name: str, settings: dict[str, str]) -> bool:
         """保存单个产线的通知配置。"""
         if not self.connect():
             return False
@@ -980,7 +999,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def seed_notification_settings_if_empty(self, seed_data: Dict[str, Dict[str, str]]) -> bool:
+    def seed_notification_settings_if_empty(self, seed_data: dict[str, dict[str, str]]) -> bool:
         """当通知配置表为空时，写入当前代码内的通知配置作为初始数据。"""
         if not self.connect():
             return False
@@ -997,7 +1016,8 @@ class DatabaseManager:
                     self.connection.commit()
                     return True
 
-                # 批量构造插入参数，确保一次事务完成全部初始化写入
+                # 批量构造插入参数（注意：此前 CREATE TABLE 的 DDL 在 MySQL 中会隐式提交，
+                # 故此处事务无法覆盖建表，仅保证 INSERT 批量写入的一致性）
                 insert_values = []
                 for line_name, settings in seed_data.items():
                     insert_values.append((
@@ -1022,7 +1042,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_project_types(self) -> List[Dict[str, Any]]:
+    def get_project_types(self) -> list[dict[str, Any]]:
         """获取所有项目类型"""
         if not self.connect():
             return []
@@ -1036,7 +1056,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_project_contents_by_type(self, type_id: int) -> List[Dict[str, Any]]:
+    def get_project_contents_by_type(self, type_id: int) -> list[dict[str, Any]]:
         """根据项目类型ID获取关联的项目内容"""
         if not self.connect():
             return []
@@ -1053,6 +1073,60 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取项目内容失败: {e}")
             return []
+        finally:
+            self.disconnect()
+
+    def get_project_type_name(self, type_id) -> str | None:
+        """根据项目类型ID获取名称，未找到时返回 None"""
+        if type_id is None:
+            return None
+        if not self.connect():
+            return None
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT name FROM mcs_by_takuya_project_types WHERE id = %s LIMIT 1", (type_id,))
+                result = cursor.fetchone()
+                return str(result[0]) if result else None
+        except Exception as e:
+            self.logger.error(f"获取项目类型名称失败: {e}")
+            return None
+        finally:
+            self.disconnect()
+
+    def get_project_content_name(self, content_id) -> str | None:
+        """根据项目内容ID获取名称，未找到时返回 None"""
+        if content_id is None:
+            return None
+        if not self.connect():
+            return None
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT name FROM mcs_by_takuya_project_contents WHERE id = %s LIMIT 1", (content_id,))
+                result = cursor.fetchone()
+                return str(result[0]) if result else None
+        except Exception as e:
+            self.logger.error(f"获取项目内容名称失败: {e}")
+            return None
+        finally:
+            self.disconnect()
+
+    def get_work_order_project_names(self, order_id: str) -> dict[str, Any]:
+        """根据工单ID获取项目类型和项目内容名称"""
+        if not self.connect():
+            return {}
+        try:
+            with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                cursor.execute("""
+                    SELECT pt.name as project_type, pc.name as project_content
+                    FROM mcs_by_takuya_work_orders wo
+                    LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
+                    LEFT JOIN mcs_by_takuya_project_contents pc ON wo.project_content_id = pc.id
+                    WHERE wo.id = %s
+                """, (order_id,))
+                return cursor.fetchone() or {}
+        except Exception as e:
+            self.logger.error(f"获取工单项目信息失败: {e}")
+            return {}
         finally:
             self.disconnect()
 
@@ -1076,7 +1150,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def add_work_order_with_project_info(self, order_data: Dict[str, Any]) -> bool:
+    def add_work_order_with_project_info(self, order_data: dict[str, Any]) -> bool:
         """添加工单并设置项目类型、项目内容和备注信息"""
         if not self.connect(): return False
         try:
@@ -1165,7 +1239,7 @@ class DatabaseManager:
         finally:
             self.disconnect()
 
-    def get_review_feedback(self, work_order_id: str) -> List[Dict[str, Any]]:
+    def get_review_feedback(self, work_order_id: str) -> list[dict[str, Any]]:
         """获取某个工单的所有审核反馈记录。"""
         if not self.connect():
             return []
@@ -1215,7 +1289,7 @@ class DatabaseManager:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
-    def get_system_setting(self, key: str, default: str = None) -> Optional[str]:
+    def get_system_setting(self, key: str, default: str = None) -> str | None:
         """读取系统设置项。表不存在或键不存在时返回 default。"""
         if not self.connect():
             return default
@@ -1258,6 +1332,7 @@ class DatabaseManager:
     def get_local_ip(self) -> str:
         """获取本机最适合系统的本地 IP 地址，支持在开启 VPN 时智能识别物理局域网 IP。"""
         import socket
+
         import netifaces
 
         local_ips = []

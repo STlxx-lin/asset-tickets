@@ -1,13 +1,19 @@
 import os
-import sys
-import platform
-import re
+from typing import ClassVar
+
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QPixmap
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QSlider)
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
+
 
 class VideoPreviewWidget(QWidget):
     """
@@ -16,8 +22,8 @@ class VideoPreviewWidget(QWidget):
     """
     
     # 支持的常见扩展名
-    IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif'}
-    VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.m4v', '.ts'}
+    IMAGE_EXTS: ClassVar[set[str]] = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif'}
+    VIDEO_EXTS: ClassVar[set[str]] = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.m4v', '.ts'}
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -243,6 +249,8 @@ class VideoPreviewWidget(QWidget):
     def stop(self):
         """停止音视频播放器，完全断开媒体流并释放底层软解码资源"""
         self.player.stop()
+        # 清空媒体源，释放文件句柄（避免占用导致移动/删除失败）
+        self.player.setSource(QUrl())
 
     def clear(self, default_text="选择文件后在此预览"):
         """恢复为初始状态"""

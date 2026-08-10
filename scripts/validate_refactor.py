@@ -1,5 +1,7 @@
 """验证脚本：检查 paths.py 导入和 to_local_path 功能。"""
-import sys, io
+import io
+import sys
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, r'e:\2025\pyproj')
 
@@ -26,6 +28,7 @@ else:
 
 # 3. 验证 to_local_path 功能
 import platform
+
 from src.core.paths import to_local_path
 
 if platform.system() == 'Windows':
