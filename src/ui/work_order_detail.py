@@ -583,6 +583,7 @@ class WorkOrderDetailDialog(QDialog):
         edit_finished = set()
         
         status = self.order_data.get('status', '')
+        art_status = self.order_data.get('art_status')
         art_start = self.order_data.get('art_start_time')
         art_end = self.order_data.get('art_end_time')
         edit_start = self.order_data.get('edit_start_time')
@@ -651,8 +652,8 @@ class WorkOrderDetailDialog(QDialog):
         if has_edit_dist:
             edit_finished.add("剪辑分发")
 
-        # 美工后期审批环节：审核中或已审批通过时点亮
-        if status == '美工后期审核中' or has_art_approved:
+        # 美工后期审批环节：美工链状态为审核中、或已审批通过时点亮（优先读 art_status，兼容旧数据）
+        if art_status == '美工后期审核中' or status == '美工后期审核中' or has_art_approved:
             art_finished.add("美工审批")
 
         # 是否已被领取（只要有任一部门领取了算该链完成已被领取）

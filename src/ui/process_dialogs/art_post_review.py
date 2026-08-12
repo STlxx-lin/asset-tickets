@@ -71,11 +71,11 @@ def show_art_post_review_dialog(parent, order_data, callbacks):
             "美工后期审批功能当前已关闭。\n如需开启，请管理员前往【系统设置 → 功能设置】进行配置。"
         )
         return
-    # 只有状态为「美工后期审核中」才可审批
-    current_status = order_data.get('status', '')
-    if current_status != '美工后期审核中':
+    # 只有美工链状态为「美工后期审核中」才可审批（优先读 art_status，兼容旧数据回退全局 status）
+    art_status = order_data.get('art_status') or order_data.get('status', '')
+    if art_status != '美工后期审核中':
         QMessageBox.information(parent, "提示",
-            f"当前工单状态为【{current_status}】\n只有状态为【美工后期审核中】的工单才可进行美工后期审批。"
+            f"当前美工状态为【{art_status}】\n只有美工状态为【美工后期审核中】的工单才可进行美工后期审批。"
         )
         return
 
@@ -118,6 +118,7 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         ART_DIST_OPS(order_data['department'], order_data['id'], order_data['model'], order_data['name']),
         ART_DIST_SALES(order_data['department'], order_data['id'], order_data['model'], order_data['name']),
     ]
+    art_status = order_data.get('art_status') or order_data.get('status', '')
 
     # 设置弹窗样式
     dialog.setStyleSheet("""
@@ -221,6 +222,7 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     basic_layout.addRow("型号:", QLabel(order_data['model']))
     basic_layout.addRow("名称:", QLabel(order_data['name']))
     basic_layout.addRow("当前状态:", QLabel(order_data.get('status', '')))
+    basic_layout.addRow("美工状态:", QLabel(art_status))
     basic_layout.addRow("待审批路径:", QLabel(transit_root))
     left_layout.addWidget(basic_group)
 
@@ -501,6 +503,8 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 return
             new_status = '后期已完成'
             old_status = order_data['status']
+            # 美工链专属状态：审批通过（与全局 status 解耦）
+            db_manager.update_work_order_art_status(order_data['id'], '美工已完成')
             _update_status(order_data['id'], new_status)
             api_response = api_manager.update_work_order_status(order_data['id'], new_status)
             if api_response['success']:
@@ -570,6 +574,8 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         if fail_count > 0:
             new_status = '美工后期重新制作'
             old_status = order_data['status']
+            # 美工链专属状态：审批退回（与全局 status 解耦）
+            db_manager.update_work_order_art_status(order_data['id'], '美工后期重新制作')
             _update_status(order_data['id'], new_status)
             api_response = api_manager.update_work_order_status(order_data['id'], new_status)
             if api_response['success']:
