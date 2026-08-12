@@ -87,7 +87,13 @@ class CharacterSelection(QWidget):
         if user_info:
             roles = [r.strip() for r in user_info['role'].split(',') if r.strip()]
             depts = [d.strip() for d in user_info['department'].split(',') if d.strip()]
-            selected_role = roles[0] if roles else ''
+            # 同时拥有「视频后期审核」+「美工后期审批」时合并显示为单个「后期审批」选项
+            if '视频后期审核' in roles and '美工后期审批' in roles:
+                display_roles = [r for r in roles if r not in ('视频后期审核', '美工后期审批')]
+                display_roles.append('后期审批')
+            else:
+                display_roles = list(roles)
+            selected_role = display_roles[0] if display_roles else ''
             self.selected_role = selected_role
             self.user_departments = depts
 
@@ -113,11 +119,11 @@ class CharacterSelection(QWidget):
             self.main_layout.addLayout(meta_layout)
 
             # 角色选择（多角色时显示）
-            if len(roles) > 1:
+            if len(display_roles) > 1:
                 role_group = QGroupBox("请选择角色")
                 role_layout = QGridLayout()
                 role_layout.setSpacing(16)
-                for i, role in enumerate(roles):
+                for i, role in enumerate(display_roles):
                     btn = QRadioButton(role)
                     if role == selected_role:
                         btn.setChecked(True)
@@ -471,8 +477,13 @@ class CharacterSelection(QWidget):
                 if btn.isChecked():
                     role = btn.text()
                     break
+        # 角色集合：合并的「后期审批」拆回两个审批角色，供主窗口/审批路由使用
+        if role == '后期审批':
+            selected_roles = ['视频后期审核', '美工后期审批']
+        else:
+            selected_roles = [role] if role else []
         from src.ui.main_window import MainWindow
         # 传递选中角色和所有部门
-        self.main_window = MainWindow(role, self.user_departments, is_admin=False, logout_callback=self.show, user_name=user_info['name'])
+        self.main_window = MainWindow(role, self.user_departments, is_admin=False, logout_callback=self.show, user_name=user_info['name'], roles=selected_roles)
         self.main_window.show()
         self.hide()

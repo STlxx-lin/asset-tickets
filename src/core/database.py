@@ -158,7 +158,7 @@ class DatabaseManager:
                     self.logger.error(f"检查或添加 edit_product_path 字段失败: {ex}")
 
                 # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
                 for role in default_roles:
                     cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 # 默认部门
@@ -195,7 +195,7 @@ class DatabaseManager:
         try:
             with self.connection.cursor() as cursor:
                 # 确保默认角色存在（如数据库已建但缺少角色时）
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
                 for role in default_roles:
                     cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 self.connection.commit()
@@ -204,7 +204,7 @@ class DatabaseManager:
                 all_roles = [row[0] for row in cursor.fetchall()]
                 
                 # 按照指定顺序排序
-                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
+                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
                 ordered_roles = []
                 
                 # 先添加指定顺序的角色
@@ -687,7 +687,7 @@ class DatabaseManager:
                 
                 # 重新插入默认数据
                 # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]
+                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
                 for role in default_roles:
                     cursor.execute("INSERT INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 

@@ -50,11 +50,6 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
         order_data: 工单数据字典
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
-    # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
-    _add_file_task = callbacks['add_file_task']
-    _log_action    = callbacks['log_action']
-
     def is_video_post_review_enabled() -> bool:
         val = db_manager.get_system_setting('video_post_review_enabled', default='1')
         return val == '1'
@@ -74,7 +69,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
                 f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】或【后期已完成】的工单才可进行后期审核。"
             )
             return
-    
+
     edit_product_path = order_data.get('edit_product_path')
     if edit_product_path:
         edit_product_path = to_local_path(edit_product_path)
@@ -89,8 +84,32 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     dialog.setMinimumWidth(1400)
     dialog.setMinimumHeight(700)
     dialog.resize(1400, 720)
+    build_video_post_review_ui(dialog, dialog, parent, order_data, callbacks)
+    dialog.exec()
+
+
+def build_video_post_review_ui(container, dialog, parent, order_data, callbacks):
+    """
+    构建视频后期审核界面内容（供单独对话框与合并审批界面复用）。
+
+    Args:
+        container: UI 挂载容器（单独对话框时为 QDialog 本身，合并界面时为页面容器）
+        dialog:    弹窗主体（用于 accept/reject 与消息框父窗口）
+        parent:    父窗口（MainWindow 实例）
+        order_data: 工单数据字典
+        callbacks:  回调字典，含 update_status / add_file_task / log_action
+    """
+    # ---- 解包 callbacks ----
+    _update_status = callbacks['update_status']
+    _add_file_task = callbacks['add_file_task']
+    _log_action    = callbacks['log_action']
+
+    edit_product_path = order_data.get('edit_product_path') or ''
+    if edit_product_path:
+        edit_product_path = to_local_path(edit_product_path)
+
     # 设置弹窗样式
-    dialog.setStyleSheet(parent.styleSheet() + """
+    dialog.setStyleSheet("""
         QDialog {
             background-color: #2E2E2E;
             color: #FFFFFF;
@@ -141,7 +160,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
             background-color: #666666;
         }
     """)
-    main_layout = QVBoxLayout(dialog)
+    main_layout = QVBoxLayout(container)
     main_layout.setSpacing(15)
     main_layout.setContentsMargins(25, 25, 25, 25)
 
@@ -274,7 +293,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     def deselect_all_files():
         for chk in checkboxes:
             chk.setChecked(False)
-        
+
     select_all_btn.clicked.connect(select_all_files)
     deselect_all_btn.clicked.connect(deselect_all_files)
 
@@ -349,10 +368,10 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
         file_table.selectRow(idx)
         fname, fpath = files_found[idx]
         preview_filename_label.setText(f"[{idx + 1}/{len(files_found)}]  {fname}")
-    
+
         # 直接交给通用预览组件去渲染/播放
         preview_widget.show_file(fpath)
-    
+
         prev_file_btn.setEnabled(idx > 0)
         next_file_btn.setEnabled(idx < len(files_found) - 1)
 
@@ -412,7 +431,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
             # API 失败时回滚本地状态，避免两端不一致
             db_manager.update_work_order_status(order_data['id'], old_status)
             show_api_update_error(dialog, error_msg)
-    
+
         _log_action("视频后期审核通过", f"工单ID={order_data['id']}, 角色=视频后期审核, 成品路径={edit_product_path}")
         send_notification(
             "工单后期审核通过通知",
@@ -427,7 +446,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
         if not reason:
             QMessageBox.warning(dialog, "提示", "退回重剪必须填写退回原因")
             return
-    
+
         selected_indices = [i for i, chk in enumerate(checkboxes) if chk.isChecked()]
         if not selected_indices:
             QMessageBox.warning(dialog, "提示", "请选择至少一个不通过的视频文件")
@@ -462,7 +481,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
                 # API 失败时回滚本地状态，避免两端不一致
                 db_manager.update_work_order_status(order_data['id'], old_status)
                 show_api_update_error(dialog, error_msg)
-            
+
             _log_action("视频后期审核退回", f"工单ID={order_data['id']}, 角色=视频后期审核, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(
                 "工单后期审核退回通知",
@@ -476,5 +495,3 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
 
     pass_btn.clicked.connect(on_approve)
     reject_btn.clicked.connect(on_reject)
-    dialog.exec()
-            # 美工弹窗

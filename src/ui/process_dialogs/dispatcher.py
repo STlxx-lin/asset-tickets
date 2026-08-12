@@ -1,7 +1,7 @@
 """
 dispatcher.py — 工单处理对话框路由器。
 
-根据 parent.role 将调用分发到对应角色模块的顶层函数。
+根据 parent.role（及 parent.roles 角色集合）将调用分发到对应角色模块的顶层函数。
 不包含任何业务逻辑，仅做路由。
 """
 
@@ -19,8 +19,15 @@ def show_process_order_dialog(parent, order_data, callbacks):
                       'log_action'    -> Callable[[str, str], None]
     """
     role = parent.role
+    # 支持多角色（角色合并登录时为列表，如 ['视频后期审核', '美工后期审批']）
+    roles = getattr(parent, 'roles', None) or ([role] if role else [])
 
-    if role in ["采购", "摄影"]:
+    # 同时拥有「视频后期审核」+「美工后期审批」（登录合并为「后期审批」）→ 合并审批界面
+    if role == "后期审批" or ("视频后期审核" in roles and "美工后期审批" in roles):
+        from .post_review_combined import show_post_review_combined_dialog
+        show_post_review_combined_dialog(parent, order_data, callbacks)
+
+    elif role in ["采购", "摄影"]:
         from .photography import show_photography_dialog
         show_photography_dialog(parent, order_data, callbacks)
 
@@ -31,6 +38,10 @@ def show_process_order_dialog(parent, order_data, callbacks):
     elif role == "视频后期审核":
         from .video_post_review import show_video_post_review_dialog
         show_video_post_review_dialog(parent, order_data, callbacks)
+
+    elif role == "美工后期审批":
+        from .art_post_review import show_art_post_review_dialog
+        show_art_post_review_dialog(parent, order_data, callbacks)
 
     elif role == "美工":
         from .art import show_art_dialog

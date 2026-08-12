@@ -635,7 +635,7 @@ class MainWindow(QMainWindow):
         # 执行对话框
         msg_box.exec()
     
-    def __init__(self, role, departments, is_admin=False, parent=None, logout_callback=None, user_name=None):
+    def __init__(self, role, departments, is_admin=False, parent=None, logout_callback=None, user_name=None, roles=None):
         # 检查版本（版本号格式异常时跳过检查，避免启动崩溃）
         latest_version_info = db_manager.get_latest_version()
         outdated = False
@@ -677,6 +677,8 @@ class MainWindow(QMainWindow):
             msg_box.exec()
         super().__init__(parent)
         self.role = role
+        # 角色集合（多角色合并登录时传入，如 ['视频后期审核', '美工后期审批']），默认仅当前角色
+        self.roles = roles if roles else ([role] if role else [])
         self.departments = departments
         self.is_admin = is_admin
         self.logout_callback = logout_callback  # 添加注销回调函数
@@ -856,7 +858,7 @@ class MainWindow(QMainWindow):
         # 状态筛选
         self.status_filter = QComboBox()
         self.status_filter.addItem("全部状态")
-        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑", "后期已完成", "待上架", "已上架"])
+        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑", "美工后期审核中", "美工后期重新制作", "后期已完成", "待上架", "已上架"])
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
@@ -944,7 +946,7 @@ class MainWindow(QMainWindow):
             controls_layout.addWidget(create_button)
 
         # 办理按钮
-        if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核"]:
+        if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批", "后期审批"]:
             op_button = QPushButton("办理")
             op_button.clicked.connect(self.handle_process_selected_order)
             controls_layout.addWidget(op_button)
@@ -1452,10 +1454,25 @@ class MainWindow(QMainWindow):
         vpr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
         vpr_desc.setWordWrap(True)
 
+        # 读取美工后期审批开关状态
+        _apr_enabled = db_manager.get_system_setting('art_post_review_enabled', default='1') == '1'
+        self.art_post_review_checkbox = QCheckBox("启用美工后期审批功能")
+        self.art_post_review_checkbox.setChecked(_apr_enabled)
+        self.art_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
+
+        apr_desc = QLabel(
+            "开启时：美工分发成品后先进入【美工待审批】目录，需美工后期审批员审批通过后才到运营/销售。\n"
+            "关闭时：美工分发直达运营/销售，跳过美工后期审批环节。"
+        )
+        apr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
+        apr_desc.setWordWrap(True)
+
         workflow_group_layout.addWidget(self.video_review_checkbox)
         workflow_group_layout.addWidget(vr_desc)
         workflow_group_layout.addWidget(self.video_post_review_checkbox)
         workflow_group_layout.addWidget(vpr_desc)
+        workflow_group_layout.addWidget(self.art_post_review_checkbox)
+        workflow_group_layout.addWidget(apr_desc)
         features_layout.addWidget(workflow_group)
 
         # 保存按钮
@@ -1467,9 +1484,11 @@ class MainWindow(QMainWindow):
         def on_save_features():
             val = '1' if self.video_review_checkbox.isChecked() else '0'
             val_post = '1' if self.video_post_review_checkbox.isChecked() else '0'
-            
+            val_art = '1' if self.art_post_review_checkbox.isChecked() else '0'
+
             success = db_manager.set_system_setting('video_review_enabled', val) and \
-                      db_manager.set_system_setting('video_post_review_enabled', val_post)
+                      db_manager.set_system_setting('video_post_review_enabled', val_post) and \
+                      db_manager.set_system_setting('art_post_review_enabled', val_art)
                       
             if success:
                 QMessageBox.information(self, "保存成功", "功能设置已保存并即时生效。")
@@ -3495,6 +3514,14 @@ class MainWindow(QMainWindow):
         # 3. 美工已完成分发
         if global_status == '后期已完成':
             return "美工已完成"
+
+        # 3.5 美工后期审核中（美工已分发，等待美工后期审批）
+        if global_status == '美工后期审核中':
+            return "美工待审批"
+
+        # 3.6 美工后期重新制作（美工后期审批退回，需重新制作后再次分发）
+        if global_status == '美工后期重新制作':
+            return "美工重新制作"
         has_distribute = False
         for log in logs:
             action = log.get('action_type', '')
@@ -3748,6 +3775,8 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "后期处理中": 65,
         "视频后期审核中": 75,
         "后期重新剪辑": 60,
+        "美工后期审核中": 80,
+        "美工后期重新制作": 60,
         "后期审核通过": 85,
         "后期已完成": 90,
         "待上架": 95,
@@ -3757,6 +3786,8 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "美工待领取": 20,
         "美工设计中": 60,
         "美工待分发": 85,
+        "美工待审批": 88,
+        "美工重新制作": 60,
         "美工已完成": 90,
         
         "剪辑未开始": 0,
@@ -3779,6 +3810,8 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "视频后期审核中": (245, 158, 11), # 驼升黄
         "后期审核通过": (40, 167, 69),   # 绿色
         "后期重新剪辑": (220, 53, 69),   # 红色
+        "美工后期审核中": (245, 158, 11), # 驼升黄
+        "美工后期重新制作": (220, 53, 69), # 红色
         "后期已完成": (0, 220, 120),    # 亮绿色
         "待上架": (255, 215, 0),        # 金色
         "已上架": (0, 255, 255),         # 亮青色
@@ -3787,6 +3820,8 @@ class StatusProgressDelegate(QStyledItemDelegate):
         "美工待领取": (255, 140, 0),      # 深橙色
         "美工设计中": (180, 80, 255),     # 紫色
         "美工待分发": (245, 158, 11),     # 驼升黄
+        "美工待审批": (245, 158, 11),     # 驼升黄
+        "美工重新制作": (220, 53, 69),    # 红色
         "美工已完成": (0, 220, 120),      # 亮绿色
         
         "剪辑未开始": (120, 120, 120),    # 灰色

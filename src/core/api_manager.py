@@ -13,7 +13,7 @@ logger = logging.getLogger('API Manager')
 class APIManager:
     """API管理器，封装创建工单和更新工单系统信息的API调用"""
     _instance = None
-    _token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInJvbGVOYW1lIjoiYWRtaW4iLCJpYXQiOjE3NTU4Mzk3NTcsImV4cCI6MzMzMTM0Mzk3NTd9.4xYz71zgKO2S_iluTwCY7i2h1nRpHE1cuMKa20E7grw"
+    _token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInJvbGVOYW1lIjoicm9vdCIsImlhdCI6MTc4NjUwMDgxOSwiZXhwIjozMzM0NDEwMDgxOX0.V65LNVG_p-pLB1ItvnxmfSiylOFAdDRJCKkLMZ-XPik"
     _headers: ClassVar[dict] = {
         "Authorization": _token,
         "Content-Type": "application/json"
