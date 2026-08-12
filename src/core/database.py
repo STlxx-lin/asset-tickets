@@ -157,6 +157,15 @@ class DatabaseManager:
                 except Exception as ex:
                     self.logger.error(f"检查或添加 edit_product_path 字段失败: {ex}")
 
+                # 确保 mcs_by_takuya_work_orders 包含 art_status 字段（美工链专属状态，与全局 status 解耦）
+                try:
+                    cursor.execute("SHOW COLUMNS FROM mcs_by_takuya_work_orders LIKE 'art_status'")
+                    if not cursor.fetchone():
+                        cursor.execute("ALTER TABLE mcs_by_takuya_work_orders ADD COLUMN art_status VARCHAR(20) DEFAULT NULL")
+                        self.logger.info("数据库升级：成功为 mcs_by_takuya_work_orders 表添加 art_status 字段")
+                except Exception as ex:
+                    self.logger.error(f"检查或添加 art_status 字段失败: {ex}")
+
                 # 默认角色
                 default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
                 for role in default_roles:
@@ -249,7 +258,7 @@ class DatabaseManager:
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content,
                                wo.project_type_id, wo.project_content_id, wo.remarks,
-                               wo.edit_product_path,
+                               wo.edit_product_path, wo.art_status,
                                wo.art_start_time, wo.art_end_time,
                                wo.edit_start_time, wo.edit_end_time
                         FROM mcs_by_takuya_work_orders wo
@@ -266,7 +275,7 @@ class DatabaseManager:
                                wo.creator, wo.requester, wo.type, wo.status, wo.created_at, 
                                pt.name as project_type, pc.name as project_content,
                                wo.project_type_id, wo.project_content_id, wo.remarks,
-                               wo.edit_product_path,
+                               wo.edit_product_path, wo.art_status,
                                wo.art_start_time, wo.art_end_time,
                                wo.edit_start_time, wo.edit_end_time
                         FROM mcs_by_takuya_work_orders wo
@@ -515,6 +524,30 @@ class DatabaseManager:
                 return cursor.rowcount > 0
         except Exception as e:
             self.logger.error(f"更新工单状态失败: {e}")
+            self.connection.rollback()
+            return False
+
+    def update_work_order_art_status(self, order_id: str, new_status: str) -> bool:
+        """
+        更新单个工单的美工专属状态（art_status 字段，与全局 status 解耦）。
+
+        美工链状态独立记录，避免与剪辑链的全局状态互相覆盖。
+        :param order_id: 工单ID
+        :param new_status: 美工新状态
+        :return: 是否成功
+        """
+        if not self.connect():
+            return False
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE mcs_by_takuya_work_orders SET art_status=%s WHERE id=%s",
+                    (new_status, order_id)
+                )
+                self.connection.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            self.logger.error(f"更新工单美工状态失败: {e}")
             self.connection.rollback()
             return False
 

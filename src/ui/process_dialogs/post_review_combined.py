@@ -36,6 +36,8 @@ def show_post_review_combined_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     status = order_data.get('status', '')
+    # 美工链状态优先读 art_status（与全局 status 解耦，不受剪辑链状态覆盖影响），兼容旧数据回退全局 status
+    art_status = order_data.get('art_status') or status
 
     # 各审批模式可用性：功能开关 + 工单状态到达对应流程
     video_feature_on = db_manager.get_system_setting('video_post_review_enabled', default='1') == '1'
@@ -45,7 +47,7 @@ def show_post_review_combined_dialog(parent, order_data, callbacks):
         video_status_ok = True
     else:
         video_status_ok = status in ('视频后期审核中', '后期已完成')
-    art_status_ok = status == '美工后期审核中'
+    art_status_ok = art_status == '美工后期审核中'
 
     video_enabled = video_feature_on and video_status_ok
     art_enabled = art_feature_on and art_status_ok

@@ -398,8 +398,8 @@ def show_art_dialog(parent, order_data, callbacks):
             except RuntimeError:
                 return
             _log_action("美工领取素材", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
-            # 自动变更状态为"后期处理中"
-            # db_manager.update_work_order_status(order_data['id'], '后期处理中')
+            # 美工链专属状态：领取素材后进入设计中（与全局 status 解耦）
+            db_manager.update_work_order_art_status(order_data['id'], '美工设计中')
             # 记录美工开始时间
             current_time = datetime.datetime.now()
             formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -446,6 +446,8 @@ def show_art_dialog(parent, order_data, callbacks):
         if not dir_path:
             return
         parent.product_dir = dir_path
+        # 美工链专属状态：已选成品，待分发
+        db_manager.update_work_order_art_status(order_data['id'], '美工待分发')
         # 记录美工结束时间
         current_time = datetime.datetime.now()
         formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -493,6 +495,8 @@ def show_art_dialog(parent, order_data, callbacks):
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             new_status = '美工后期审核中' if review_now else '后期已完成'
+            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）
+            db_manager.update_work_order_art_status(order_data['id'], '美工后期审核中' if review_now else '美工已完成')
             old_status = order_data['status']
             db_manager.update_work_order_status(order_data['id'], new_status)
             # 调用API更新工单状态
@@ -568,6 +572,8 @@ def show_art_dialog(parent, order_data, callbacks):
             _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             new_status = '美工后期审核中' if review_now else '后期已完成'
+            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）
+            db_manager.update_work_order_art_status(order_data['id'], '美工后期审核中' if review_now else '美工已完成')
             old_status = order_data['status']
             db_manager.update_work_order_status(order_data['id'], new_status)
             # 调用API更新工单状态

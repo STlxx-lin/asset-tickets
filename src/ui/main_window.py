@@ -3419,8 +3419,8 @@ class MainWindow(QMainWindow):
             # 产线筛选（只筛选用户部门内的产线）
             if dept != "全部产线" and order.get('department') != dept:
                 continue
-            # 状态筛选
-            if status != "全部状态" and order.get('status') != status:
+            # 状态筛选（同时匹配全局 status 与美工专属 art_status）
+            if status != "全部状态" and status not in (order.get('status'), order.get('art_status')):
                 continue
             # 发起人筛选
             if creator != "全部发起人" and order.get('creator') != creator:
@@ -3510,7 +3510,19 @@ class MainWindow(QMainWindow):
         # 2. 待上架
         if global_status == '待上架':
             return "待上架"
-            
+
+        # 美工链专属状态优先（与全局 status 解耦，不受剪辑链状态覆盖影响）
+        art_status = order.get('art_status')
+        if art_status:
+            mapping = {
+                '美工设计中': '美工设计中',
+                '美工待分发': '美工待分发',
+                '美工后期审核中': '美工待审批',
+                '美工后期重新制作': '美工重新制作',
+                '美工已完成': '美工已完成',
+            }
+            return mapping.get(art_status, art_status)
+
         # 3. 美工已完成分发
         if global_status == '后期已完成':
             return "美工已完成"
