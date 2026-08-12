@@ -82,6 +82,11 @@ EDIT_DIST_SALES = lambda dept, id_, model, name: \
 EDIT_POST_REVIEW_TRANSIT = lambda dept, id_, model, name: \
     os.path.join(VOLUMES, '02图像部', '02视频部', dept, '01待审核', f"{id_} {model} {name}")
 
+# 美工后期审批中转目录：美工分发成品先复制到此，审批通过后再到运营/销售目录
+# 目录下分「01运营」「02销售」两个子目录，对应美工分发运营/销售
+ART_POST_REVIEW_TRANSIT = lambda dept, id_, model, name: \
+    os.path.join(VOLUMES, '02图像部', '01美工部', dept, '01待审批', f"{id_} {model} {name}")
+
 OPS_GET_SRC = lambda dept, id_, model, name: \
     os.path.join(VOLUMES, '03素材中心', '01运营部', dept, f"{id_} {model} {name}")
 

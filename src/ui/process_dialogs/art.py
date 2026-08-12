@@ -31,6 +31,7 @@ from src.core.paths import (
     ART_DIST_SALES,
     ART_GET_IMG_DEST,
     ART_GET_IMG_SRC,
+    ART_POST_REVIEW_TRANSIT,
 )
 from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
@@ -62,6 +63,16 @@ def show_art_dialog(parent, order_data, callbacks):
 
     def get_art_dist_sales():
         return ART_DIST_SALES(order_data['department'], order_data['id'], order_data['model'], order_data['name'])
+
+    def get_art_transit():
+        return ART_POST_REVIEW_TRANSIT(order_data['department'], order_data['id'], order_data['model'], order_data['name'])
+
+    def is_art_post_review_enabled() -> bool:
+        val = db_manager.get_system_setting('art_post_review_enabled', default='1')
+        return val == '1'
+
+    # 美工后期审批开启时，分发目标为「美工待审批」中转目录（01运营/02销售），审批通过后才到运营/销售
+    art_post_review_on = is_art_post_review_enabled()
 
 
     dialog = QDialog(parent)
@@ -213,8 +224,13 @@ def show_art_dialog(parent, order_data, callbacks):
     # 获取路径信息
     get_src = get_art_get_img_src()
     get_dest = get_art_get_img_dest()
-    ops_path = get_art_dist_ops()
-    sales_path = get_art_dist_sales()
+    # 美工后期审批开启时，分发路径显示为待审批中转子目录
+    if art_post_review_on:
+        ops_path = os.path.join(get_art_transit(), '01运营')
+        sales_path = os.path.join(get_art_transit(), '02销售')
+    else:
+        ops_path = get_art_dist_ops()
+        sales_path = get_art_dist_sales()
     # 检查领取状态
     def check_collected_status():
         """检查是否已领取素材"""
@@ -462,7 +478,8 @@ def show_art_dialog(parent, order_data, callbacks):
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
             return
         src = parent.product_dir
-        dest = get_art_dist_ops()
+        review_on = is_art_post_review_enabled()
+        dest = os.path.join(get_art_transit(), '01运营') if review_on else get_art_dist_ops()
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"美工分发运营 - 工单{order_data['id']}"
@@ -474,14 +491,16 @@ def show_art_dialog(parent, order_data, callbacks):
             except RuntimeError:
                 return
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
+            review_now = is_art_post_review_enabled()
+            new_status = '美工后期审核中' if review_now else '后期已完成'
             old_status = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], '后期已完成')
+            db_manager.update_work_order_status(order_data['id'], new_status)
             # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], '后期已完成')
+            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
             if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态成功")
+                logger.info(f"API更新工单{order_data['id']}状态为{new_status}成功")
             else:
-                error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
+                error_msg = f"API更新工单{order_data['id']}状态为{new_status}失败: {api_response['error']}"
                 logger.error(error_msg)
                 # API 失败时回滚本地状态，避免两端不一致
                 db_manager.update_work_order_status(order_data['id'], old_status)
@@ -489,13 +508,23 @@ def show_art_dialog(parent, order_data, callbacks):
             parent.refresh_work_orders()
             # 发送通知：美工分发运营
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-            send_notification(
-                "工单状态变更通知",
-                f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
-                order_data.get('department')
-            )
+            if review_now:
+                send_notification(
+                    "工单美工审批提请通知",
+                    f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发运营并提请审批\n- 状态：美工后期审核中\n- 提示：美工已完成后期处理，成品图片已提交审批，请美工后期审批员登录系统进行审批！",
+                    order_data.get('department')
+                )
+            else:
+                send_notification(
+                    "工单状态变更通知",
+                    f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
+                    order_data.get('department')
+                )
             # 显示完成消息
-            show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
+            if review_now:
+                show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
+            else:
+                show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
             # 以美工分发运营为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",
@@ -524,7 +553,8 @@ def show_art_dialog(parent, order_data, callbacks):
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
             return
         src = parent.product_dir
-        dest = get_art_dist_sales()
+        review_on = is_art_post_review_enabled()
+        dest = os.path.join(get_art_transit(), '02销售') if review_on else get_art_dist_sales()
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"美工分发销售 - 工单{order_data['id']}"
@@ -536,14 +566,16 @@ def show_art_dialog(parent, order_data, callbacks):
             except RuntimeError:
                 return
             _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
+            review_now = is_art_post_review_enabled()
+            new_status = '美工后期审核中' if review_now else '后期已完成'
             old_status = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], '后期已完成')
+            db_manager.update_work_order_status(order_data['id'], new_status)
             # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], '后期已完成')
+            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
             if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态成功")
+                logger.info(f"API更新工单{order_data['id']}状态为{new_status}成功")
             else:
-                error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
+                error_msg = f"API更新工单{order_data['id']}状态为{new_status}失败: {api_response['error']}"
                 logger.error(error_msg)
                 # API 失败时回滚本地状态，避免两端不一致
                 db_manager.update_work_order_status(order_data['id'], old_status)
@@ -551,13 +583,23 @@ def show_art_dialog(parent, order_data, callbacks):
             parent.refresh_work_orders()
             # 发送通知：美工分发销售
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-            send_notification(
-                "工单状态变更通知",
-                f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取图片！",
-                order_data.get('department')
-            )
+            if review_now:
+                send_notification(
+                    "工单美工审批提请通知",
+                    f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发销售并提请审批\n- 状态：美工后期审核中\n- 提示：美工已完成后期处理，成品图片已提交审批，请美工后期审批员登录系统进行审批！",
+                    order_data.get('department')
+                )
+            else:
+                send_notification(
+                    "工单状态变更通知",
+                    f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取图片！",
+                    order_data.get('department')
+                )
             # 显示完成消息
-            show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
+            if review_now:
+                show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
+            else:
+                show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
             # 以分发销售为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",

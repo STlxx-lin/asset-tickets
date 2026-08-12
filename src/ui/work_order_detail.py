@@ -139,10 +139,10 @@ class WorkOrderDetailDialog(QDialog):
         self.setup_footer()
 
     def setup_review_feedback_section(self):
-        """展示重新拍摄或后期重新剪辑（不通过）的反馈原因"""
+        """展示重新拍摄 / 后期重新剪辑 / 美工后期重新制作的反馈原因"""
         from src.core.database import db_manager
         current_status = self.order_data.get('status')
-        if current_status not in ['重新拍摄', '后期重新剪辑']:
+        if current_status not in ['重新拍摄', '后期重新剪辑', '美工后期重新制作']:
             return
             
         feedbacks = db_manager.get_review_feedback(self.order_data['id'])
@@ -161,7 +161,12 @@ class WorkOrderDetailDialog(QDialog):
             layout.setContentsMargins(15, 12, 15, 12)
             layout.setSpacing(8)
 
-            title_text = "⚠️ 视频审核退回提示（需要重新拍摄）" if current_status == '重新拍摄' else "⚠️ 视频后期审核退回提示（需要重新剪辑）"
+            if current_status == '重新拍摄':
+                title_text = "⚠️ 视频审核退回提示（需要重新拍摄）"
+            elif current_status == '后期重新剪辑':
+                title_text = "⚠️ 视频后期审核退回提示（需要重新剪辑）"
+            else:
+                title_text = "⚠️ 美工后期审批退回提示（需要重新制作）"
             title_label = QLabel(title_text)
             title_label.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 15px;")
             layout.addWidget(title_label)
@@ -286,7 +291,7 @@ class WorkOrderDetailDialog(QDialog):
         art_title.setStyleSheet("font-weight: bold; color: #4fc3f7; font-size: 13px; min-width: 70px;")
         art_layout.addWidget(art_title)
 
-        art_steps = ["美工待领取", "正在设计", "设计完成", "美工分发", "已被领取"]
+        art_steps = ["美工待领取", "正在设计", "设计完成", "美工分发", "美工审批", "已被领取"]
         for i, step in enumerate(art_steps):
             step_widget = QWidget()
             step_vbox = QVBoxLayout(step_widget)
@@ -560,10 +565,12 @@ class WorkOrderDetailDialog(QDialog):
             "拍摄完成": "#2196f3",
             "视频审核中": "#f59e0b",
             "视频后期审核中": "#f59e0b",
+            "美工后期审核中": "#f59e0b",
             "审核通过": "#4caf50",
             "后期审核通过": "#4caf50",
             "重新拍摄": "#f44336",
             "后期重新剪辑": "#f44336",
+            "美工后期重新制作": "#f44336",
             "美工设计": "#2196f3",
             "视频剪辑": "#9c27b0",
             "已完成": "#4caf50",
@@ -604,6 +611,7 @@ class WorkOrderDetailDialog(QDialog):
         has_art_sales_collected = False
         has_edit_ops_collected = False
         has_edit_sales_collected = False
+        has_art_approved = False
 
         for log in self.logs:
             role = log.get('role', '')
@@ -614,8 +622,11 @@ class WorkOrderDetailDialog(QDialog):
             # 美工分发
             if "美工" in role and "分发" in content:
                 has_art_dist = True
-            # 剪辑分发
-            if ("剪辑" in role or "视频后期审核" in role) and ("分发" in content or "审核通过" in content) and ("运营" in content or "销售" in content or "视频" in content or "后期" in content):
+            # 美工后期审批通过
+            if "美工后期审批" in action and "通过" in action:
+                has_art_approved = True
+            # 剪辑分发（含合并登录的「后期审批」角色）
+            if ("剪辑" in role or "视频后期审核" in role or "后期审批" in role) and ("分发" in content or "审核通过" in content) and ("运营" in content or "销售" in content or "视频" in content or "后期" in content):
                 has_edit_dist = True
                 
             # 运营/销售领取
@@ -639,6 +650,10 @@ class WorkOrderDetailDialog(QDialog):
             art_finished.add("美工分发")
         if has_edit_dist:
             edit_finished.add("剪辑分发")
+
+        # 美工后期审批环节：审核中或已审批通过时点亮
+        if status == '美工后期审核中' or has_art_approved:
+            art_finished.add("美工审批")
 
         # 是否已被领取（只要有任一部门领取了算该链完成已被领取）
         if has_art_ops_collected or has_art_sales_collected or status in ['待上架', '已上架']:
