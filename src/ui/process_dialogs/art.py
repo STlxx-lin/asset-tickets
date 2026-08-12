@@ -391,12 +391,7 @@ def show_art_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件移动
         task_name = f"美工领取素材 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工领取素材", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             # 美工链专属状态：领取素材后进入设计中（与全局 status 解耦）
             db_manager.update_work_order_art_status(order_data['id'], '美工设计中')
@@ -412,13 +407,21 @@ def show_art_dialog(parent, order_data, callbacks):
             else:
                 error_msg = f"API更新工单{order_data['id']}美工开始时间失败: {api_response['error']}"
                 logger.error(error_msg)
-                show_api_update_error(dialog, error_msg)
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
             parent.refresh_work_orders()
-            # 显示完成消息
-            show_path_result(dialog, "领取完成", f"素材已移动到：\n{dest}", dest)
-            # 更新路径显示
-            get_src_label.setText(dest)
-            get_dest_label.setText(dest)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "领取完成", f"素材已移动到：\n{dest}", dest)
+                    # 更新路径显示
+                    get_src_label.setText(dest)
+                    get_dest_label.setText(dest)
+            except RuntimeError:
+                pass
             # 以美工领取素材为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",
@@ -486,12 +489,7 @@ def show_art_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件复制
         task_name = f"美工分发运营 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             new_status = '美工后期审核中' if review_now else '后期已完成'
@@ -508,7 +506,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 logger.error(error_msg)
                 # API 失败时回滚本地状态，避免两端不一致
                 db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
             parent.refresh_work_orders()
             # 发送通知：美工分发运营
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -524,11 +526,15 @@ def show_art_dialog(parent, order_data, callbacks):
                     f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
                     order_data.get('department')
                 )
-            # 显示完成消息
-            if review_now:
-                show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
-            else:
-                show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    if review_now:
+                        show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
+                    else:
+                        show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
+            except RuntimeError:
+                pass
             # 以美工分发运营为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",
@@ -563,12 +569,7 @@ def show_art_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件复制
         task_name = f"美工分发销售 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             new_status = '美工后期审核中' if review_now else '后期已完成'
@@ -585,7 +586,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 logger.error(error_msg)
                 # API 失败时回滚本地状态，避免两端不一致
                 db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
             parent.refresh_work_orders()
             # 发送通知：美工分发销售
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -601,11 +606,15 @@ def show_art_dialog(parent, order_data, callbacks):
                     f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取图片！",
                     order_data.get('department')
                 )
-            # 显示完成消息
-            if review_now:
-                show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
-            else:
-                show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    if review_now:
+                        show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
+                    else:
+                        show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
+            except RuntimeError:
+                pass
             # 以分发销售为例：
             # send_dingtalk_markdown(
             #     "工单状态变更通知",

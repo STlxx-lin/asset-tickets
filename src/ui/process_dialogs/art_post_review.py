@@ -495,12 +495,7 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
             completed['count'] += 1
             if completed['count'] < total:
                 return
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             new_status = '后期已完成'
             old_status = order_data['status']
             # 美工链专属状态：审批通过（与全局 status 解耦）
@@ -514,7 +509,11 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 logger.error(error_msg)
                 # API 失败时回滚本地状态，避免两端不一致
                 db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
 
             _log_action("美工后期审批通过", f"工单ID={order_data['id']}, 角色=美工后期审批, 待审批路径={transit_root}")
             send_notification(
@@ -522,11 +521,20 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 f"### 工单号：{order_data['id']}\n- 角色：美工后期审批\n- 操作：审批通过\n- 状态：后期已完成\n- 提示：美工后期审批已通过，成品已分发，请运营/销售同事登录系统领取素材！",
                 order_data.get('department')
             )
-            dialog.accept()
-            QMessageBox.information(parent, "成功", "美工后期审批已通过，成品已分发至运营/销售目录，已通知领取！")
+            try:
+                if dialog.isVisible():
+                    dialog.accept()
+                    QMessageBox.information(parent, "成功", "美工后期审批已通过，成品已分发至运营/销售目录，已通知领取！")
+            except RuntimeError:
+                pass
 
         for sub_dir, target_dir, files_found in pending:
-            os.makedirs(target_dir, exist_ok=True)
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+            except Exception as e:
+                logger.error(f"创建审批分发目标目录失败: {target_dir}, 错误: {e}")
+                QMessageBox.critical(dialog, "错误", f"创建目标目录失败：\n{target_dir}\n原因: {e}")
+                return
             rel_files = [rel for rel, _ in files_found]
             _add_file_task(
                 name=f"美工后期审批通过分发 - 工单{order_data['id']}",
