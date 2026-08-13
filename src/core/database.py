@@ -166,6 +166,28 @@ class DatabaseManager:
                 except Exception as ex:
                     self.logger.error(f"检查或添加 art_status 字段失败: {ex}")
 
+                # 确保 mcs_by_takuya_logs 包含 order_id 字段（加速按工单查日志，避免 LIKE 全表扫描）
+                try:
+                    cursor.execute("SHOW COLUMNS FROM mcs_by_takuya_logs LIKE 'order_id'")
+                    if not cursor.fetchone():
+                        cursor.execute("ALTER TABLE mcs_by_takuya_logs ADD COLUMN order_id VARCHAR(20) DEFAULT NULL")
+                        self.logger.info("数据库升级：成功为 mcs_by_takuya_logs 表添加 order_id 字段")
+                    # 从 details 中回填 order_id（工单ID=xxx 格式）
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_logs SET order_id = "
+                        "TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(details, '工单ID=', -1), ',', 1)) "
+                        "WHERE order_id IS NULL AND details LIKE '%工单ID=%'"
+                    )
+                    # 索引
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM information_schema.statistics "
+                        "WHERE table_schema = DATABASE() AND table_name = 'mcs_by_takuya_logs' AND index_name = 'idx_logs_order_id'"
+                    )
+                    if not cursor.fetchone()[0]:
+                        cursor.execute("CREATE INDEX idx_logs_order_id ON mcs_by_takuya_logs (order_id)")
+                except Exception as ex:
+                    self.logger.error(f"检查或添加日志 order_id 字段/索引失败: {ex}")
+
                 # 默认角色
                 default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
                 for role in default_roles:
@@ -350,10 +372,17 @@ class DatabaseManager:
     def add_log(self, role: str, action_type: str, details: str, ip_address: str = "N/A", user_name: str = "") -> bool:
         if not self.connect(): return False
         try:
+            # 从 details 中提取工单ID（工单ID=xxx 格式），写入 order_id 列加速按工单查询
+            order_id = None
+            if '工单ID=' in details:
+                try:
+                    order_id = details.split('工单ID=', 1)[1].split(',', 1)[0].strip() or None
+                except Exception:
+                    order_id = None
             with self.connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO mcs_by_takuya_logs (role, action_type, details, ip_address, user_name) VALUES (%s, %s, %s, %s, %s)",
-                    (role, action_type, details, ip_address, user_name)
+                    "INSERT INTO mcs_by_takuya_logs (role, action_type, details, ip_address, user_name, order_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (role, action_type, details, ip_address, user_name, order_id)
                 )
                 self.connection.commit()
                 return True
@@ -614,9 +643,9 @@ class DatabaseManager:
                 cursor.execute("""
                     SELECT role, user_name, action_type, details, timestamp
                     FROM mcs_by_takuya_logs
-                    WHERE details LIKE %s
+                    WHERE order_id = %s OR details LIKE %s
                     ORDER BY timestamp DESC
-                """, (f"%工单ID={order_id}%",))
+                """, (order_id, f"%工单ID={order_id}%"))
                 return cursor.fetchall()
         except Exception as e:
             self.logger.error(f"获取工单日志失败: {e}")
@@ -630,8 +659,8 @@ class DatabaseManager:
         if not self.connect():
             return {}
         try:
-            conditions = " OR ".join(["details LIKE %s"] * len(order_ids))
-            params = [f"%工单ID={oid}%" for oid in order_ids]
+            conditions = " OR ".join(["order_id = %s"] * len(order_ids))
+            params = list(order_ids)
             query = f"""
                 SELECT role, user_name, action_type, details, timestamp
                 FROM mcs_by_takuya_logs
