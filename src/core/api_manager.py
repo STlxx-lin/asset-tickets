@@ -1,23 +1,41 @@
 import logging
+import os
 import time
-from typing import ClassVar
 
 import requests
 
 from .database import db_manager
 
-# 配置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('API Manager')
+
+# 时间字段 → 外部系统字段码 的统一映射（create 与 update 共用，避免两处映射分叉）
+# 语义：摄影师开始/结束、美工开始/结束、剪辑开始/结束、工单开始/结束
+TIME_FIELD_MAP = {
+    'start_time': 'f_iis2qlzmmko',
+    'end_time': 'f_4civ803ubaz',
+    'photographer_start_time': 'f_8ufkn1d1z3v',
+    'photographer_end_time': 'f_augkx557xwf',
+    'art_start_time': 'f_n9vu52g0c4f',
+    'art_end_time': 'f_pkcr94xo1py',
+    'edit_start_time': 'f_vyp0iizeom5',
+    'edit_end_time': 'f_6aocwxxqcfj',
+}
+
+
+def _build_headers() -> dict:
+    """构建请求头；token 从环境变量 API_TOKEN 读取（.env 由 config 模块加载）"""
+    token = os.environ.get('API_TOKEN', '')
+    if not token:
+        logger.warning("环境变量 API_TOKEN 未配置，外部工单系统 API 将无法访问")
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
 
 class APIManager:
     """API管理器，封装创建工单和更新工单系统信息的API调用"""
     _instance = None
-    _token = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInJvbGVOYW1lIjoicm9vdCIsImlhdCI6MTc4NjUwMDgxOSwiZXhwIjozMzM0NDEwMDgxOX0.V65LNVG_p-pLB1ItvnxmfSiylOFAdDRJCKkLMZ-XPik"
-    _headers: ClassVar[dict] = {
-        "Authorization": _token,
-        "Content-Type": "application/json"
-    }
     _create_url = "http://192.168.0.54:13000/api/t_d5n8vtsnrwv:create"
     _update_url = "http://192.168.0.54:13000/api/t_d5n8vtsnrwv:update"
 
@@ -112,32 +130,32 @@ class APIManager:
             
             logger.info(f"最终使用的项目类型: '{project_type_name}', 项目内容: '{project_content_name}'")
             
-            # 构造请求体
+            # 构造请求体（时间字段按 TIME_FIELD_MAP 统一映射，避免与更新接口互换）
             payload = {
                 "id": str(api_order_data['id']),  # id=工单id
                 "f_emd69kip4gk": str(api_order_data['model']),  # 型号=编号
                 "f_ifa9xxyrmft": api_order_data.get('name', ''),  # 名称=产品名称
                 "f_jxzzjg7egqm": api_order_data.get('requester', ''),  # 负责人=需求人
                 "f_utqw1679w43": api_order_data.get('status', ''),
-                "f_iis2qlzmmko": int(time.time()),  # 开始时间=工单创建时间-时间戳
+                TIME_FIELD_MAP['start_time']: int(time.time()),  # 开始时间=工单创建时间-时间戳
                 "f_ay6dm3j0pfz": project_type_name,  # 项目类型=从数据库获取的名称
                 "f_a9q7rpf5paj": project_content_name,  # 项目内容=从数据库获取的名称
-                "f_4civ803ubaz": self._convert_time_to_timestamp(api_order_data.get('end_time', '')),
-                "f_8ufkn1d1z3v": self._convert_time_to_timestamp(api_order_data.get('photographer_start_time', '')),
-                "f_augkx557xwf": self._convert_time_to_timestamp(api_order_data.get('photographer_end_time', '')),
-                "f_vyp0iizeom5": self._convert_time_to_timestamp(api_order_data.get('art_start_time', '')),
-                "f_pkcr94xo1py": self._convert_time_to_timestamp(api_order_data.get('art_end_time', '')),
-                "f_n9vu52g0c4f": self._convert_time_to_timestamp(api_order_data.get('edit_start_time', '')),
-                "f_6aocwxxqcfj": self._convert_time_to_timestamp(api_order_data.get('edit_end_time', ''))
+                TIME_FIELD_MAP['end_time']: self._convert_time_to_timestamp(api_order_data.get('end_time', '')),
+                TIME_FIELD_MAP['photographer_start_time']: self._convert_time_to_timestamp(api_order_data.get('photographer_start_time', '')),
+                TIME_FIELD_MAP['photographer_end_time']: self._convert_time_to_timestamp(api_order_data.get('photographer_end_time', '')),
+                TIME_FIELD_MAP['art_start_time']: self._convert_time_to_timestamp(api_order_data.get('art_start_time', '')),
+                TIME_FIELD_MAP['art_end_time']: self._convert_time_to_timestamp(api_order_data.get('art_end_time', '')),
+                TIME_FIELD_MAP['edit_start_time']: self._convert_time_to_timestamp(api_order_data.get('edit_start_time', '')),
+                TIME_FIELD_MAP['edit_end_time']: self._convert_time_to_timestamp(api_order_data.get('edit_end_time', ''))
             }
 
             # 发送请求
             logger.info(f"发送创建工单API请求: {payload}")
-            response = requests.post(self._create_url, json=payload, headers=self._headers, timeout=10)
+            response = requests.post(self._create_url, json=payload, headers=_build_headers(), timeout=10)
 
             # 处理响应
             if response.status_code == 200:
-                logger.info(f"创建工单{order_data['id']}成功")
+                logger.info(f"创建工单{order_data['id']}成功，响应内容: {response.text[:500]}")
                 return {
                     "success": True,
                     "message": f"创建工单{order_data['id']}成功",
@@ -178,11 +196,11 @@ class APIManager:
 
             # 发送请求
             logger.info(f"发送更新工单状态API请求: 工单ID={order_id}, 状态={status}")
-            response = requests.post(self._update_url, params=params, json=payload, headers=self._headers, timeout=10)
+            response = requests.post(self._update_url, params=params, json=payload, headers=_build_headers(), timeout=10)
 
             # 处理响应
             if response.status_code == 200:
-                logger.info(f"更新工单{order_id}的状态成功")
+                logger.info(f"更新工单{order_id}的状态成功，响应内容: {response.text[:500]}")
                 return {
                     "success": True,
                     "message": f"更新工单{order_id}的状态成功",
@@ -221,37 +239,26 @@ class APIManager:
             # 转换时间格式为时间戳
             timestamp = self._convert_time_to_timestamp(time_value)
 
-            # 根据时间字段确定对应的API参数名
-            field_mapping = {
-                'start_time': 'f_iis2qlzmmko',
-                'end_time': 'f_4civ803ubaz',
-                'photographer_start_time': 'f_8ufkn1d1z3v',
-                'photographer_end_time': 'f_augkx557xwf',
-                'art_start_time': 'f_n9vu52g0c4f',
-                'art_end_time': 'f_pkcr94xo1py',
-                'edit_start_time': 'f_vyp0iizeom5',
-                'edit_end_time': 'f_6aocwxxqcfj'
-            }
-
-            if time_field not in field_mapping:
+            # 根据时间字段确定对应的API参数名（与创建接口共用同一份映射）
+            if time_field not in TIME_FIELD_MAP:
                 logger.error(f"不支持的时间字段: {time_field}")
                 return {
                     "success": False,
                     "error": f"不支持的时间字段: {time_field}"
                 }
 
-            api_field = field_mapping[time_field]
+            api_field = TIME_FIELD_MAP[time_field]
             payload = {
                 api_field: timestamp
             }
 
             # 发送请求
             logger.info(f"发送更新工单时间API请求: 工单ID={order_id}, 字段={time_field}, 值={time_value}")
-            response = requests.post(self._update_url, params=params, json=payload, headers=self._headers, timeout=10)
+            response = requests.post(self._update_url, params=params, json=payload, headers=_build_headers(), timeout=10)
 
             # 处理响应
             if response.status_code == 200:
-                logger.info(f"更新工单{order_id}的{time_field}成功")
+                logger.info(f"更新工单{order_id}的{time_field}成功，响应内容: {response.text[:500]}")
                 return {
                     "success": True,
                     "message": f"更新工单{order_id}的{time_field}成功",

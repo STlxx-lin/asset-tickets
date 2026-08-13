@@ -10,7 +10,7 @@ import logging
 import os
 import time
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
@@ -153,6 +153,23 @@ _STATUS_COLOR = {
 }
 
 
+class _PermissionScanWorker(QThread):
+    """后台权限检查线程：逐项检查并返回结果，避免网络盘超时阻塞界面。"""
+
+    item_done = Signal(int, tuple)  # (row, (exists, readable, writable, status))
+    all_done = Signal()
+
+    def __init__(self, checks):
+        super().__init__()
+        self.checks = checks
+
+    def run(self):
+        for row, (label, path, need_write) in enumerate(self.checks):
+            result = check_path_permission(path, need_write)
+            self.item_done.emit(row, result)
+        self.all_done.emit()
+
+
 def show_path_permission_dialog(parent, roles: list, departments: list):
     """显示路径权限检查对话框。
 
@@ -259,42 +276,70 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
     button_layout.addWidget(close_btn)
     main_layout.addLayout(button_layout)
 
-    def run_check():
-        dialog.setCursor(Qt.CursorShape.WaitCursor)
-        try:
-            table.setRowCount(len(checks))
-            ok_count = warn_count = fail_count = 0
-            for row, (label, path, need_write) in enumerate(checks):
-                _exists, _readable, _writable, status = check_path_permission(path, need_write)
-                if status == "正常":
-                    ok_count += 1
-                elif status == "只读":
-                    warn_count += 1
-                else:
-                    fail_count += 1
+    worker = None
+    counts = {'ok': 0, 'warn': 0, 'fail': 0}
 
-                items = [
-                    QTableWidgetItem(label),
-                    QTableWidgetItem(path),
-                    QTableWidgetItem(status),
-                    QTableWidgetItem("✓" if _exists else "✗"),
-                    QTableWidgetItem("✓" if _readable else "✗"),
-                    QTableWidgetItem("✓" if _writable else "✗"),
-                ]
-                color = _STATUS_COLOR.get(status, QColor(220, 53, 69))
-                for col, item in enumerate(items):
-                    item.setForeground(color if col == 2 else QColor(232, 234, 237))
-                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    table.setItem(row, col, item)
-                if status != "正常":
-                    bg = QColor(60, 30, 35) if status != "只读" else QColor(58, 46, 28)
-                    for col in range(6):
-                        table.item(row, col).setBackground(bg)
-            summary_label.setText(
-                f"共 {len(checks)} 项：正常 {ok_count} · 只读 {warn_count} · 不存在/不可访问 {fail_count}"
-            )
-        finally:
-            dialog.unsetCursor()
+    def on_item_done(row, result):
+        if row >= len(checks):
+            return
+        label, path, _need_write = checks[row]
+        _exists, _readable, _writable, status = result
+        if status == "正常":
+            counts['ok'] += 1
+        elif status == "只读":
+            counts['warn'] += 1
+        else:
+            counts['fail'] += 1
+
+        items = [
+            QTableWidgetItem(label),
+            QTableWidgetItem(path),
+            QTableWidgetItem(status),
+            QTableWidgetItem("✓" if _exists else "✗"),
+            QTableWidgetItem("✓" if _readable else "✗"),
+            QTableWidgetItem("✓" if _writable else "✗"),
+        ]
+        color = _STATUS_COLOR.get(status, QColor(220, 53, 69))
+        for col, item in enumerate(items):
+            item.setForeground(color if col == 2 else QColor(232, 234, 237))
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            table.setItem(row, col, item)
+        if status != "正常":
+            bg = QColor(60, 30, 35) if status != "只读" else QColor(58, 46, 28)
+            for col in range(6):
+                table.item(row, col).setBackground(bg)
+        summary_label.setText(
+            f"检查中… 正常 {counts['ok']} · 只读 {counts['warn']} · 不存在/不可访问 {counts['fail']}"
+        )
+
+    def on_all_done():
+        dialog.unsetCursor()
+        refresh_btn.setEnabled(True)
+        summary_label.setText(
+            f"共 {len(checks)} 项：正常 {counts['ok']} · 只读 {counts['warn']} · 不存在/不可访问 {counts['fail']}"
+        )
+
+    def run_check():
+        nonlocal worker
+        # 防重复：上一次检查仍在进行时忽略
+        if worker is not None and worker.isRunning():
+            return
+        dialog.setCursor(Qt.CursorShape.WaitCursor)
+        refresh_btn.setEnabled(False)
+        counts.update(ok=0, warn=0, fail=0)
+        table.setRowCount(len(checks))
+        # 先立即填充 用途/路径/状态(检查中)
+        for row, (label, path, _need_write) in enumerate(checks):
+            for col, text in ((0, label), (1, path), (2, "检查中…")):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(150, 155, 165))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                table.setItem(row, col, item)
+        summary_label.setText(f"正在检查 {len(checks)} 项路径…")
+        worker = _PermissionScanWorker(checks)
+        worker.item_done.connect(on_item_done)
+        worker.all_done.connect(on_all_done)
+        worker.start()
 
     refresh_btn.clicked.connect(run_check)
     close_btn.clicked.connect(dialog.reject)

@@ -19,22 +19,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
-from src.core.database import db_manager
+from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK, get_feature_enabled
 from src.core.paths import ART_POST_REVIEW_TRANSIT, to_local_path
+from src.core.status_sync import has_pending_edit_review
 
 logger = logging.getLogger(__name__)
-
-
-def _has_pending_edit_review(order_id: str) -> bool:
-    """剪辑已提交视频后期审核且尚未通过（兼容全局状态被 API 回滚的场景）"""
-    try:
-        logs = db_manager.get_logs_by_order_id(order_id)
-        has_submit = any(l.get('action_type') == '提交视频后期审核' for l in logs)
-        has_approved = any(l.get('action_type') == '视频后期审核通过' for l in logs)
-        return has_submit and not has_approved
-    except Exception:
-        return False
 
 
 def show_post_review_combined_dialog(parent, order_data, callbacks):
@@ -51,8 +40,8 @@ def show_post_review_combined_dialog(parent, order_data, callbacks):
     art_status = order_data.get('art_status') or status
 
     # 各审批模式可用性：功能开关 + 工单状态到达对应流程
-    video_feature_on = db_manager.get_system_setting('video_post_review_enabled', default='1') == '1'
-    art_feature_on = db_manager.get_system_setting('art_post_review_enabled', default='1') == '1'
+    video_feature_on = get_feature_enabled('video_post_review_enabled')
+    art_feature_on = get_feature_enabled('art_post_review_enabled')
 
     if BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK:
         video_status_ok = True
@@ -60,7 +49,7 @@ def show_post_review_combined_dialog(parent, order_data, callbacks):
         video_status_ok = status in ('视频后期审核中', '后期已完成')
         # 兼容全局状态被 API 回滚的场景：剪辑已提交审核且尚未通过 → 仍可视频后期审批
         if not video_status_ok:
-            video_status_ok = _has_pending_edit_review(order_data['id'])
+            video_status_ok = has_pending_edit_review(order_data['id'])
     art_status_ok = art_status == '美工后期审核中'
 
     video_enabled = video_feature_on and video_status_ok

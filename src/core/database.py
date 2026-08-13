@@ -6,13 +6,15 @@ import pymysql
 
 from .config import DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
 
+# 默认角色列表（唯一来源，新增角色仅在此维护）
+DEFAULT_ROLES = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
+
 
 class DatabaseManager:
     def __init__(self):
         self.connection = None
         self.config = DB_CONFIG  # 从配置文件导入数据库连接配置
         self.setup_logging()
-        # self.init_database()  # 已关闭数据库初始化
 
     def setup_logging(self):
         logging.basicConfig(level=logging.INFO)
@@ -49,185 +51,13 @@ class DatabaseManager:
             self.connection = None
             self.logger.info("数据库连接已关闭")
 
-    def init_database(self):
-        if not self.connect():
-            return
-        try:
-            with self.connection.cursor() as cursor:
-                # 角色表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_roles (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        name VARCHAR(50) UNIQUE NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                # 部门表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_departments (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        name VARCHAR(100) UNIQUE NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                # 工单表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_work_orders (
-                        id VARCHAR(20) PRIMARY KEY,
-                        department_id INT,
-                        model VARCHAR(100),
-                        name VARCHAR(200),
-                        creator VARCHAR(100),
-                        type VARCHAR(50),
-                        status VARCHAR(20) DEFAULT 'pending',
-                        project_type VARCHAR(100),
-                        project_content TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        FOREIGN KEY (department_id) REFERENCES mcs_by_takuya_departments(id)
-                    )
-                """)
-                # 用户表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_users (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        username VARCHAR(100) UNIQUE NOT NULL,
-                        role_id INT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (role_id) REFERENCES mcs_by_takuya_roles(id)
-                    )
-                """)
-                # 用户部门关联表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_user_departments (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        user_id INT,
-                        department_id INT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES mcs_by_takuya_users(id),
-                        FOREIGN KEY (department_id) REFERENCES mcs_by_takuya_departments(id),
-                        UNIQUE KEY unique_user_dept (user_id, department_id)
-                    )
-                """)
-                # 日志表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_logs (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        role VARCHAR(50),
-                        action_type VARCHAR(255),
-                        details VARCHAR(255),
-                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        ip_address VARCHAR(45),
-                        user_name VARCHAR(100)
-                    )
-                """)
-                # 产品信息表
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_product_info (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        work_order_id VARCHAR(20),
-                        title VARCHAR(255) NOT NULL,
-                        keywords VARCHAR(500) NOT NULL,
-                        url VARCHAR(500) NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (work_order_id) REFERENCES mcs_by_takuya_work_orders(id) ON DELETE CASCADE
-                    )
-                """)
-                # 新增版本表
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS mcs_by_takuya_versions (
-                        id INT PRIMARY KEY AUTO_INCREMENT,
-                        version VARCHAR(20) NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                ''')
-                # 如果表为空，插入初始版本
-                cursor.execute("SELECT COUNT(*) FROM mcs_by_takuya_versions")
-                if cursor.fetchone()[0] == 0:
-                    cursor.execute("INSERT IGNORE INTO mcs_by_takuya_versions (version) VALUES ('v1.09')")
-                # 确保审核反馈表存在
-                self._ensure_review_feedback_table(cursor)
-
-                # 确保 mcs_by_takuya_work_orders 包含 edit_product_path 字段
-                try:
-                    cursor.execute("SHOW COLUMNS FROM mcs_by_takuya_work_orders LIKE 'edit_product_path'")
-                    if not cursor.fetchone():
-                        cursor.execute("ALTER TABLE mcs_by_takuya_work_orders ADD COLUMN edit_product_path VARCHAR(500) DEFAULT NULL")
-                        self.logger.info("数据库升级：成功为 mcs_by_takuya_work_orders 表添加 edit_product_path 字段")
-                except Exception as ex:
-                    self.logger.error(f"检查或添加 edit_product_path 字段失败: {ex}")
-
-                # 确保 mcs_by_takuya_work_orders 包含 art_status 字段（美工链专属状态，与全局 status 解耦）
-                try:
-                    cursor.execute("SHOW COLUMNS FROM mcs_by_takuya_work_orders LIKE 'art_status'")
-                    if not cursor.fetchone():
-                        cursor.execute("ALTER TABLE mcs_by_takuya_work_orders ADD COLUMN art_status VARCHAR(20) DEFAULT NULL")
-                        self.logger.info("数据库升级：成功为 mcs_by_takuya_work_orders 表添加 art_status 字段")
-                except Exception as ex:
-                    self.logger.error(f"检查或添加 art_status 字段失败: {ex}")
-
-                # 确保 mcs_by_takuya_logs 包含 order_id 字段（加速按工单查日志，避免 LIKE 全表扫描）
-                try:
-                    cursor.execute("SHOW COLUMNS FROM mcs_by_takuya_logs LIKE 'order_id'")
-                    if not cursor.fetchone():
-                        cursor.execute("ALTER TABLE mcs_by_takuya_logs ADD COLUMN order_id VARCHAR(20) DEFAULT NULL")
-                        self.logger.info("数据库升级：成功为 mcs_by_takuya_logs 表添加 order_id 字段")
-                    # 从 details 中回填 order_id（工单ID=xxx 格式）
-                    cursor.execute(
-                        "UPDATE mcs_by_takuya_logs SET order_id = "
-                        "TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(details, '工单ID=', -1), ',', 1)) "
-                        "WHERE order_id IS NULL AND details LIKE '%工单ID=%'"
-                    )
-                    # 索引
-                    cursor.execute(
-                        "SELECT COUNT(*) FROM information_schema.statistics "
-                        "WHERE table_schema = DATABASE() AND table_name = 'mcs_by_takuya_logs' AND index_name = 'idx_logs_order_id'"
-                    )
-                    if not cursor.fetchone()[0]:
-                        cursor.execute("CREATE INDEX idx_logs_order_id ON mcs_by_takuya_logs (order_id)")
-                except Exception as ex:
-                    self.logger.error(f"检查或添加日志 order_id 字段/索引失败: {ex}")
-
-                # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
-                for role in default_roles:
-                    cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
-                # 默认部门
-                default_departments = [
-                    "01标签机械", "02标签材料", "03软包机械", "04塑料机械",
-                    "05纸容器机械", "06硬包机械", "07农用机械"
-                ]
-                for dept in default_departments:
-                    cursor.execute("INSERT IGNORE INTO mcs_by_takuya_departments (name) VALUES (%s)", (dept,))
-                # 示例工单（移除，不再插入默认工单）
-                # sample_orders = [
-                #     ("202506011120", "01标签机械", "DBGFQ-370", "高速分切机", "Peter", "拍摄中"),
-                # ]
-                # for order in sample_orders:
-                #     cursor.execute("SELECT id FROM mcs_by_takuya_departments WHERE name = %s", (order[1],))
-                #     dept_result = cursor.fetchone()
-                #     if dept_result:
-                #         dept_id = dept_result[0]
-                #         cursor.execute("""
-                #             INSERT IGNORE INTO mcs_by_takuya_work_orders 
-                #             (id, department_id, model, name, creator, type) 
-                #             VALUES (%s, %s, %s, %s, %s, %s)
-                #         """, (order[0], dept_id, order[2], order[3], order[4], order[5]))
-                self.connection.commit()
-                self.logger.info("数据库初始化完成")
-        except Exception as e:
-            self.logger.error(f"数据库初始化失败: {e}")
-        finally:
-            self.disconnect()
-
     def get_roles(self) -> list[str]:
         if not self.connect():
             return []
         try:
             with self.connection.cursor() as cursor:
                 # 确保默认角色存在（如数据库已建但缺少角色时）
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
-                for role in default_roles:
+                for role in DEFAULT_ROLES:
                     cursor.execute("INSERT IGNORE INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
                 self.connection.commit()
 
@@ -235,7 +65,7 @@ class DatabaseManager:
                 all_roles = [row[0] for row in cursor.fetchall()]
                 
                 # 按照指定顺序排序
-                desired_order = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
+                desired_order = DEFAULT_ROLES
                 ordered_roles = []
                 
                 # 先添加指定顺序的角色
@@ -252,8 +82,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取角色失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_departments(self) -> list[str]:
         if not self.connect():
@@ -265,8 +93,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取部门失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_work_orders(self, user_departments: list[str] = None) -> list[dict[str, Any]]:
         if not self.connect():
@@ -310,8 +136,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取工单失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def add_role(self, role_name: str) -> bool:
         if not self.connect():
@@ -324,8 +148,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"添加角色失败: {e}")
             return False
-        finally:
-            self.disconnect()
 
     def remove_role(self, role_name: str) -> bool:
         if not self.connect():
@@ -338,8 +160,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"删除角色失败: {e}")
             return False
-        finally:
-            self.disconnect()
 
     def add_department(self, dept_name: str) -> bool:
         if not self.connect():
@@ -352,8 +172,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"添加部门失败: {e}")
             return False
-        finally:
-            self.disconnect()
 
     def remove_department(self, dept_name: str) -> bool:
         if not self.connect():
@@ -366,8 +184,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"删除部门失败: {e}")
             return False
-        finally:
-            self.disconnect()
 
     def add_log(self, role: str, action_type: str, details: str, ip_address: str = "N/A", user_name: str = "") -> bool:
         if not self.connect(): return False
@@ -389,8 +205,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"记录日志失败: {e}")
             return False
-        finally:
-            self.disconnect()
 
     def get_logs(self, limit: int = 200, role: str | None = None, user_name: str | None = None, action_type: str | None = None, ip_address: str | None = None, start_time: str | None = None, end_time: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
         if not self.connect(): return []
@@ -427,8 +241,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取日志失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def add_work_order(self, order_data: dict[str, Any]) -> bool:
         if not self.connect(): return False
@@ -508,8 +320,6 @@ class DatabaseManager:
             self.logger.error(f"添加工单失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def update_work_orders_status_bulk(self, ids: list[str], new_status: str) -> int:
         """
@@ -531,8 +341,6 @@ class DatabaseManager:
             self.logger.error(f"批量更新工单状态失败: {e}")
             self.connection.rollback()
             return 0
-        finally:
-            self.disconnect()
 
     def update_work_order_status(self, order_id: str, new_status: str) -> bool:
         """
@@ -608,8 +416,6 @@ class DatabaseManager:
             self.logger.error(f"更新工单时间字段失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def update_work_order_product_path(self, order_id: str, product_path: str) -> bool:
         """
@@ -632,8 +438,6 @@ class DatabaseManager:
             self.logger.error(f"更新工单成品路径失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def get_logs_by_order_id(self, order_id: str):
         if not self.connect():
@@ -643,15 +447,13 @@ class DatabaseManager:
                 cursor.execute("""
                     SELECT role, user_name, action_type, details, timestamp
                     FROM mcs_by_takuya_logs
-                    WHERE order_id = %s OR details LIKE %s
+                    WHERE order_id = %s
                     ORDER BY timestamp DESC
-                """, (order_id, f"%工单ID={order_id}%"))
+                """, (order_id,))
                 return cursor.fetchall()
         except Exception as e:
             self.logger.error(f"获取工单日志失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_logs_by_order_ids(self, order_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
         if not order_ids:
@@ -662,7 +464,7 @@ class DatabaseManager:
             conditions = " OR ".join(["order_id = %s"] * len(order_ids))
             params = list(order_ids)
             query = f"""
-                SELECT role, user_name, action_type, details, timestamp
+                SELECT order_id, role, user_name, action_type, details, timestamp
                 FROM mcs_by_takuya_logs
                 WHERE {conditions}
                 ORDER BY timestamp DESC
@@ -670,19 +472,14 @@ class DatabaseManager:
             result = {oid: [] for oid in order_ids}
             with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
                 cursor.execute(query, params)
-                rows = cursor.fetchall()
-                for row in rows:
-                    details = row.get('details', '')
-                    for oid in order_ids:
-                        if f"工单ID={oid}" in details:
-                            result[oid].append(row)
-                            break
+                for row in cursor.fetchall():
+                    oid = row.get('order_id')
+                    if oid in result:
+                        result[oid].append(row)
             return result
         except Exception as e:
             self.logger.error(f"批量获取工单日志失败: {e}")
             return {}
-        finally:
-            self.disconnect()
 
 
     def save_product_info(self, work_order_id: str, products: list[dict[str, str]]) -> bool:
@@ -706,8 +503,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"保存产品信息失败: {e}")
             return False
-        finally:
-            self.disconnect()
 
     def get_product_info(self, work_order_id: str) -> list[dict[str, str]]:
         """获取工单的产品信息"""
@@ -725,66 +520,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取产品信息失败: {e}")
             return []
-        finally:
-            self.disconnect()
-
-    def clear_all_data(self) -> bool:
-        """
-        清空所有数据，重新初始化数据库。
-        """
-        if not self.connect():
-            return False
-        try:
-            with self.connection.cursor() as cursor:
-                # 确保审核反馈表存在
-                self._ensure_review_feedback_table(cursor)
-                # 按外键依赖顺序删除数据
-                cursor.execute("DELETE FROM mcs_by_takuya_logs")
-                cursor.execute("DELETE FROM mcs_by_takuya_review_feedback")
-                cursor.execute("DELETE FROM mcs_by_takuya_work_orders")
-                cursor.execute("DELETE FROM mcs_by_takuya_user_departments")
-                cursor.execute("DELETE FROM mcs_by_takuya_users")
-                cursor.execute("DELETE FROM mcs_by_takuya_roles")
-                cursor.execute("DELETE FROM mcs_by_takuya_departments")
-                
-                # 重新插入默认数据
-                # 默认角色
-                default_roles = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
-                for role in default_roles:
-                    cursor.execute("INSERT INTO mcs_by_takuya_roles (name) VALUES (%s)", (role,))
-                
-                # 默认部门
-                default_departments = [
-                    "01标签机械", "02标签材料", "03软包机械", "04塑料机械",
-                    "05纸容器机械", "06硬包机械", "07农用机械"
-                ]
-                for dept in default_departments:
-                    cursor.execute("INSERT IGNORE INTO mcs_by_takuya_departments (name) VALUES (%s)", (dept,))
-                
-                # 示例工单（移除，不再插入默认工单）
-                # sample_orders = [
-                #     ("202506011120", "01标签机械", "DBGFQ-370", "高速分切机", "Peter", "拍摄中"),
-                # ]
-                # for order in sample_orders:
-                #     cursor.execute("SELECT id FROM mcs_by_takuya_departments WHERE name = %s", (order[1],))
-                #     dept_result = cursor.fetchone()
-                #     if dept_result:
-                #         dept_id = dept_result[0]
-                #         cursor.execute("""
-                #             INSERT INTO mcs_by_takuya_work_orders 
-                #             (id, department_id, model, name, creator, type) 
-                #             VALUES (%s, %s, %s, %s, %s, %s)
-                #         """, (order[0], dept_id, order[2], order[3], order[4], order[5]))
-                
-                self.connection.commit()
-                self.logger.info("数据库数据已清空并重新初始化")
-                return True
-        except Exception as e:
-            self.logger.error(f"清空数据失败: {e}")
-            self.connection.rollback()
-            return False
-        finally:
-            self.disconnect()
 
     def delete_work_order(self, order_id: str) -> bool:
         """根据工单ID删除工单（产品信息通过外键 ON DELETE CASCADE 自动删除；日志表无外键，历史日志保留）"""
@@ -799,8 +534,6 @@ class DatabaseManager:
             self.logger.error(f"删除工单失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def update_work_order_full(self, order_id: str, department: str, model: str, name: str, creator: str, requester: str = "", project_type: str = "", project_content: str = "", projecttype_id: int = None, project_contentid: int = None, remarks: str = "") -> bool:
         if not self.connect(): return False
@@ -853,8 +586,6 @@ class DatabaseManager:
             except Exception:
                 pass
             return False
-        finally:
-            self.disconnect()
 
     def get_users(self, name: str | None = None, ip: str | None = None, role: str | None = None, department: str | None = None) -> list[dict[str, Any]]:
         if not self.connect():
@@ -891,8 +622,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取用户失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def add_user(self, ip: str, name: str, role: str, department: str) -> bool:
         if not self.connect():
@@ -909,8 +638,6 @@ class DatabaseManager:
             self.logger.error(f"添加用户失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def update_user(self, user_id: int, ip: str, name: str, role: str, department: str) -> bool:
         if not self.connect():
@@ -927,8 +654,6 @@ class DatabaseManager:
             self.logger.error(f"更新用户失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def delete_user(self, user_id: int) -> bool:
         if not self.connect():
@@ -942,8 +667,6 @@ class DatabaseManager:
             self.logger.error(f"删除用户失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def get_action_types(self) -> list:
         if not self.connect(): return []
@@ -954,8 +677,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取操作类型失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_user_names(self) -> list:
         if not self.connect(): return []
@@ -966,8 +687,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取用户姓名失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_latest_version(self) -> dict:
         """获取最新版本信息，包括版本号和下载链接"""
@@ -981,8 +700,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取最新版本失败: {e}")
             return {}
-        finally:
-            self.disconnect()
 
     def _ensure_notification_settings_table(self, cursor) -> None:
         """确保按产线通知配置表存在。"""
@@ -1025,8 +742,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取通知配置失败: {e}")
             return {}
-        finally:
-            self.disconnect()
 
     def upsert_notification_setting(self, line_name: str, settings: dict[str, str]) -> bool:
         """保存单个产线的通知配置。"""
@@ -1058,8 +773,6 @@ class DatabaseManager:
             self.logger.error(f"保存产线通知配置失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def seed_notification_settings_if_empty(self, seed_data: dict[str, dict[str, str]]) -> bool:
         """当通知配置表为空时，写入当前代码内的通知配置作为初始数据。"""
@@ -1101,8 +814,6 @@ class DatabaseManager:
             self.logger.error(f"初始化通知配置失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def get_project_types(self) -> list[dict[str, Any]]:
         """获取所有项目类型"""
@@ -1115,8 +826,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取项目类型失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_project_contents_by_type(self, type_id: int) -> list[dict[str, Any]]:
         """根据项目类型ID获取关联的项目内容"""
@@ -1135,8 +844,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取项目内容失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def get_project_type_name(self, type_id) -> str | None:
         """根据项目类型ID获取名称，未找到时返回 None"""
@@ -1152,8 +859,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取项目类型名称失败: {e}")
             return None
-        finally:
-            self.disconnect()
 
     def get_project_content_name(self, content_id) -> str | None:
         """根据项目内容ID获取名称，未找到时返回 None"""
@@ -1169,8 +874,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取项目内容名称失败: {e}")
             return None
-        finally:
-            self.disconnect()
 
     def get_work_order_project_names(self, order_id: str) -> dict[str, Any]:
         """根据工单ID获取项目类型和项目内容名称"""
@@ -1189,8 +892,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取工单项目信息失败: {e}")
             return {}
-        finally:
-            self.disconnect()
 
     def update_work_order_project_info(self, order_id: str, project_type_id: int, project_content_id: int, remarks: str = None) -> bool:
         """更新工单的项目类型、项目内容和备注信息"""
@@ -1209,63 +910,6 @@ class DatabaseManager:
             self.logger.error(f"更新工单项目信息失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
-
-    def add_work_order_with_project_info(self, order_data: dict[str, Any]) -> bool:
-        """添加工单并设置项目类型、项目内容和备注信息"""
-        if not self.connect(): return False
-        try:
-            with self.connection.cursor() as cursor:
-                # 获取部门ID
-                cursor.execute("SELECT id FROM mcs_by_takuya_departments WHERE name = %s", (order_data['department'],))
-                dept_result = cursor.fetchone()
-                if not dept_result:
-                    self.logger.error(f"找不到部门: {order_data['department']}")
-                    return False
-                dept_id = dept_result[0]
-
-                # 添加工单
-                query = """
-                    INSERT INTO mcs_by_takuya_work_orders 
-                    (id, department_id, model, name, creator, requester, type, status, project_type_id, project_content_id, remarks) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """
-                order_type = order_data.get('type', '常规')
-                requester = order_data.get('requester', '')
-                # 支持两种字段名：project_type_id和projecttype_id
-                project_type_id = order_data.get('project_type_id')
-                if project_type_id is None:
-                    project_type_id = order_data.get('projecttype_id')
-                
-                # 支持两种字段名：project_content_id和project_contentid
-                project_content_id = order_data.get('project_content_id')
-                if project_content_id is None:
-                    project_content_id = order_data.get('project_contentid')
-                
-                remarks = order_data.get('remarks', '')
-
-                cursor.execute(query, (
-                    order_data['id'],
-                    dept_id,
-                    order_data['model'],
-                    order_data['name'],
-                    order_data['creator'],
-                    requester,
-                    order_type,
-                    '拍摄中',
-                    project_type_id,
-                    project_content_id,
-                    remarks
-                ))
-                self.connection.commit()
-                return True
-        except Exception as e:
-            self.logger.error(f"添加工单失败: {e}")
-            self.connection.rollback()
-            return False
-        finally:
-            self.disconnect()
 
     def _ensure_review_feedback_table(self, cursor) -> None:
         """确保审核反馈表存在。"""
@@ -1298,8 +942,6 @@ class DatabaseManager:
             self.logger.error(f"添加审核反馈失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def get_review_feedback(self, work_order_id: str) -> list[dict[str, Any]]:
         """获取某个工单的所有审核反馈记录。"""
@@ -1318,8 +960,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"获取审核反馈失败: {e}")
             return []
-        finally:
-            self.disconnect()
 
     def delete_review_feedback(self, work_order_id: str) -> bool:
         """删除某个工单的所有审核反馈记录。"""
@@ -1338,8 +978,6 @@ class DatabaseManager:
             self.logger.error(f"删除审核反馈失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def _ensure_system_settings_table(self, cursor) -> None:
         """确保系统功能设置表存在（key-value 结构）。"""
@@ -1367,8 +1005,6 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"读取系统设置 [{key}] 失败: {e}")
             return default
-        finally:
-            self.disconnect()
 
     def set_system_setting(self, key: str, value: str) -> bool:
         """写入或更新系统设置项。"""
@@ -1388,8 +1024,6 @@ class DatabaseManager:
             self.logger.error(f"保存系统设置 [{key}] 失败: {e}")
             self.connection.rollback()
             return False
-        finally:
-            self.disconnect()
 
     def get_local_ip(self) -> str:
         """获取本机最适合系统的本地 IP 地址，支持在开启 VPN 时智能识别物理局域网 IP。"""

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.api_manager import api_manager
+from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
@@ -39,6 +40,7 @@ from src.core.paths import (
     PHOTOGRAPHY_UPLOAD,
     VID_EXTS,
 )
+from src.core.status_sync import update_status_with_api
 from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
@@ -59,8 +61,7 @@ def show_photography_dialog(parent, order_data, callbacks):
     _log_action    = callbacks['log_action']
 
     def is_video_review_enabled() -> bool:
-        val = db_manager.get_system_setting('video_review_enabled', default='1')
-        return val == '1'
+        return get_feature_enabled('video_review_enabled')
 
 
     def get_photographer():
@@ -464,54 +465,68 @@ def show_photography_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件上传
         task_name = f"上传素材 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("上传素材", f"工单ID={order_data['id']}, 角色={parent.role}, 摄影师={photographer}, 目标路径={upload_dir}, 文件数={len(files)}")
         
             # 记录当前时间作为摄影师结束时间
             current_time = datetime.datetime.now()
-            formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
         
-            # 更新数据库
-            # db_manager.update_work_order_time_field(order_data['id'], 'photographer_end_time', current_time)
-        
-            # 调用API更新时间戳
-            api_response = api_manager.update_work_order_time(order_data['id'], 'photographer_end_time', formatted_time)
+            # 摄影师时间仅同步外部系统（本地表无对应列），失败弹窗提示
+            api_response = api_manager.update_work_order_time(order_data['id'], 'photographer_end_time', current_time.strftime('%Y-%m-%d %H:%M:%S'))
             if api_response['success']:
                 logger.info(f"API更新工单{order_data['id']}摄影师结束时间成功")
             else:
                 error_msg = f"API更新工单{order_data['id']}摄影师结束时间失败: {api_response['error']}"
                 logger.error(error_msg)
-                show_api_update_error(dialog, error_msg)
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
         
             if is_video_review_enabled():
-                _update_status(order_data['id'], '视频审核中')
-                order_data['status'] = '视频审核中'
-                distribute_img_btn.setEnabled(False)
-                distribute_vid_btn.setEnabled(False)
-                gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
-                distribute_img_btn.setStyleSheet(gray_style)
-                distribute_vid_btn.setStyleSheet(gray_style)
-                distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
-                distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
+                new_status = '视频审核中'
                 status_str = "拍摄完成"
             else:
-                _update_status(order_data['id'], '审核通过')
-                order_data['status'] = '审核通过'
-                distribute_img_btn.setEnabled(True)
-                distribute_vid_btn.setEnabled(True)
-                distribute_img_btn.setStyleSheet("")
-                distribute_vid_btn.setStyleSheet("")
-                distribute_img_btn.setToolTip("")
-                distribute_vid_btn.setToolTip("")
+                new_status = '审核通过'
                 status_str = "审核通过"
+            # 状态同步（API 失败时回滚本地状态）
+            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'])
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
+            order_data['status'] = new_status
+            # 更新按钮状态（对话框已关闭时跳过 UI 操作）
+            try:
+                if dialog.isVisible():
+                    if is_video_review_enabled():
+                        distribute_img_btn.setEnabled(False)
+                        distribute_vid_btn.setEnabled(False)
+                        gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+                        distribute_img_btn.setStyleSheet(gray_style)
+                        distribute_vid_btn.setStyleSheet(gray_style)
+                        distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
+                        distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
+                    else:
+                        distribute_img_btn.setEnabled(True)
+                        distribute_vid_btn.setEnabled(True)
+                        distribute_img_btn.setStyleSheet("")
+                        distribute_vid_btn.setStyleSheet("")
+                        distribute_img_btn.setToolTip("")
+                        distribute_vid_btn.setToolTip("")
+            except RuntimeError:
+                pass
+            parent.refresh_work_orders()
         
-            # 显示完成消息
-            show_path_result(dialog, "上传完成", f"成功上传 {len(files)} 个文件到：\n{upload_dir}", upload_dir)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "上传完成", f"成功上传 {len(files)} 个文件到：\n{upload_dir}", upload_dir)
+            except RuntimeError:
+                pass
             # 发送通知
             send_notification(
                 "工单状态变更通知",
@@ -560,42 +575,29 @@ def show_photography_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理图片分发
         task_name = f"分发图片 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发图片", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
-            # 更新工单状态
-            new_status = '后期待领取'
-            old_status = order_data['status']
-            _update_status(order_data['id'], new_status)
-        
-            # 调用API更新状态字段
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
-                # 显示错误消息给用户
-                show_api_update_error(dialog, error_msg)
+            # 更新工单状态（API 失败时回滚本地状态）
+            ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', order_data['status'])
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
+            parent.refresh_work_orders()
             # 发送通知：摄影分发图片
             send_notification(
                 "工单状态变更通知",
                 f"{order_data['id']} {order_data['model']} {order_data['name']}原始图片已分发，请美工同事在工作时间段1小时内登录'工单管理'系统领取原始图片并进行处理！",
                 order_data.get('department')
             )
-            # 显示完成消息
-            show_path_result(dialog, "分发完成", f"成功分发图片到：\n{target_dir}", target_dir)
-            # 以分发图片为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：{parent.role}\n- 操作：分发图片\n- 状态：后期待领取\n- 目标路径：{target_dir}"
-            # )
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "分发完成", f"成功分发图片到：\n{target_dir}", target_dir)
+            except RuntimeError:
+                pass
         _add_file_task(
             name=task_name,
             files=src_files,
@@ -626,37 +628,29 @@ def show_photography_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理视频分发
         task_name = f"分发视频 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发视频", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
-            # 更新工单状态
-            new_status = '后期待领取'
-            old_status = order_data['status']
-            _update_status(order_data['id'], new_status)
-        
-            # 调用API更新状态字段
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
-                # 显示错误消息给用户
-                show_api_update_error(dialog, error_msg)
+            # 更新工单状态（API 失败时回滚本地状态）
+            ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', order_data['status'])
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
+            parent.refresh_work_orders()
             # 发送通知：摄影分发视频
             send_notification(
                 "工单状态变更通知",
                 f"{order_data['id']} {order_data['model']} {order_data['name']}原始视频已分发，请剪辑同事在工作时间段1小时内登录'工单管理'系统领取原始视频并进行处理！",
                 order_data.get('department')
             )
-            # 显示完成消息
-            show_path_result(dialog, "分发完成", f"成功分发视频到：\n{target_dir}", target_dir)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "分发完成", f"成功分发视频到：\n{target_dir}", target_dir)
+            except RuntimeError:
+                pass
         _add_file_task(
             name=task_name,
             files=src_files,

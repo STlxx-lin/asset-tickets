@@ -30,14 +30,14 @@ else:
 # ---------------------------------------------------------------------------
 # 图片扩展名，包含常见 RAW 格式
 IMG_EXTS = {
-    '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp', '.heic',
+    '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tif', '.tiff', '.webp', '.heic',
     '.raw', '.arw', '.cr2', '.nef', '.raf', '.dng', '.sr2', '.orf',
     '.rw2', '.pef', '.srw', '.cr3',
 }
 # 视频扩展名
 VID_EXTS = {
     '.mp4', '.mov', '.avi', '.wmv', '.flv', '.mkv', '.webm',
-    '.m4v', '.3gp', '.mpeg', '.mpg',
+    '.m4v', '.3gp', '.mpeg', '.mpg', '.ts',
 }
 
 # 摄影师列表（新增摄影师时只需在此处追加，删除/迁移工单路径会自动覆盖）

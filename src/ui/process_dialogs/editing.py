@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.api_manager import api_manager
+from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
@@ -34,6 +34,7 @@ from src.core.paths import (
     EDIT_POST_REVIEW_TRANSIT,
     to_local_path,
 )
+from src.core.status_sync import update_status_with_api, update_time_with_api
 from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
@@ -54,8 +55,7 @@ def show_editing_dialog(parent, order_data, callbacks):
     _log_action    = callbacks['log_action']
 
     def is_video_post_review_enabled() -> bool:
-        val = db_manager.get_system_setting('video_post_review_enabled', default='1')
-        return val == '1'
+        return get_feature_enabled('video_post_review_enabled')
 
 
     def get_edit_get_video_src():
@@ -319,38 +319,29 @@ def show_editing_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件移动
         task_name = f"剪辑领取素材 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑领取素材", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
+            status_before = order_data['status']
             db_manager.update_work_order_status(order_data['id'], '后期处理中')
-            # 记录剪辑开始时间
+            # 记录剪辑开始时间（API 失败时整体回滚状态与时间字段）
             current_time = datetime.datetime.now()
-            formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
-            db_manager.update_work_order_time_field(order_data['id'], 'edit_start_time', current_time)
-        
-            # 调用API更新时间
-            api_response = api_manager.update_work_order_time(order_data['id'], 'edit_start_time', formatted_time)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}剪辑开始时间成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}剪辑开始时间失败: {api_response['error']}"
-                logger.error(error_msg)
-                show_api_update_error(dialog, error_msg)
+            ok, error_msg = update_time_with_api(order_data['id'], 'edit_start_time', current_time, status_before=status_before)
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
             parent.refresh_work_orders()
-            # 显示完成消息
-            show_path_result(dialog, "领取完成", f"素材已移动到：\n{dest}", dest)
-            # 更新路径显示
-            get_src_label.setText(dest)
-            get_dest_label.setText(dest)
-            # 以剪辑领取素材为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：剪辑\n- 操作：领取素材\n- 状态：后期处理中\n- 目标路径：{dest}"
-            # )
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "领取完成", f"素材已移动到：\n{dest}", dest)
+                    # 更新路径显示
+                    get_src_label.setText(dest)
+                    get_dest_label.setText(dest)
+            except RuntimeError:
+                pass
     
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
@@ -373,18 +364,10 @@ def show_editing_dialog(parent, order_data, callbacks):
         if not dir_path:
             return
         parent.product_dir = dir_path
-        # 记录剪辑结束时间
+        # 记录剪辑结束时间（API 失败时回滚时间字段）
         current_time = datetime.datetime.now()
-        formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
-        db_manager.update_work_order_time_field(order_data['id'], 'edit_end_time', current_time)
-    
-        # 调用API更新时间
-        api_response = api_manager.update_work_order_time(order_data['id'], 'edit_end_time', formatted_time)
-        if api_response['success']:
-            logger.info(f"API更新工单{order_data['id']}剪辑结束时间成功")
-        else:
-            error_msg = f"API更新工单{order_data['id']}剪辑结束时间失败: {api_response['error']}"
-            logger.error(error_msg)
+        ok, error_msg = update_time_with_api(order_data['id'], 'edit_end_time', current_time)
+        if not ok:
             show_api_update_error(dialog, error_msg)
         product_label.setText(dir_path)
         show_path_result(dialog, "已选择", f"成品路径：\n{dir_path}", dir_path)
@@ -419,33 +402,27 @@ def show_editing_dialog(parent, order_data, callbacks):
         task_name = f"上传成品视频 - 工单{order_data['id']}"
     
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             # 上传成功后，将中转路径写入数据库成品路径
+            product_path_before = order_data.get('edit_product_path')
             db_manager.update_work_order_product_path(order_data['id'], transit_dir)
             parent.product_dir = transit_dir
-            product_label.setText(transit_dir)
-        
-            # 更新工单状态为 视频后期审核中
+            try:
+                if dialog.isVisible():
+                    product_label.setText(transit_dir)
+            except RuntimeError:
+                pass
+
+            # 更新工单状态为 视频后期审核中（API 失败时整体回滚状态与成品路径）
             new_status = '视频后期审核中'
-            old_status = order_data['status']
-            _update_status(order_data['id'], new_status)
-        
-            # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为视频后期审核中成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为视频后期审核中失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
-        
+            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], product_path_before=product_path_before)
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
+
             # 记录日志
             _log_action("提交视频后期审核", f"工单ID={order_data['id']}, 角色=剪辑, 成品路径={transit_dir}, 原路径={src}")
         
@@ -479,25 +456,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件复制
         task_name = f"剪辑分发运营 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑分发运营", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
-            old_status = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], '后期已完成')
-            # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], '后期已完成')
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
+            ok, error_msg = update_status_with_api(order_data['id'], '后期已完成', order_data['status'])
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
             parent.refresh_work_orders()
             # 发送通知：剪辑分发运营
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -506,8 +473,12 @@ def show_editing_dialog(parent, order_data, callbacks):
                 f"{order_data['id']} {order_data['model']} {order_data['name']}，剪辑已完成视频处理，成品视频已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
                 order_data.get('department')
             )
-            # 显示完成消息
-            show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
+            except RuntimeError:
+                pass
     
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
@@ -536,25 +507,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         # 使用任务管理器处理文件复制
         task_name = f"剪辑分发销售 - 工单{order_data['id']}"
         def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
-                return
+            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑分发销售", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
-            old_status = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], '后期已完成')
-            # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], '后期已完成')
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
+            ok, error_msg = update_status_with_api(order_data['id'], '后期已完成', order_data['status'])
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
             parent.refresh_work_orders()
             # 发送通知：剪辑分发销售
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -563,8 +524,12 @@ def show_editing_dialog(parent, order_data, callbacks):
                 f"{order_data['id']} {order_data['model']} {order_data['name']}，剪辑已完成视频处理，成品视频已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取视频！",
                 order_data.get('department')
             )
-            # 显示完成消息
-            show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
+            except RuntimeError:
+                pass
     
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []

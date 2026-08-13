@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.core.paths import IMG_EXTS, VID_EXTS
+
 
 class VideoPreviewWidget(QWidget):
     """
@@ -21,9 +23,9 @@ class VideoPreviewWidget(QWidget):
     自动根据文件扩展名切换预览布局（图片渲染 vs 视频播放控制）。
     """
     
-    # 支持的常见扩展名
-    IMAGE_EXTS: ClassVar[set[str]] = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.tif'}
-    VIDEO_EXTS: ClassVar[set[str]] = {'.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.m4v', '.ts'}
+    # 支持的常见扩展名（与 paths.py 统一，避免两处维护分叉）
+    IMAGE_EXTS: ClassVar[set[str]] = IMG_EXTS
+    VIDEO_EXTS: ClassVar[set[str]] = VID_EXTS
 
     def __init__(self, parent=None):
         super().__init__(parent)

@@ -1,6 +1,5 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QFrame,
     QGridLayout,
@@ -286,66 +285,6 @@ class CharacterSelection(QWidget):
                     widget.deleteLater()
                 else:
                     self.clear_layout(item.layout())
-
-    def update_character_widgets(self):
-        self.clear_layout(self.main_layout)
-        
-        roles_group = QGroupBox("选择你的角色")
-        self.roles_layout = QGridLayout()
-        for i, role in enumerate(self.roles):
-            radio_button = QRadioButton(role)
-            self.roles_layout.addWidget(radio_button, i // 3, i % 3)
-        roles_group.setLayout(self.roles_layout)
-
-        departments_group = QGroupBox("选择你所属的部门 (可多选)")
-        self.departments_layout = QGridLayout()
-        for i, dept in enumerate(self.departments):
-            checkbox = QCheckBox(dept)
-            self.departments_layout.addWidget(checkbox, i // 3, i % 3)
-        departments_group.setLayout(self.departments_layout)
-
-        buttons_layout = QHBoxLayout()
-        submit_button = QPushButton("确定")
-        submit_button.clicked.connect(self.submit_selection)
-        
-        # 管理员按钮
-        admin_button = QPushButton("管理员登录")
-        admin_button.clicked.connect(self.admin_login)
-        
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(submit_button)
-        buttons_layout.addWidget(admin_button)
-        
-        self.main_layout.addWidget(roles_group)
-        self.main_layout.addWidget(departments_group)
-        self.main_layout.addLayout(buttons_layout)
-
-    def submit_selection(self):
-        selected_role = None
-        for i in range(self.roles_layout.count()):
-            widget = self.roles_layout.itemAt(i).widget()
-            if isinstance(widget, QRadioButton) and widget.isChecked():
-                selected_role = widget.text()
-                break
-
-        selected_departments = []
-        for i in range(self.departments_layout.count()):
-            widget = self.departments_layout.itemAt(i).widget()
-            if isinstance(widget, QCheckBox) and widget.isChecked():
-                selected_departments.append(widget.text())
-
-        if not selected_role:
-            QMessageBox.warning(self, "提示", "请选择一个角色！")
-            return
-            
-        if not selected_departments:
-            QMessageBox.warning(self, "提示", "请至少选择一个部门！")
-            return
-            
-        from src.ui.main_window import MainWindow
-        self.main_window = MainWindow(selected_role, selected_departments, logout_callback=self.show)
-        self.main_window.show()
-        self.hide()  # 隐藏而不是关闭
 
     def apply_styles(self):
         self.setStyleSheet("""

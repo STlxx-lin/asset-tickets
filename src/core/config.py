@@ -1,6 +1,51 @@
 # 配置文件
 # 版本号统一管理
-APP_VERSION = "v1.17.9"
+APP_VERSION = "v1.17.10"
+
+# ---------------------------------------------------------------------------
+# 敏感配置统一从环境变量 / .env 文件读取（不提交到代码库）
+# 优先级：系统环境变量 > 项目根目录 .env 文件 > 下方默认值
+# 可用键：
+#   DB1_PASSWORD / DB2_PASSWORD / ADMIN_PASSWORD / API_TOKEN
+# 打包部署时请在程序旁放置 .env 文件（参考 .env.example）
+# ---------------------------------------------------------------------------
+import logging
+import os
+
+_logger = logging.getLogger(__name__)
+
+
+def _load_env_file():
+    """加载项目根目录的 .env 文件（KEY=VALUE 每行，# 为注释），不覆盖已有环境变量。"""
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, value = line.partition('=')
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except Exception as e:
+        _logger.warning(f"加载 .env 文件失败: {e}")
+
+
+_load_env_file()
+
+
+def _env(key: str, default: str = '') -> str:
+    """读取环境变量；未配置时警告并返回默认值。"""
+    value = os.environ.get(key, '').strip()
+    if not value:
+        _logger.warning(f"环境变量 {key} 未配置，相关功能可能无法正常使用")
+        return default
+    return value
+
 
 # 数据库切换开关
 # 可选值：
@@ -13,7 +58,7 @@ DB_CONFIG_1 = {
     'host': '192.168.0.54',
     'database': 'mcs_by_takuya',
     'user': 'mcs_by_takuya',
-    'password': 'asd669076',
+    'password': _env('DB1_PASSWORD'),
     'charset': 'utf8mb4',
     'autocommit': True
 }
@@ -23,7 +68,7 @@ DB_CONFIG_2 = {
     'host': '192.168.0.54',
     'database': 'cs1',
     'user': 'cs1',
-    'password': 'HZGYFdNfdBf57L2r',
+    'password': _env('DB2_PASSWORD'),
     'charset': 'utf8mb4',
     'autocommit': True
 }
@@ -48,9 +93,28 @@ else:
 # 全局回退通知类型（用于数据库无值时统一兜底）
 DEFAULT_NOTIFICATION_TYPE = 'wechat_work'
 
-# 管理员登录密码配置
-ADMIN_PASSWORD = 'DBJX.8888'
+# 管理员登录密码配置（从环境变量 ADMIN_PASSWORD 读取）
+ADMIN_PASSWORD = _env('ADMIN_PASSWORD')
 
 # 测试开关：是否跳过视频后期审核的状态校验（默认为True方便调试测试）
 # BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK = True #跳过
 BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK = False #不跳过
+
+# ---------------------------------------------------------------------------
+# 功能开关读取（带内存缓存，避免每次打开对话框都查询数据库）
+# 设置页保存后调用 clear_feature_cache() 使其失效
+# ---------------------------------------------------------------------------
+_FEATURE_CACHE: dict = {}
+
+
+def get_feature_enabled(key: str, default: str = '1') -> bool:
+    """读取 app_system_settings 中的功能开关（'1' 为开启）。"""
+    if key not in _FEATURE_CACHE:
+        from src.core.database import db_manager
+        _FEATURE_CACHE[key] = db_manager.get_system_setting(key, default=default)
+    return _FEATURE_CACHE.get(key, default) == '1'
+
+
+def clear_feature_cache() -> None:
+    """清空功能开关缓存（设置保存后调用，使修改即时生效）。"""
+    _FEATURE_CACHE.clear()

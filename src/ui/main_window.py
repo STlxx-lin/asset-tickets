@@ -56,7 +56,7 @@ from PySide6.QtWidgets import (
 from src.core.api_manager import api_manager
 
 # 导入配置模块
-from src.core.config import APP_VERSION, DEFAULT_NOTIFICATION_TYPE
+from src.core.config import APP_VERSION, DEFAULT_NOTIFICATION_TYPE, clear_feature_cache, get_feature_enabled
 
 # 添加项目根目录到Python搜索路径
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -96,16 +96,6 @@ from src.core.paths import (
     SALES_GET_SRC,
 )
 
-
-def is_video_review_enabled() -> bool:
-    """读取视频审核功能开关，默认开启（True）。"""
-    val = db_manager.get_system_setting('video_review_enabled', default='1')
-    return val == '1'
-
-def is_video_post_review_enabled() -> bool:
-    """读取视频后期审核功能开关，默认开启（True）。"""
-    val = db_manager.get_system_setting('video_post_review_enabled', default='1')
-    return val == '1'
 
 class FileOperationDialog(QDialog):
     def __init__(self, html_content, parent=None, title="确认删除", header_text="⚠️ 警告：此操作不可恢复！将要删除以下路径：", footer_text="是否确认删除上述所有文件及数据库记录？", is_confirmation=True, confirm_button_text="确认删除"):
@@ -684,6 +674,7 @@ class MainWindow(QMainWindow):
         self.logout_callback = logout_callback  # 添加注销回调函数
         self.user_name = user_name  # 新增：用户姓名
         self.work_orders_data = []
+        self.all_orders_data = []  # 全量工单数据（筛选复用之，避免重复查询数据库）
         self.ip_address = self.get_ip_address()
         self.task_manager = TaskManagerDialog(self)  # 添加任务管理器
         self.version_label = QLabel(f"版本：{APP_VERSION}")
@@ -752,9 +743,13 @@ class MainWindow(QMainWindow):
 
         def make_nav_action(get_page, btn):
             def action():
-                self.stacked_widget.setCurrentWidget(get_page())
+                page = get_page()
+                self.stacked_widget.setCurrentWidget(page)
                 for b in self._nav_buttons:
                     b.setChecked(b is btn)
+                # 切到日志中心时刷新历史列表
+                if page is self.logs_page:
+                    self.update_history_list()
             return action
 
         for name, get_page in menu_items:
@@ -1126,14 +1121,18 @@ class MainWindow(QMainWindow):
             # 创建工单时状态直接为"拍摄中"
             data['status'] = "拍摄中"
             if db_manager.add_work_order(data):
-                # 调用API创建工单
+                # 调用API创建工单（失败时明确告知用户本地已创建、外部未同步）
                 api_response = api_manager.create_work_order(data)
                 if api_response['success']:
                     logger.info(f"API创建工单成功: {data['id']}")
+                    QMessageBox.information(self, "成功", f"工单 {data['id']} 创建成功。")
                 else:
                     logger.error(f"API创建工单失败: {data['id']}, 错误: {api_response['error']}")
-                
-                QMessageBox.information(self, "成功", f"工单 {data['id']} 创建成功。")
+                    QMessageBox.warning(
+                        self, "创建成功但外部同步失败",
+                        f"工单 {data['id']} 已在本系统创建成功。\n"
+                        f"但外部工单系统同步失败，请稍后联系管理员处理：\n{api_response.get('error', '未知错误')}"
+                    )
                 self.log_action("新建工单", f"ID={data['id']}, 名称={data['name']}, 产线={data['department']}, 型号={data['model']}, 发起人={data['creator']}")
                 self.refresh_work_orders()
             else:
@@ -1442,7 +1441,7 @@ class MainWindow(QMainWindow):
         workflow_group_layout.setSpacing(12)
 
         # 读取当前开关状态
-        _vr_enabled = db_manager.get_system_setting('video_review_enabled', default='1') == '1'
+        _vr_enabled = get_feature_enabled('video_review_enabled')
         self.video_review_checkbox = QCheckBox("启用视频审核功能")
         self.video_review_checkbox.setChecked(_vr_enabled)
         self.video_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
@@ -1456,7 +1455,7 @@ class MainWindow(QMainWindow):
         vr_desc.setWordWrap(True)
 
         # 读取后期视频审核开关状态
-        _vpr_enabled = db_manager.get_system_setting('video_post_review_enabled', default='1') == '1'
+        _vpr_enabled = get_feature_enabled('video_post_review_enabled')
         self.video_post_review_checkbox = QCheckBox("启用视频后期审核功能")
         self.video_post_review_checkbox.setChecked(_vpr_enabled)
         self.video_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
@@ -1469,7 +1468,7 @@ class MainWindow(QMainWindow):
         vpr_desc.setWordWrap(True)
 
         # 读取美工后期审批开关状态
-        _apr_enabled = db_manager.get_system_setting('art_post_review_enabled', default='1') == '1'
+        _apr_enabled = get_feature_enabled('art_post_review_enabled')
         self.art_post_review_checkbox = QCheckBox("启用美工后期审批功能")
         self.art_post_review_checkbox.setChecked(_apr_enabled)
         self.art_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
@@ -1505,6 +1504,7 @@ class MainWindow(QMainWindow):
                       db_manager.set_system_setting('art_post_review_enabled', val_art)
                       
             if success:
+                clear_feature_cache()
                 QMessageBox.information(self, "保存成功", "功能设置已保存并即时生效。")
             else:
                 QMessageBox.critical(self, "保存失败", "写入数据库失败，请检查数据库连接。")
@@ -2513,6 +2513,9 @@ class MainWindow(QMainWindow):
             self.stats_layout.addWidget(QLabel(f"<b>状态 '{status}':</b> {count}"))
         self.stats_layout.addStretch()
     def update_history_list(self):
+        # 仅当日志中心页面可见时刷新，避免每次操作都拉取 100 条日志
+        if self.stacked_widget.currentWidget() is not self.logs_page:
+            return
         self.history_list.clear()
         logs = db_manager.get_logs(limit=100)
         for log in logs:
@@ -3440,8 +3443,11 @@ class MainWindow(QMainWindow):
         creator = self.creator_filter.currentText()
         date_start = self.date_start.date().toPython()
         date_end = self.date_end.date().toPython()
-        # 重新拉取用户部门的工单（不进行额外筛选）
-        all_orders = db_manager.get_work_orders(self.departments)
+        # 复用 refresh_work_orders 已拉取的全量数据，避免重复查询数据库
+        all_orders = getattr(self, 'all_orders_data', None)
+        if all_orders is None:
+            all_orders = db_manager.get_work_orders(self.departments)
+            self.all_orders_data = all_orders
         filtered = []
         for order in all_orders:
             # 日期筛选
@@ -3506,8 +3512,9 @@ class MainWindow(QMainWindow):
         self.task_manager.add_task(task)
         self.show_task_manager()
     def refresh_work_orders(self):
-        # 保留当前搜索与筛选条件，重新拉取数据并重新应用筛选
-        self.work_orders_data = db_manager.get_work_orders(self.departments)
+        # 保留当前搜索与筛选条件，重新拉取数据并重新应用筛选（全量数据供筛选复用）
+        self.all_orders_data = db_manager.get_work_orders(self.departments)
+        self.work_orders_data = self.all_orders_data
         self.update_creator_filter()
         self.apply_filters()
     
@@ -3520,9 +3527,9 @@ class MainWindow(QMainWindow):
         self.creator_filter.clear()
         self.creator_filter.addItem("全部发起人")
         
-        # 获取所有发起人，并去重
+        # 获取所有发起人，并去重（基于全量数据而非筛选结果）
         creators = set()
-        for order in self.work_orders_data:
+        for order in (self.all_orders_data or self.work_orders_data):
             creator = order.get('creator')
             if creator:
                 creators.add(creator)
@@ -3666,6 +3673,8 @@ class MainWindow(QMainWindow):
             
         order_ids = [order['id'] for order in self.work_orders_data] if self.work_orders_data else []
         all_logs_dict = db_manager.get_logs_by_order_ids(order_ids) if order_ids else {}
+        # 缓存批量日志，双击详情时复用，避免重复单查
+        self._logs_cache = all_logs_dict
         
         for order in self.work_orders_data:
             items = []
@@ -3707,7 +3716,11 @@ class MainWindow(QMainWindow):
         if not order_item:
             return
         order_data = order_item.data(Qt.ItemDataRole.UserRole)
-        logs = db_manager.get_logs_by_order_id(order_data['id'])
+        # 优先复用列表加载时的批量日志缓存（列表刷新后可能未及时更新，兜底单查）
+        cached = getattr(self, '_logs_cache', {}) or {}
+        logs = cached.get(order_data['id'])
+        if logs is None:
+            logs = db_manager.get_logs_by_order_id(order_data['id'])
         
         # 使用新的详情窗口
         dialog = WorkOrderDetailDialog(order_data, logs, is_admin=self.is_admin, parent=self)
