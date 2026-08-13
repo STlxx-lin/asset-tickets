@@ -3594,35 +3594,31 @@ class MainWindow(QMainWindow):
         if global_status == '后期已完成' and (has_edit_dist or has_edit_approved):
             return "剪辑已完成"
 
-        # 4. 剪辑提交过视频后期审核（审核流程中）
-        if has_edit_submit:
-            return "后期审核中"
+        # 4. 视频后期审核已通过（全局状态「后期审核通过」或日志证据）→ 后期审完
+        if global_status == '后期审核通过' or has_edit_approved:
+            return "后期审完"
 
         # 5. 重新拍摄
         if global_status == '重新拍摄':
             return "重新拍摄"
-            
-        # 6. 后期审完
-        if global_status == '后期审核通过':
-            return "后期审完"
-            
-        # 7. 后期审核中
-        if global_status == '视频后期审核中':
+
+        # 6. 后期审核中（提交过视频后期审核且尚未通过）
+        if has_edit_submit or global_status == '视频后期审核中':
             return "后期审核中"
-            
-        # 8. 重新剪辑
+
+        # 7. 重新剪辑
         if global_status == '后期重新剪辑':
             return "重新剪辑"
             
-        # 9. 剪辑处理中
+        # 8. 剪辑处理中
         if order.get('edit_start_time'):
             return "剪辑处理中"
             
-        # 10. 剪辑待领取
+        # 9. 剪辑待领取
         if global_status not in ['拍摄中', '视频审核中', '拍摄完成', '审核通过']:
             return "剪辑待领取"
             
-        # 11. 剪辑未开始
+        # 10. 剪辑未开始
         return "剪辑未开始"
 
     def setup_work_orders_table(self):
