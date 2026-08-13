@@ -41,6 +41,21 @@ from src.ui.video_preview import VideoPreviewWidget
 logger = logging.getLogger(__name__)
 
 
+def _has_pending_edit_review(order_id: str) -> bool:
+    """剪辑已提交视频后期审核且尚未通过。
+
+    兼容全局状态被 API 失败回滚的场景（如剪辑提交审核后状态回滚成旧值），
+    只要有提交审核的日志证据即可进入审核。
+    """
+    try:
+        logs = db_manager.get_logs_by_order_id(order_id)
+        has_submit = any(l.get('action_type') == '提交视频后期审核' for l in logs)
+        has_approved = any(l.get('action_type') == '视频后期审核通过' for l in logs)
+        return has_submit and not has_approved
+    except Exception:
+        return False
+
+
 def show_video_post_review_dialog(parent, order_data, callbacks):
     """
     处理工单对话框入口。
@@ -64,7 +79,11 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
     # 只有状态为「视频后期审核中」或「后期已完成」才可审核（支持通过配置跳过）
     if not BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK:
         current_status = order_data.get('status', '')
-        if current_status not in ['视频后期审核中', '后期已完成']:
+        status_ok = current_status in ['视频后期审核中', '后期已完成']
+        # 兼容全局状态被 API 回滚的场景：剪辑已提交审核且尚未通过 → 仍可审核
+        if not status_ok:
+            status_ok = _has_pending_edit_review(order_data['id'])
+        if not status_ok:
             QMessageBox.information(parent, "提示",
                 f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】或【后期已完成】的工单才可进行后期审核。"
             )
