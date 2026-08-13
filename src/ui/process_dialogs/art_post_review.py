@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.api_manager import api_manager
+from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
@@ -43,6 +43,7 @@ from src.core.paths import (
     IMG_EXTS,
     VID_EXTS,
 )
+from src.core.status_sync import update_status_with_api
 from src.ui.dialog_helpers import show_api_update_error
 from src.ui.video_preview import VideoPreviewWidget
 
@@ -62,8 +63,7 @@ def show_art_post_review_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     def is_art_post_review_enabled() -> bool:
-        val = db_manager.get_system_setting('art_post_review_enabled', default='1')
-        return val == '1'
+        return get_feature_enabled('art_post_review_enabled')
 
     # 检查美工后期审批功能开关
     if not is_art_post_review_enabled():
@@ -497,23 +497,17 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             new_status = '后期已完成'
-            old_status = order_data['status']
-            # 美工链专属状态：审批通过（与全局 status 解耦）
+            # 美工链专属状态：审批通过（与全局 status 解耦）；API 失败时整体回滚
+            art_before = order_data.get('art_status')
             db_manager.update_work_order_art_status(order_data['id'], '美工已完成')
-            _update_status(order_data['id'], new_status)
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为后期已完成成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为后期已完成失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
+            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            if not ok:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+            parent.refresh_work_orders()
 
             _log_action("美工后期审批通过", f"工单ID={order_data['id']}, 角色=美工后期审批, 待审批路径={transit_root}")
             send_notification(
@@ -581,19 +575,17 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
         if fail_count > 0:
             new_status = '美工后期重新制作'
-            old_status = order_data['status']
-            # 美工链专属状态：审批退回（与全局 status 解耦）
+            # 美工链专属状态：审批退回（与全局 status 解耦）；API 失败时整体回滚
+            art_before = order_data.get('art_status')
             db_manager.update_work_order_art_status(order_data['id'], '美工后期重新制作')
-            _update_status(order_data['id'], new_status)
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为美工后期重新制作成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为美工后期重新制作失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
-                show_api_update_error(dialog, error_msg)
+            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            if not ok:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
+            parent.refresh_work_orders()
 
             _log_action("美工后期审批退回", f"工单ID={order_data['id']}, 角色=美工后期审批, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(

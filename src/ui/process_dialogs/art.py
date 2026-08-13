@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.api_manager import api_manager
+from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
@@ -33,6 +33,7 @@ from src.core.paths import (
     ART_GET_IMG_SRC,
     ART_POST_REVIEW_TRANSIT,
 )
+from src.core.status_sync import update_status_with_api, update_time_with_api
 from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
@@ -68,8 +69,7 @@ def show_art_dialog(parent, order_data, callbacks):
         return ART_POST_REVIEW_TRANSIT(order_data['department'], order_data['id'], order_data['model'], order_data['name'])
 
     def is_art_post_review_enabled() -> bool:
-        val = db_manager.get_system_setting('art_post_review_enabled', default='1')
-        return val == '1'
+        return get_feature_enabled('art_post_review_enabled')
 
     # 美工后期审批开启时，分发目标为「美工待审批」中转目录（01运营/02销售），审批通过后才到运营/销售
     art_post_review_on = is_art_post_review_enabled()
@@ -394,19 +394,12 @@ def show_art_dialog(parent, order_data, callbacks):
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工领取素材", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             # 美工链专属状态：领取素材后进入设计中（与全局 status 解耦）
+            art_before = order_data.get('art_status')
             db_manager.update_work_order_art_status(order_data['id'], '美工设计中')
-            # 记录美工开始时间
+            # 记录美工开始时间（API 失败时整体回滚 art_status 与时间字段）
             current_time = datetime.datetime.now()
-            formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
-            db_manager.update_work_order_time_field(order_data['id'], 'art_start_time', current_time)
-        
-            # 调用API更新时间
-            api_response = api_manager.update_work_order_time(order_data['id'], 'art_start_time', formatted_time)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}美工开始时间成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}美工开始时间失败: {api_response['error']}"
-                logger.error(error_msg)
+            ok, error_msg = update_time_with_api(order_data['id'], 'art_start_time', current_time, art_status_before=art_before)
+            if not ok:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
@@ -422,11 +415,6 @@ def show_art_dialog(parent, order_data, callbacks):
                     get_dest_label.setText(dest)
             except RuntimeError:
                 pass
-            # 以美工领取素材为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：领取素材\n- 状态：后期处理中\n- 目标路径：{dest}"
-            # )
     
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
@@ -450,19 +438,12 @@ def show_art_dialog(parent, order_data, callbacks):
             return
         parent.product_dir = dir_path
         # 美工链专属状态：已选成品，待分发
+        art_before = order_data.get('art_status')
         db_manager.update_work_order_art_status(order_data['id'], '美工待分发')
-        # 记录美工结束时间
+        # 记录美工结束时间（API 失败时整体回滚 art_status 与时间字段）
         current_time = datetime.datetime.now()
-        formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
-        db_manager.update_work_order_time_field(order_data['id'], 'art_end_time', current_time)
-    
-        # 调用API更新时间
-        api_response = api_manager.update_work_order_time(order_data['id'], 'art_end_time', formatted_time)
-        if api_response['success']:
-            logger.info(f"API更新工单{order_data['id']}美工结束时间成功")
-        else:
-            error_msg = f"API更新工单{order_data['id']}美工结束时间失败: {api_response['error']}"
-            logger.error(error_msg)
+        ok, error_msg = update_time_with_api(order_data['id'], 'art_end_time', current_time, art_status_before=art_before)
+        if not ok:
             show_api_update_error(dialog, error_msg)
         # 更新成品路径显示
         product_label.setText(dir_path)
@@ -493,19 +474,11 @@ def show_art_dialog(parent, order_data, callbacks):
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             new_status = '美工后期审核中' if review_now else '后期已完成'
-            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）
+            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）；API 失败时整体回滚
+            art_before = order_data.get('art_status')
             db_manager.update_work_order_art_status(order_data['id'], '美工后期审核中' if review_now else '美工已完成')
-            old_status = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], new_status)
-            # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为{new_status}成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为{new_status}失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
+            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            if not ok:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
@@ -535,11 +508,6 @@ def show_art_dialog(parent, order_data, callbacks):
                         show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
             except RuntimeError:
                 pass
-            # 以美工分发运营为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发运营\n- 状态：后期已完成\n- 目标路径：{dest}"
-            # )
     
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
@@ -573,19 +541,11 @@ def show_art_dialog(parent, order_data, callbacks):
             _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             new_status = '美工后期审核中' if review_now else '后期已完成'
-            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）
+            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）；API 失败时整体回滚
+            art_before = order_data.get('art_status')
             db_manager.update_work_order_art_status(order_data['id'], '美工后期审核中' if review_now else '美工已完成')
-            old_status = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], new_status)
-            # 调用API更新工单状态
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为{new_status}成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为{new_status}失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
+            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            if not ok:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
@@ -615,11 +575,6 @@ def show_art_dialog(parent, order_data, callbacks):
                         show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
             except RuntimeError:
                 pass
-            # 以分发销售为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：{parent.role}\n- 操作：分发销售\n- 状态：后期已完成\n- 目标路径：{dest}"
-            # )
     
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []

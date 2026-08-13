@@ -27,33 +27,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.api_manager import api_manager
-from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK
+from src.core.config import BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK, get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
     VID_EXTS,
     to_local_path,
 )
+from src.core.status_sync import has_pending_edit_review, update_status_with_api
 from src.ui.dialog_helpers import show_api_update_error
 from src.ui.video_preview import VideoPreviewWidget
 
 logger = logging.getLogger(__name__)
-
-
-def _has_pending_edit_review(order_id: str) -> bool:
-    """剪辑已提交视频后期审核且尚未通过。
-
-    兼容全局状态被 API 失败回滚的场景（如剪辑提交审核后状态回滚成旧值），
-    只要有提交审核的日志证据即可进入审核。
-    """
-    try:
-        logs = db_manager.get_logs_by_order_id(order_id)
-        has_submit = any(l.get('action_type') == '提交视频后期审核' for l in logs)
-        has_approved = any(l.get('action_type') == '视频后期审核通过' for l in logs)
-        return has_submit and not has_approved
-    except Exception:
-        return False
 
 
 def show_video_post_review_dialog(parent, order_data, callbacks):
@@ -66,8 +51,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     def is_video_post_review_enabled() -> bool:
-        val = db_manager.get_system_setting('video_post_review_enabled', default='1')
-        return val == '1'
+        return get_feature_enabled('video_post_review_enabled')
 
 
     # 检查视频后期审核功能开关
@@ -82,7 +66,7 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
         status_ok = current_status in ['视频后期审核中', '后期已完成']
         # 兼容全局状态被 API 回滚的场景：剪辑已提交审核且尚未通过 → 仍可审核
         if not status_ok:
-            status_ok = _has_pending_edit_review(order_data['id'])
+            status_ok = has_pending_edit_review(order_data['id'])
         if not status_ok:
             QMessageBox.information(parent, "提示",
                 f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】或【后期已完成】的工单才可进行后期审核。"
@@ -438,18 +422,11 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
     cancel_btn.clicked.connect(dialog.reject)
 
     def on_approve():
-        new_status = '后期审核通过'
-        old_status = order_data['status']
-        _update_status(order_data['id'], new_status)
-        api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-        if api_response['success']:
-            logger.info(f"API更新工单{order_data['id']}状态为后期审核通过成功")
-        else:
-            error_msg = f"API更新工单{order_data['id']}状态为后期审核通过失败: {api_response['error']}"
-            logger.error(error_msg)
-            # API 失败时回滚本地状态，避免两端不一致
-            db_manager.update_work_order_status(order_data['id'], old_status)
+        # 更新状态并同步 API（失败时回滚本地状态）
+        ok, error_msg = update_status_with_api(order_data['id'], '后期审核通过', order_data['status'])
+        if not ok:
             show_api_update_error(dialog, error_msg)
+        parent.refresh_work_orders()
 
         _log_action("视频后期审核通过", f"工单ID={order_data['id']}, 角色=视频后期审核, 成品路径={edit_product_path}")
         send_notification(
@@ -488,18 +465,11 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
                 QMessageBox.warning(dialog, "错误", f"移动视频 {fname} 失败: {e!s}")
 
         if fail_count > 0:
-            new_status = '后期重新剪辑'
-            old_status = order_data['status']
-            _update_status(order_data['id'], new_status)
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为后期重新剪辑成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为后期重新剪辑失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
+            # 更新状态并同步 API（失败时回滚本地状态）
+            ok, error_msg = update_status_with_api(order_data['id'], '后期重新剪辑', order_data['status'])
+            if not ok:
                 show_api_update_error(dialog, error_msg)
+            parent.refresh_work_orders()
 
             _log_action("视频后期审核退回", f"工单ID={order_data['id']}, 角色=视频后期审核, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(

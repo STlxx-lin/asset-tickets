@@ -10,3 +10,5 @@ src/core/config.local.py
 .venv/
 .trae/
 .zcode/
+
+!.env.example

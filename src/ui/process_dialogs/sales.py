@@ -246,15 +246,8 @@ def show_sales_dialog(parent, order_data, callbacks):
             except RuntimeError:
                 return
             _log_action("销售领取素材", f"工单ID={order_data['id']}, 角色=销售, 源路径={src}, 目标路径={dest}")
-            # 更新工单状态为“已领取”并刷新UI
-            # _update_status(order_data['id'], '已领取')
             # 显示完成消息
             show_path_result(dialog, "领取完成", f"素材已领取到：\n{dest}", dest)
-            # 以销售领取素材为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：销售\n- 操作：领取素材\n- 状态：已领取\n- 目标路径：{dest}"
-            # )
         _add_file_task(
             name=task_name,
             files=os.listdir(src),

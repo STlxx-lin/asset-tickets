@@ -27,12 +27,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.api_manager import api_manager
+from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
     PHOTOGRAPHY_UPLOAD,
 )
+from src.core.status_sync import update_status_with_api
 from src.ui.dialog_helpers import show_api_update_error
 from src.ui.video_preview import VideoPreviewWidget
 
@@ -54,8 +55,7 @@ def show_video_review_dialog(parent, order_data, callbacks):
     _log_action    = callbacks['log_action']
 
     def is_video_review_enabled() -> bool:
-        val = db_manager.get_system_setting('video_review_enabled', default='1')
-        return val == '1'
+        return get_feature_enabled('video_review_enabled')
 
 
     # 检查视频审核功能开关
@@ -394,18 +394,11 @@ def show_video_review_dialog(parent, order_data, callbacks):
     cancel_btn.clicked.connect(dialog.reject)
 
     def on_approve():
-        new_status = '审核通过'
-        old_status = order_data['status']
-        _update_status(order_data['id'], new_status)
-        api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-        if api_response['success']:
-            logger.info(f"API更新工单{order_data['id']}状态为审核通过成功")
-        else:
-            error_msg = f"API更新工单{order_data['id']}状态为审核通过失败: {api_response['error']}"
-            logger.error(error_msg)
-            # API 失败时回滚本地状态，避免两端不一致
-            db_manager.update_work_order_status(order_data['id'], old_status)
+        # 更新状态并同步 API（失败时回滚本地状态）
+        ok, error_msg = update_status_with_api(order_data['id'], '审核通过', order_data['status'])
+        if not ok:
             show_api_update_error(dialog, error_msg)
+        parent.refresh_work_orders()
     
         _log_action("视频审核通过", f"工单ID={order_data['id']}, 角色=视频审核")
         send_notification(
@@ -447,18 +440,11 @@ def show_video_review_dialog(parent, order_data, callbacks):
 
         # 仅当有文件成功退回时才变更状态
         if fail_count > 0:
-            new_status = '重新拍摄'
-            old_status = order_data['status']
-            _update_status(order_data['id'], new_status)
-            api_response = api_manager.update_work_order_status(order_data['id'], new_status)
-            if api_response['success']:
-                logger.info(f"API更新工单{order_data['id']}状态为重新拍摄成功")
-            else:
-                error_msg = f"API更新工单{order_data['id']}状态为重新拍摄失败: {api_response['error']}"
-                logger.error(error_msg)
-                # API 失败时回滚本地状态，避免两端不一致
-                db_manager.update_work_order_status(order_data['id'], old_status)
+            # 更新状态并同步 API（失败时回滚本地状态）
+            ok, error_msg = update_status_with_api(order_data['id'], '重新拍摄', order_data['status'])
+            if not ok:
                 show_api_update_error(dialog, error_msg)
+            parent.refresh_work_orders()
             
             _log_action("视频审核退回", f"工单ID={order_data['id']}, 角色=视频审核, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(

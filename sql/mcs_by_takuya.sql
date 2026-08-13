@@ -128,22 +128,6 @@ CREATE TABLE `mcs_by_takuya_type_contents`  (
 ) ENGINE = MyISAM AUTO_INCREMENT = 26 CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = FIXED;
 
 -- ----------------------------
--- Table structure for mcs_by_takuya_user_departments
--- ----------------------------
-DROP TABLE IF EXISTS `mcs_by_takuya_user_departments`;
-CREATE TABLE `mcs_by_takuya_user_departments`  (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NULL DEFAULT NULL,
-  `department_id` int(11) NULL DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `unique_user_dept`(`user_id`, `department_id`) USING BTREE,
-  INDEX `department_id`(`department_id`) USING BTREE,
-  CONSTRAINT `mcs_by_takuya_user_departments_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `mcs1_by_takuya_users` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  CONSTRAINT `mcs_by_takuya_user_departments_ibfk_2` FOREIGN KEY (`department_id`) REFERENCES `mcs_by_takuya_departments` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = COMPACT;
-
--- ----------------------------
 -- Table structure for mcs_by_takuya_users
 -- ----------------------------
 DROP TABLE IF EXISTS `mcs_by_takuya_users`;
@@ -169,27 +153,6 @@ CREATE TABLE `mcs_by_takuya_versions`  (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建连接',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = COMPACT;
-
--- ----------------------------
--- Table structure for mcs_by_takuya_work_order_feedback
--- ----------------------------
-DROP TABLE IF EXISTS `mcs_by_takuya_work_order_feedback`;
-CREATE TABLE `mcs_by_takuya_work_order_feedback`  (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `order_id` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '工单ID',
-  `creator` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '申请人',
-  `satisfaction_rating` tinyint(4) NOT NULL COMMENT '满意度评分(1-5)',
-  `quality_rating` tinyint(4) NOT NULL COMMENT '质量评分(1-5)',
-  `service_rating` tinyint(4) NOT NULL COMMENT '服务评分(1-5)',
-  `delivery_rating` tinyint(4) NOT NULL COMMENT '时效评分(1-5)',
-  `overall_feedback` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '总体评价',
-  `suggestions` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '改进建议',
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `ip_address` varchar(45) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '提交IP地址',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `unique_order_feedback`(`order_id`) USING BTREE,
-  INDEX `idx_order_id`(`order_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 76 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for mcs_by_takuya_work_orders
@@ -222,17 +185,5 @@ CREATE TABLE `mcs_by_takuya_work_orders`  (
   CONSTRAINT `fk_work_order_type` FOREIGN KEY (`project_type_id`) REFERENCES `mcs_by_takuya_project_types` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT,
   CONSTRAINT `mcs_by_takuya_work_orders_ibfk_1` FOREIGN KEY (`department_id`) REFERENCES `mcs_by_takuya_departments` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = COMPACT;
-
--- ----------------------------
--- Table structure for roles
--- ----------------------------
-DROP TABLE IF EXISTS `roles`;
-CREATE TABLE `roles`  (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `name`(`name`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 10 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = COMPACT;
 
 SET FOREIGN_KEY_CHECKS = 1;

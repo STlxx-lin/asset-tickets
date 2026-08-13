@@ -575,11 +575,6 @@ def show_ops_dialog(parent, order_data, callbacks):
             parent.refresh_work_orders()
             # 显示完成消息
             show_path_result(dialog, "领取完成", f"素材已领取到：\n{dest}", dest)
-            # 以运营领取素材为例：
-            # send_dingtalk_markdown(
-            #     "工单状态变更通知",
-            #     f"### 工单号：{order_data['id']}\n- 角色：运营\n- 操作：领取素材\n- 状态：待上架\n- 目标路径：{dest}"
-            # )
         _add_file_task(
             name=task_name,
             files=os.listdir(src),
