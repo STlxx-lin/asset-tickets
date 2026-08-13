@@ -111,6 +111,15 @@ class Task(QThread):
         # 清理源目录：仅在所有文件均已成功移动/确认目标有副本后执行
         if self.op_type == "move" and move_successful and os.path.exists(self.src_dir):
             try:
+                # 先删除移动后遗留的空子目录（文件已全部移走，目录本身不在任务列表中）
+                for f in list(os.listdir(self.src_dir)):
+                    path = os.path.join(self.src_dir, f)
+                    if os.path.isdir(path) and not os.listdir(path):
+                        try:
+                            os.rmdir(path)
+                            logger.info(f"已删除空子目录: {f}")
+                        except Exception as e:
+                            logger.error(f"删除空子目录 {f} 时出错: {e}")
                 remaining_files = os.listdir(self.src_dir)
                 # 仅删除“目标已存在”被跳过的重复项（目标有完整副本）
                 removable = [f for f in remaining_files if f in skipped_existing]

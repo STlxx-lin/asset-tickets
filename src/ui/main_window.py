@@ -3573,45 +3573,56 @@ class MainWindow(QMainWindow):
         # 2. 待上架
         if global_status == '待上架':
             return "待上架"
-            
-        # 3. 剪辑已完成分发
-        if global_status == '后期已完成':
-            return "剪辑已完成"
-        has_distribute = False
+
+        # 剪辑链自身证据（日志）：是否提交过审核/审核通过/已分发
+        has_edit_submit = False
+        has_edit_approved = False
+        has_edit_dist = False
         for log in logs:
             action = log.get('action_type', '')
             details = log.get('details', '')
-            if action in ['剪辑分发运营', '剪辑分发销售'] and f"工单ID={order['id']}" in details:
-                has_distribute = True
-                break
-        if has_distribute:
+            if f"工单ID={order['id']}" not in details:
+                continue
+            if action in ['剪辑分发运营', '剪辑分发销售']:
+                has_edit_dist = True
+            elif action == '提交视频后期审核':
+                has_edit_submit = True
+            elif action == '视频后期审核通过':
+                has_edit_approved = True
+
+        # 3. 剪辑已完成分发（需剪辑链自身证据，避免美工链完成误判为剪辑完成）
+        if global_status == '后期已完成' and (has_edit_dist or has_edit_approved):
             return "剪辑已完成"
-            
-        # 4. 重新拍摄
+
+        # 4. 剪辑提交过视频后期审核（审核流程中）
+        if has_edit_submit:
+            return "后期审核中"
+
+        # 5. 重新拍摄
         if global_status == '重新拍摄':
             return "重新拍摄"
             
-        # 5. 后期审完
+        # 6. 后期审完
         if global_status == '后期审核通过':
             return "后期审完"
             
-        # 6. 后期审核中
+        # 7. 后期审核中
         if global_status == '视频后期审核中':
             return "后期审核中"
             
-        # 7. 重新剪辑
+        # 8. 重新剪辑
         if global_status == '后期重新剪辑':
             return "重新剪辑"
             
-        # 8. 剪辑处理中
+        # 9. 剪辑处理中
         if order.get('edit_start_time'):
             return "剪辑处理中"
             
-        # 9. 剪辑待领取
+        # 10. 剪辑待领取
         if global_status not in ['拍摄中', '视频审核中', '拍摄完成', '审核通过']:
             return "剪辑待领取"
             
-        # 10. 剪辑未开始
+        # 11. 剪辑未开始
         return "剪辑未开始"
 
     def setup_work_orders_table(self):

@@ -613,6 +613,8 @@ class WorkOrderDetailDialog(QDialog):
         has_edit_ops_collected = False
         has_edit_sales_collected = False
         has_art_approved = False
+        has_edit_submit = False
+        has_edit_approved = False
 
         for log in self.logs:
             role = log.get('role', '')
@@ -629,6 +631,11 @@ class WorkOrderDetailDialog(QDialog):
             # 剪辑分发（含合并登录的「后期审批」角色）
             if ("剪辑" in role or "视频后期审核" in role or "后期审批" in role) and ("分发" in content or "审核通过" in content) and ("运营" in content or "销售" in content or "视频" in content or "后期" in content):
                 has_edit_dist = True
+            # 剪辑提交视频后期审核 / 视频后期审核通过
+            if action == '提交视频后期审核':
+                has_edit_submit = True
+            if action == '视频后期审核通过':
+                has_edit_approved = True
                 
             # 运营/销售领取
             if ("运营" in role or "销售" in role) and "领取" in content and f"工单ID={self.order_data['id']}" in details:
@@ -645,7 +652,7 @@ class WorkOrderDetailDialog(QDialog):
 
         if status in ['后期已完成', '待上架', '已上架']:
             has_art_dist = True
-            has_edit_dist = True
+            # 剪辑分发仅当有剪辑链日志证据时点亮（避免美工链完成误判为剪辑完成）
 
         if has_art_dist:
             art_finished.add("美工分发")
@@ -663,10 +670,10 @@ class WorkOrderDetailDialog(QDialog):
         if has_edit_ops_collected or has_edit_sales_collected or status in ['待上架', '已上架']:
             edit_finished.add("已被领取")
 
-        # 剪辑特有审核状态亮灯
-        if status == '视频后期审核中':
+        # 剪辑链审核状态亮灯（基于剪辑链自身证据，避免美工链完成误点亮）
+        if status == '视频后期审核中' or has_edit_submit:
             edit_finished.add("视频审核中")
-        elif status == '后期审核通过' or status in ['后期已完成', '待上架', '已上架']:
+        if status == '后期审核通过' or has_edit_approved:
             edit_finished.add("视频审核中")
             edit_finished.add("后期审完")
 
