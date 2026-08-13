@@ -105,8 +105,23 @@ jobs:
         echo "Found app: $APP_PATH"
         echo "App Name: $APP_NAME"
         
-        # Create DMG using hdiutil (standard macOS tool)
-        hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$APP_NAME.dmg"
+        # 清理扩展属性并等待文件系统/Spotlight 释放占用，避免 hdiutil 报 Resource busy
+        xattr -cr "$APP_PATH" 2>/dev/null || true
+        sleep 5
+        
+        # Create DMG using hdiutil (standard macOS tool)，带重试机制
+        for i in 1 2 3 4 5; do
+          if hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$APP_NAME.dmg"; then
+            echo "DMG 创建成功"
+            break
+          fi
+          echo "hdiutil 创建 DMG 失败（第 ${i} 次），等待 10 秒后重试..."
+          sleep 10
+          if [ "$i" -eq 5 ]; then
+            echo "hdiutil 重试 5 次仍失败，退出构建"
+            exit 1
+          fi
+        done
         
         # Zip the .app for alternative distribution
         # Use -r for recursive and -y to preserve symlinks (important for macOS apps)
