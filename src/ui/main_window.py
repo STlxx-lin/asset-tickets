@@ -804,6 +804,15 @@ class MainWindow(QMainWindow):
         role_chip.setToolTip(self.role)
         right_layout.addWidget(role_chip)
 
+        # 路径权限检查按钮（所有角色可见，按角色检查对应路径；管理员检查全部）
+        perm_btn = QPushButton("🔒 路径权限")
+        perm_btn.setStyleSheet(
+            "background: transparent; color: #9ba3b0; border: 1px solid #2e3340;"
+            " border-radius: 7px; padding: 6px 14px; font-size: 13px;"
+        )
+        perm_btn.clicked.connect(self.handle_path_permission_check)
+        right_layout.addWidget(perm_btn)
+
         dept_text = ', '.join(self.departments)
         dept_chip = QLabel(dept_text)
         dept_chip.setStyleSheet(
@@ -956,6 +965,11 @@ class MainWindow(QMainWindow):
             edit_button = QPushButton("编辑")
             edit_button.clicked.connect(self.handle_edit_selected_order)
             controls_layout.addWidget(edit_button)
+
+            # 管理员：路径文件检查按钮
+            check_path_button = QPushButton("检查路径")
+            check_path_button.clicked.connect(self.handle_path_check_selected_order)
+            controls_layout.addWidget(check_path_button)
             
             # 红色区域显示按钮
             red_area_button = QPushButton("创建工单反馈")
@@ -3086,6 +3100,27 @@ class MainWindow(QMainWindow):
             return
         order_data = item.data(Qt.ItemDataRole.UserRole)
         self.show_edit_order_dialog(order_data)
+    def handle_path_check_selected_order(self):
+        """检查选中工单的所有关键路径文件（仅管理员可见）"""
+        index = self.table_view.currentIndex()
+        if not index.isValid():
+            QMessageBox.warning(self, "提示", "请先选中一个工单")
+            return
+        item = self.model.item(index.row(), 0)
+        if not item:
+            QMessageBox.warning(self, "提示", "选中工单无效")
+            return
+        order_data = item.data(Qt.ItemDataRole.UserRole)
+        from src.ui.path_check import show_path_check_dialog
+        show_path_check_dialog(self, order_data)
+    def handle_path_permission_check(self):
+        """路径权限检查（所有角色可见）：按角色检查对应路径，管理员检查全部"""
+        from src.ui.path_permission_check import show_path_permission_dialog
+        if self.is_admin:
+            roles = ['管理员']
+        else:
+            roles = self.roles or ([self.role] if self.role else [])
+        show_path_permission_dialog(self, roles, self.departments)
     def handle_process_selected_order(self):
         index = self.table_view.currentIndex()
         if not index.isValid():
