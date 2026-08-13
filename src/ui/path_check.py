@@ -9,7 +9,7 @@ import os
 import shutil
 import time
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -47,40 +47,55 @@ from src.core.paths import (
 logger = logging.getLogger(__name__)
 
 
-def _check_path(path: str) -> tuple:
-    """检查单个路径，返回 (status, file_count, mtime_str)。
+def _inspect_path(path: str) -> dict:
+    """单次遍历检查路径，返回结果 dict。
 
-    status: 正常 / 空 / 不存在 / 检查失败:xxx
+    一次 os.walk 同时完成：文件数、最后修改时间、空文件夹数、
+    垃圾文件（名称→数量）与大小、有效文件数（避免重复遍历网络盘）。
     """
+    result = {
+        'exists': False, 'file_count': 0, 'mtime': '--',
+        'empty_dirs': 0, 'garbage': {}, 'garbage_size': 0, 'valid_files': 0,
+    }
     try:
         local = to_local_path(path)
         if not local or not os.path.exists(local):
-            return "不存在", 0, "--"
-        file_count = 0
+            return result
+        result['exists'] = True
         latest_mtime = 0
         if os.path.isdir(local):
-            for root, _dirs, files in os.walk(local):
-                file_count += len(files)
+            for root, dirs, files in os.walk(local):
+                if root != local and not dirs and not files:
+                    result['empty_dirs'] += 1
                 for f in files:
+                    full = os.path.join(root, f)
+                    if f in GARBAGE_FILES or f.startswith('._') or f.endswith('.tmp'):
+                        result['garbage'][f] = result['garbage'].get(f, 0) + 1
+                        try:
+                            result['garbage_size'] += os.path.getsize(full)
+                        except OSError:
+                            pass
+                    else:
+                        result['valid_files'] += 1
+                        result['file_count'] += 1
                     try:
-                        m = os.path.getmtime(os.path.join(root, f))
+                        m = os.path.getmtime(full)
                         latest_mtime = max(latest_mtime, m)
                     except OSError:
                         pass
         else:
-            file_count = 1
+            result['file_count'] = 1
+            result['valid_files'] = 1
             try:
                 latest_mtime = os.path.getmtime(local)
             except OSError:
                 pass
-        status = "正常" if file_count > 0 else "空"
-        mtime_str = "--"
         if latest_mtime:
-            mtime_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(latest_mtime))
-        return status, file_count, mtime_str
+            result['mtime'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(latest_mtime))
     except Exception as e:
         logger.error(f"检查路径失败 {path}: {e}")
-        return f"检查失败: {e}", 0, "--"
+        result['error'] = str(e)
+    return result
 
 
 def build_path_checks(order_data: dict) -> list:
@@ -154,39 +169,26 @@ _STATUS_COLOR = {
     "不存在": QColor(220, 53, 69),     # 红色
 }
 
+
+class _PathScanWorker(QThread):
+    """后台路径扫描线程：逐项检查并返回结果，避免阻塞界面。"""
+
+    item_done = Signal(int, dict)  # (row, result)
+    all_done = Signal()
+
+    def __init__(self, checks):
+        super().__init__()
+        self.checks = checks
+
+    def run(self):
+        for row, (label, path, note) in enumerate(self.checks):
+            result = _inspect_path(path)
+            result['note'] = note
+            self.item_done.emit(row, result)
+        self.all_done.emit()
+
 # 系统垃圾文件（检查时标记为无用内容）
 GARBAGE_FILES = {'.DS_Store', 'Thumbs.db', 'desktop.ini', '.thumbnails', '.localized', '.fseventsd', '.Spotlight-V100'}
-
-
-def _scan_useless(path: str) -> tuple:
-    """扫描目录下的无用内容，返回 (空文件夹数, 垃圾文件名→数量 dict, 垃圾总字节数, 有效文件数)。
-
-    无用内容 = 空文件夹 + 系统垃圾文件（.DS_Store / Thumbs.db / desktop.ini 等）。
-    有效文件 = 非垃圾文件的文件数（用于判断是否推荐删除整个目录）。
-    """
-    empty_dirs = 0
-    garbage: dict = {}
-    garbage_size = 0
-    valid_files = 0
-    try:
-        if not os.path.isdir(path):
-            return 0, {}, 0, 0
-        for root, dirs, files in os.walk(path):
-            # 空文件夹（无文件无子目录，排除根目录本身）
-            if root != path and not dirs and not files:
-                empty_dirs += 1
-            for f in files:
-                if f in GARBAGE_FILES or f.startswith('._') or f.endswith('.tmp'):
-                    garbage[f] = garbage.get(f, 0) + 1
-                    try:
-                        garbage_size += os.path.getsize(os.path.join(root, f))
-                    except OSError:
-                        pass
-                else:
-                    valid_files += 1
-    except Exception as e:
-        logger.error(f"扫描无用内容失败 {path}: {e}")
-    return empty_dirs, garbage, garbage_size, valid_files
 
 
 def show_path_check_dialog(parent, order_data: dict):
@@ -313,6 +315,13 @@ def show_path_check_dialog(parent, order_data: dict):
     main_layout.addLayout(button_layout)
 
     missing_rows: list = []
+    worker = None
+    checks: list = []
+    counts = {'ok': 0, 'empty': 0, 'missing': 0}
+    btn_style = (
+        "color: white; border: none; border-radius: 4px;"
+        " padding: 7px 18px; font-size: 13px; font-weight: bold; min-width: 60px;"
+    )
 
     def apply_fold():
         """根据勾选状态折叠/展开「不存在」的路径行"""
@@ -320,125 +329,153 @@ def show_path_check_dialog(parent, order_data: dict):
         for r in missing_rows:
             table.setRowHidden(r, not show_missing)
 
+    def on_item_done(row, result):
+        """后台线程逐项检查完成后，填充该行完整结果"""
+        if row >= len(checks):
+            return
+        label, path, note = checks[row]
+
+        # 状态判定
+        if result.get('error'):
+            status = f"检查失败: {result['error']}"
+        elif result['exists']:
+            status = "正常" if result['file_count'] > 0 else "空"
+        else:
+            status = "不存在"
+        if note and status == "不存在":
+            status = "已领取"
+        if status in ("正常", "已领取"):
+            counts['ok'] += 1
+        elif status == "空":
+            counts['empty'] += 1
+        else:
+            counts['missing'] += 1
+            missing_rows.append(row)
+
+        # 无用内容 + 推荐删除
+        useless_text = "--"
+        recommend_text = "--"
+        has_useless = False
+        recommend_del = False
+        if status in ("正常", "空"):
+            parts = []
+            if result['empty_dirs']:
+                parts.append(f"空文件夹×{result['empty_dirs']}")
+            for name, cnt in sorted(result['garbage'].items()):
+                parts.append(f"{name}×{cnt}")
+            if parts:
+                if result['garbage_size'] > 0:
+                    parts.append(f"共 {result['garbage_size'] / 1024:.1f} KB")
+                useless_text = "、".join(parts)
+                has_useless = True
+            else:
+                useless_text = "无"
+            if status == "空" or (result['valid_files'] == 0 and (result['empty_dirs'] > 0 or result['garbage'])):
+                recommend_text = "推荐"
+                recommend_del = True
+            elif result['valid_files'] > 0:
+                recommend_text = "不推荐"
+
+        items = [
+            QTableWidgetItem(label),
+            QTableWidgetItem(path),
+            QTableWidgetItem(status),
+            QTableWidgetItem(str(result['file_count']) if status in ("正常", "空") else "--"),
+            QTableWidgetItem(result['mtime']),
+            QTableWidgetItem(useless_text),
+            QTableWidgetItem(recommend_text),
+        ]
+        color = _STATUS_COLOR.get(status, QColor(220, 53, 69))
+        for col, item in enumerate(items):
+            if col == 5 and has_useless:
+                item.setForeground(QColor(255, 140, 0))  # 有无用内容,橙色提示
+            elif col == 6 and recommend_del:
+                item.setForeground(QColor(220, 53, 69))  # 推荐删除,红色提示
+            elif col == 6 and recommend_text == "不推荐":
+                item.setForeground(QColor(120, 130, 145))  # 不推荐,灰色
+            else:
+                item.setForeground(color if col in (2,) else QColor(232, 234, 237))
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            table.setItem(row, col, item)
+        # 整行状态着色
+        if status not in ("正常", "已领取"):
+            for col in range(7):
+                table.item(row, col).setBackground(QColor(60, 30, 35) if status != "空" else QColor(58, 46, 28))
+        elif has_useless or recommend_del:
+            for col in range(7):
+                table.item(row, col).setBackground(QColor(58, 46, 28))
+
+        # 打开 / 删除 按钮（最右侧两列）
+        exists = result['exists']
+
+        def make_open_btn(path):
+            btn = QPushButton("打开")
+            btn.setStyleSheet(f"background-color: #4f8ef7;{btn_style}")
+            btn.setEnabled(exists)
+            btn.setToolTip("在资源管理器中打开该路径" if exists else "路径不存在，无法打开")
+            btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+            return btn
+
+        def make_del_btn(row, label, path):
+            btn = QPushButton("删除")
+            btn.setStyleSheet(f"background-color: #dc3545;{btn_style}")
+            btn.setEnabled(exists)
+            btn.setToolTip("删除该路径（含全部内容，不可恢复）" if exists else "路径不存在")
+            btn.clicked.connect(lambda: on_delete_path(row, label, path))
+            return btn
+
+        open_widget = QWidget()
+        open_layout = QHBoxLayout(open_widget)
+        open_layout.setContentsMargins(4, 2, 4, 2)
+        open_layout.setAlignment(Qt.AlignCenter)
+        open_layout.addWidget(make_open_btn(path))
+        table.setCellWidget(row, 7, open_widget)
+
+        del_widget = QWidget()
+        del_layout = QHBoxLayout(del_widget)
+        del_layout.setContentsMargins(4, 2, 4, 2)
+        del_layout.setAlignment(Qt.AlignCenter)
+        del_layout.addWidget(make_del_btn(row, label, path))
+        table.setCellWidget(row, 8, del_widget)
+
+        summary_label.setText(
+            f"检查中… 正常 {counts['ok']} · 空 {counts['empty']} · 不存在/异常 {counts['missing']}"
+        )
+
+    def on_all_done():
+        """全部检查完成"""
+        dialog.unsetCursor()
+        refresh_btn.setEnabled(True)
+        summary_label.setText(
+            f"共 {len(checks)} 项：正常 {counts['ok']} · 空 {counts['empty']} · 不存在/异常 {counts['missing']}（已折叠）"
+        )
+        show_missing_cb.setText(f"显示不存在的路径 ({counts['missing']})")
+        apply_fold()
+
     def run_check():
-        # 网络盘检查可能耗时，显示等待光标
+        nonlocal worker
+        # 防重复：上一次扫描仍在进行时忽略
+        if worker is not None and worker.isRunning():
+            return
         dialog.setCursor(Qt.CursorShape.WaitCursor)
-        try:
-            checks = build_path_checks(order_data)
-            table.setRowCount(len(checks))
-            ok_count = empty_count = missing_count = 0
-            missing_rows.clear()
-            # 打开/删除按钮统一样式（循环外定义，避免闭包绑定问题）
-            btn_style = (
-                "color: white; border: none; border-radius: 4px;"
-                " padding: 7px 18px; font-size: 13px; font-weight: bold; min-width: 60px;"
-            )
-            for row, (label, path, note) in enumerate(checks):
-                status, file_count, mtime_str = _check_path(path)
-                # 已领取标注：运营/销售已领取导致文件移走，不视为异常
-                if note and status == "不存在":
-                    status = "已领取"
-                if status in ("正常", "已领取"):
-                    ok_count += 1
-                elif status == "空":
-                    empty_count += 1
-                else:
-                    missing_count += 1
-                    missing_rows.append(row)
-
-                # 扫描无用内容（空文件夹 + 系统垃圾文件）+ 大小 + 有效文件数
-                useless_text = "--"
-                recommend_text = "--"
-                has_useless = False
-                recommend_del = False
-                if status in ("正常", "空"):
-                    empty_dirs, garbage, garbage_size, valid_files = _scan_useless(path)
-                    parts = []
-                    if empty_dirs:
-                        parts.append(f"空文件夹×{empty_dirs}")
-                    for name, cnt in sorted(garbage.items()):
-                        parts.append(f"{name}×{cnt}")
-                    if parts:
-                        if garbage_size > 0:
-                            parts.append(f"共 {garbage_size / 1024:.1f} KB")
-                        useless_text = "、".join(parts)
-                        has_useless = True
-                    else:
-                        useless_text = "无"
-                    # 推荐删除：空目录 或 只有垃圾文件/空文件夹（无有效成品）
-                    if status == "空" or (valid_files == 0 and (empty_dirs > 0 or garbage)):
-                        recommend_text = "推荐"
-                        recommend_del = True
-                    elif valid_files > 0:
-                        recommend_text = "不推荐"
-
-                items = [
-                    QTableWidgetItem(label),
-                    QTableWidgetItem(path),
-                    QTableWidgetItem(status),
-                    QTableWidgetItem(str(file_count) if status in ("正常", "空") else "--"),
-                    QTableWidgetItem(mtime_str),
-                    QTableWidgetItem(useless_text),
-                    QTableWidgetItem(recommend_text),
-                ]
-                color = _STATUS_COLOR.get(status, QColor(220, 53, 69))
-                for col, item in enumerate(items):
-                    if col == 5 and has_useless:
-                        item.setForeground(QColor(255, 140, 0))  # 有无用内容,橙色提示
-                    elif col == 6 and recommend_del:
-                        item.setForeground(QColor(220, 53, 69))  # 推荐删除,红色提示
-                    elif col == 6 and recommend_text == "不推荐":
-                        item.setForeground(QColor(120, 130, 145))  # 不推荐,灰色
-                    else:
-                        item.setForeground(color if col in (2,) else QColor(232, 234, 237))
-                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    table.setItem(row, col, item)
-                # 整行状态着色
-                if status not in ("正常", "已领取"):
-                    for col in range(7):
-                        table.item(row, col).setBackground(QColor(60, 30, 35) if status != "空" else QColor(58, 46, 28))
-                elif has_useless or recommend_del:
-                    for col in range(7):
-                        table.item(row, col).setBackground(QColor(58, 46, 28))
-
-                # 打开 / 删除 按钮（最右侧两列）
-                def make_open_btn(path):
-                    btn = QPushButton("打开")
-                    btn.setStyleSheet(f"background-color: #4f8ef7;{btn_style}")
-                    btn.setEnabled(os.path.exists(path))
-                    btn.setToolTip("在资源管理器中打开该路径" if btn.isEnabled() else "路径不存在，无法打开")
-                    btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
-                    return btn
-
-                def make_del_btn(row, label, path):
-                    btn = QPushButton("删除")
-                    btn.setStyleSheet(f"background-color: #dc3545;{btn_style}")
-                    btn.setEnabled(os.path.exists(path))
-                    btn.setToolTip("删除该路径（含全部内容，不可恢复）" if btn.isEnabled() else "路径不存在")
-                    btn.clicked.connect(lambda: on_delete_path(row, label, path))
-                    return btn
-
-                open_widget = QWidget()
-                open_layout = QHBoxLayout(open_widget)
-                open_layout.setContentsMargins(4, 2, 4, 2)
-                open_layout.setAlignment(Qt.AlignCenter)
-                open_layout.addWidget(make_open_btn(path))
-                table.setCellWidget(row, 7, open_widget)
-
-                del_widget = QWidget()
-                del_layout = QHBoxLayout(del_widget)
-                del_layout.setContentsMargins(4, 2, 4, 2)
-                del_layout.setAlignment(Qt.AlignCenter)
-                del_layout.addWidget(make_del_btn(row, label, path))
-                table.setCellWidget(row, 8, del_widget)
-
-            summary_label.setText(
-                f"共 {len(checks)} 项：正常 {ok_count} · 空 {empty_count} · 不存在/异常 {missing_count}（已折叠）"
-            )
-            show_missing_cb.setText(f"显示不存在的路径 ({missing_count})")
-            apply_fold()
-        finally:
-            dialog.unsetCursor()
+        refresh_btn.setEnabled(False)
+        counts.update(ok=0, empty=0, missing=0)
+        missing_rows.clear()
+        checks.clear()
+        checks.extend(build_path_checks(order_data))
+        table.setRowCount(len(checks))
+        # 先立即填充 用途/路径/状态(检查中)，其余列等待后台结果
+        for row, (label, path, _note) in enumerate(checks):
+            for col, text in ((0, label), (1, path), (2, "检查中…")):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(150, 155, 165))
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                table.setItem(row, col, item)
+        summary_label.setText(f"正在检查 {len(checks)} 项路径…")
+        worker = _PathScanWorker(checks)
+        worker.item_done.connect(on_item_done)
+        worker.all_done.connect(on_all_done)
+        worker.start()
 
     def on_delete_path(row, label, path):
         """删除指定路径（目录递归或文件），带二次确认"""
