@@ -20,8 +20,9 @@ def _load_env_file():
 
     候选位置：
     1. 打包后程序所在目录（exe / .app 同目录，构建产物自带 .env 时生效）
-    2. 项目根目录（源码运行时，src/core/config.py 上溯三级）
-    3. 当前工作目录
+    2. PyInstaller onefile 解压目录（sys._MEIPASS，datas 打包的 .env 解压至此）
+    3. 项目根目录（源码运行时，src/core/config.py 上溯三级；Nuitka onefile 解压根）
+    4. 当前工作目录
     """
     import sys
     candidates = []
@@ -30,6 +31,11 @@ def _load_env_file():
             candidates.append(os.path.dirname(sys.executable))
     except Exception:
         pass
+    # PyInstaller onefile：数据文件解压到 _MEIPASS 临时目录
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass:
+        candidates.append(meipass)
+    # Nuitka onefile：数据文件解压在模块上溯三级处（src/core/config.py → 解压根）
     candidates.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     candidates.append(os.getcwd())
 

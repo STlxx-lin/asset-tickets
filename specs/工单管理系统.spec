@@ -10,11 +10,15 @@ ICON_ICO = os.path.join(PROJECT_ROOT, 'app_icon.ico')
 sys.path.append(PROJECT_ROOT)
 from src.core.config import APP_VERSION
 
+# 打包 .env（数据库密码/API Token 配置），运行时由 config._load_env_file 从解压目录读取
+ENV_FILE = os.path.join(PROJECT_ROOT, '.env')
+DATA_FILES = [('.env', '.')] if os.path.exists(ENV_FILE) else []
+
 a = Analysis(
     [MAIN_SCRIPT],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=[],
+    datas=DATA_FILES,
     hiddenimports=[
         'pymysql',
         'PySide6.QtCore',
