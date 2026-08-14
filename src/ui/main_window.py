@@ -1501,6 +1501,67 @@ class MainWindow(QMainWindow):
         workflow_group_layout.addWidget(apr_desc)
         features_layout.addWidget(workflow_group)
 
+        # ── 外部系统 API 配置（Token 存数据库，管理员可在线更新，无需重启）──
+        api_group = QGroupBox("外部系统 API 配置")
+        api_group_layout = QVBoxLayout(api_group)
+        api_group_layout.setSpacing(10)
+
+        api_tip = QLabel(
+            "外部工单系统 API Token（Bearer 后的完整 JWT 字符串）。\n"
+            "Token 过期后所有状态同步会失败并回滚，请在此处及时更新。"
+        )
+        api_tip.setStyleSheet("font-size: 12px; color: #9ba3b0;")
+        api_tip.setWordWrap(True)
+        api_group_layout.addWidget(api_tip)
+
+        token_row = QHBoxLayout()
+        token_label = QLabel("API Token:")
+        token_label.setStyleSheet("font-size: 13px; color: #e8eaed;")
+        self.api_token_edit = QLineEdit()
+        self.api_token_edit.setPlaceholderText("粘贴新的 API Token")
+        self.api_token_edit.setEchoMode(QLineEdit.EchoMode.Password)  # 默认隐藏，避免泄露
+        self.api_token_edit.setMinimumWidth(420)
+        # 显示当前已配置的 token（脱敏）
+        _cur_token = db_manager.get_system_setting('api_token', default='')
+        if _cur_token:
+            self.api_token_edit.setPlaceholderText(f"已配置（{_cur_token[:12]}…），输入新值覆盖")
+        token_row.addWidget(token_label)
+        token_row.addWidget(self.api_token_edit, 1)
+
+        # 显示/隐藏切换
+        self.api_token_visible = False
+        def toggle_token_visible():
+            self.api_token_visible = not self.api_token_visible
+            self.api_token_edit.setEchoMode(QLineEdit.EchoMode.Normal if self.api_token_visible else QLineEdit.EchoMode.Password)
+        toggle_btn = QPushButton("显示")
+        toggle_btn.setStyleSheet(
+            "background-color: #3a3f4b; color: #e8eaed; border: none; border-radius: 6px; padding: 6px 14px;"
+        )
+        toggle_btn.clicked.connect(toggle_token_visible)
+        token_row.addWidget(toggle_btn)
+
+        save_token_btn = QPushButton("保存 Token")
+        save_token_btn.setStyleSheet(
+            "background-color: #4f8ef7; color: white; border: none; border-radius: 6px; padding: 6px 18px; font-weight: bold;"
+        )
+        def on_save_token():
+            token = self.api_token_edit.text().strip()
+            if not token:
+                QMessageBox.warning(self, "提示", "请输入 API Token 后再保存")
+                return
+            if db_manager.set_system_setting('api_token', token):
+                from src.core.api_manager import refresh_api_token_cache
+                refresh_api_token_cache()  # 立即生效，无需重启
+                self.api_token_edit.clear()
+                self.api_token_edit.setPlaceholderText(f"已保存（{token[:12]}…）")
+                QMessageBox.information(self, "保存成功", "API Token 已更新并即时生效。")
+            else:
+                QMessageBox.critical(self, "保存失败", "写入数据库失败，请检查数据库连接。")
+        save_token_btn.clicked.connect(on_save_token)
+        token_row.addWidget(save_token_btn)
+        api_group_layout.addLayout(token_row)
+        features_layout.addWidget(api_group)
+
         # 保存按钮
         save_features_btn = QPushButton("保存功能设置")
         save_features_btn.setFixedWidth(160)
