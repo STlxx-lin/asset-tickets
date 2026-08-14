@@ -1,6 +1,6 @@
 # 配置文件
 # 版本号统一管理
-APP_VERSION = "v1.17.11"
+APP_VERSION = "v1.17.12"
 
 # ---------------------------------------------------------------------------
 # 敏感配置统一从环境变量 / .env 文件读取（不提交到代码库）
@@ -16,12 +16,33 @@ _logger = logging.getLogger(__name__)
 
 
 def _load_env_file():
-    """加载项目根目录的 .env 文件（KEY=VALUE 每行，# 为注释），不覆盖已有环境变量。"""
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
-    if not os.path.exists(env_path):
+    """按优先级从多个位置加载 .env 文件（KEY=VALUE 每行，# 为注释），不覆盖已有环境变量。
+
+    候选位置：
+    1. 打包后程序所在目录（exe / .app 同目录，构建产物自带 .env 时生效）
+    2. 项目根目录（源码运行时，src/core/config.py 上溯三级）
+    3. 当前工作目录
+    """
+    import sys
+    candidates = []
+    try:
+        if getattr(sys, 'frozen', False):
+            candidates.append(os.path.dirname(sys.executable))
+    except Exception:
+        pass
+    candidates.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    candidates.append(os.getcwd())
+
+    loaded = None
+    for base in candidates:
+        env_path = os.path.join(base, '.env')
+        if os.path.exists(env_path):
+            loaded = env_path
+            break
+    if not loaded:
         return
     try:
-        with open(env_path, 'r', encoding='utf-8') as f:
+        with open(loaded, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith('#') or '=' not in line:
