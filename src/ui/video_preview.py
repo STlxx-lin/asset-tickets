@@ -145,6 +145,9 @@ class VideoPreviewWidget(QWidget):
         self.player.durationChanged.connect(self._on_duration_changed)
         self.player.positionChanged.connect(self._on_position_changed)
         
+        # 播放错误提示（不支持编解码等场景避免静默失败）
+        self.player.errorOccurred.connect(self._on_player_error)
+        
         # 拖拽滑块跳过进度
         self.slider.sliderMoved.connect(self._on_slider_moved)
         
@@ -166,14 +169,30 @@ class VideoPreviewWidget(QWidget):
             self.play_btn.setText("▶")
 
     def _format_time(self, ms):
+        if ms is None or ms < 0:
+            return "--:--"
         s = ms // 1000
         m = s // 60
         s = s % 60
         return f"{m:02d}:{s:02d}"
 
     def _on_duration_changed(self, duration):
-        self.slider.setRange(0, duration)
+        # duration 可能为 -1（流媒体/未知时长），setRange(0,-1) 会产生异常区间
+        if duration > 0:
+            self.slider.setRange(0, duration)
+        else:
+            self.slider.setRange(0, 0)
         self._update_time_label(self.player.position(), duration)
+
+    def _on_player_error(self, error, error_string):
+        """播放错误提示（如不支持的文件编码），避免静默失败。"""
+        logger.error(f"媒体播放错误: {error_string}")
+        try:
+            if not self.video_widget.isVisible():
+                return
+            self.clear(f"⚠️ 视频无法播放：{error_string}")
+        except RuntimeError:
+            pass
 
     def _on_position_changed(self, position):
         if not self.slider.isSliderDown():
@@ -193,6 +212,20 @@ class VideoPreviewWidget(QWidget):
         else:
             self.audio_output.setMuted(True)
             self.volume_btn.setText("🔇")
+
+    def _render_image(self, pix):
+        """按当前预览区尺寸缩放图片（保持宽高比）。"""
+        w = max(self.preview_label.width() - 8, 260)
+        h = max(self.preview_label.height() - 8, 300)
+        scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.preview_label.setPixmap(scaled)
+
+    def resizeEvent(self, event):
+        """窗口尺寸变化时重新缩放图片预览（仅加载一次会导致拉伸后模糊/留白）。"""
+        super().resizeEvent(event)
+        pix = getattr(self, '_image_pixmap', None)
+        if pix is not None and self.preview_label.isVisible():
+            self._render_image(pix)
 
     # ── 外部核心公开接口 ──
 
@@ -216,17 +249,15 @@ class VideoPreviewWidget(QWidget):
             self.video_widget.hide()
             self.control_container.hide()
             self.preview_label.show()
-            
-            # 计算适合的比率缩放尺寸，防止图片撑大布局
-            w = max(self.preview_label.width() - 8, 260)
-            h = max(self.preview_label.height() - 8, 300)
-            
+
             pix = QPixmap(fpath)
             if not pix.isNull():
-                scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.preview_label.setPixmap(scaled)
+                # 保存原始图供窗口 resize 时重新缩放（首次加载时布局可能尚未完成）
+                self._image_pixmap = pix
+                self._render_image(pix)
                 self.preview_label.setText("")
             else:
+                self._image_pixmap = None
                 self.preview_label.setPixmap(QPixmap())
                 self.preview_label.setText("❌ 无法加载图片，文件可能损坏")
                 

@@ -50,7 +50,6 @@ def show_video_review_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -394,12 +393,13 @@ def show_video_review_dialog(parent, order_data, callbacks):
     cancel_btn.clicked.connect(dialog.reject)
 
     def on_approve():
-        # 更新状态并同步 API（失败时回滚本地状态）
+        # 更新状态并同步 API（失败时回滚本地状态）；失败即中止，避免"假成功"
         ok, error_msg = update_status_with_api(order_data['id'], '审核通过', order_data['status'])
         if not ok:
             show_api_update_error(dialog, error_msg)
+            return  # 状态未变更，保留对话框可重试；不写日志/不发通知/不关闭
+
         parent.refresh_work_orders()
-    
         _log_action("视频审核通过", f"工单ID={order_data['id']}, 角色=视频审核")
         send_notification(
             "工单状态变更通知",
@@ -414,13 +414,20 @@ def show_video_review_dialog(parent, order_data, callbacks):
         if not reason:
             QMessageBox.warning(dialog, "提示", "重新拍摄必须填写不通过原因")
             return
-    
+
         selected_indices = [i for i, chk in enumerate(checkboxes) if chk.isChecked()]
         if not selected_indices:
             QMessageBox.warning(dialog, "提示", "请选择至少一个不通过的素材文件")
             return
 
-        # 先停止预览，释放文件句柄，避免移动失败
+        # 先同步状态（失败即中止，文件保持原位可重试），成功后再移动文件，
+        # 避免"文件已移走但状态回滚"的两端不一致
+        ok, error_msg = update_status_with_api(order_data['id'], '重新拍摄', order_data['status'])
+        if not ok:
+            show_api_update_error(dialog, error_msg)
+            return  # 状态未变更，文件未动，可重试
+
+        # 状态已成功变更，再停止预览释放文件句柄并移动文件
         preview_widget.stop()
 
         fail_count = 0
@@ -438,14 +445,8 @@ def show_video_review_dialog(parent, order_data, callbacks):
                 logger.error(f"退回移动文件 {fname} 失败: {e}")
                 QMessageBox.warning(dialog, "错误", f"移动文件 {fname} 失败: {e!s}")
 
-        # 仅当有文件成功退回时才变更状态
         if fail_count > 0:
-            # 更新状态并同步 API（失败时回滚本地状态）
-            ok, error_msg = update_status_with_api(order_data['id'], '重新拍摄', order_data['status'])
-            if not ok:
-                show_api_update_error(dialog, error_msg)
             parent.refresh_work_orders()
-            
             _log_action("视频审核退回", f"工单ID={order_data['id']}, 角色=视频审核, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(
                 "工单状态变更通知",
@@ -455,9 +456,9 @@ def show_video_review_dialog(parent, order_data, callbacks):
             dialog.accept()
             QMessageBox.information(parent, "提示", f"已成功将 {fail_count} 个不通过素材移至“不通过”文件夹，并通知摄影师重新拍摄。")
         else:
-            QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
+            # 状态已变但文件移动全部失败：提示人工处理（状态不可回退，避免误覆盖并发修改）
+            QMessageBox.critical(dialog, "失败", "状态已更新为重新拍摄，但文件退回移动失败，请手动检查素材目录或联系管理员")
 
     pass_btn.clicked.connect(on_approve)
     reject_btn.clicked.connect(on_reject)
     dialog.exec()
-            # 视频后期审核弹窗

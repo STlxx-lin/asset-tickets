@@ -32,7 +32,9 @@ class TaskStatusUpdater(QObject):
 class Task(QThread):
     """文件操作任务类"""
     progress_changed = Signal(int)  # 进度变化信号
-    finished = Signal()  # 完成信号
+    # 自定义完成信号：改名避免遮蔽 QThread 内置 finished（run() 异常时内置信号触发、
+    # 本信号不触发，遮蔽会导致任务完成回调静默丢失）
+    task_finished = Signal()  # 完成信号
     canceled = Signal()  # 取消信号
     paused = Signal(bool)  # 暂停/继续信号
 
@@ -195,7 +197,7 @@ class Task(QThread):
             # 携带任务结果：ok=False 时 errors 非空，回调可据此中止状态推进/通知，避免"文件失败仍报成功"
             self.status_updater.update_status.emit(not self.errors, list(self.errors))
 
-        self.finished.emit()
+        self.task_finished.emit()
 
     def pause(self):
         """暂停任务"""
@@ -437,7 +439,7 @@ class TaskManagerDialog(QDialog):
             id_label.setText(f"工单号：{work_order_id}（已取消）")
             id_label.setStyleSheet("font-size: 15px; color: #ff0000; font-weight: bold; padding-bottom: 2px;")
         task.progress_changed.connect(on_progress)
-        task.finished.connect(on_finished)
+        task.task_finished.connect(on_finished)
         task.canceled.connect(on_canceled)
         self.tasks.append(task)
         task._finished = False
@@ -460,8 +462,17 @@ class TaskManagerDialog(QDialog):
         for task in self.tasks:
             if task.isRunning():
                 task.cancel()
+        pending = []
         for task in self.tasks:
-            if task.isRunning():
-                if not task.wait(5000):
-                    logger.warning(f"任务 {task.name} 在 5 秒内未退出，强制继续关闭窗口")
+            if task.isRunning() and not task.wait(5000):
+                logger.warning(f"任务 {task.name} 在 5 秒内未退出（可能为网络盘阻塞），转为后台完成")
+                pending.append(task)
+        if pending:
+            # 超时任务仍在运行：隐藏窗口而非销毁（保留线程引用防止 QThread 崩溃），
+            # 恢复轮询，任务完成后自动关闭窗口
+            self._detached_tasks = getattr(self, '_detached_tasks', []) + pending
+            self.hide()
+            self.auto_close_timer.start()
+            event.ignore()
+            return
         super().closeEvent(event)
