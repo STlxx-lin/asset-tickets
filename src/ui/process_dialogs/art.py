@@ -33,7 +33,7 @@ from src.core.paths import (
     ART_GET_IMG_SRC,
     ART_POST_REVIEW_TRANSIT,
 )
-from src.core.status_sync import update_status_with_api, update_time_with_api
+from src.core.status_sync import update_local_status_only, update_time_with_api
 from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,6 @@ def show_art_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -401,18 +400,22 @@ def show_art_dialog(parent, order_data, callbacks):
                 return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工领取素材", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
-            # 美工链专属状态：领取素材后进入设计中（与全局 status 解耦）
+            # 美工链专属状态：领取素材后进入设计中（与全局 status 解耦）；
+            # art_status 与 art_start_time 合并为单条原子写入，API 失败时整体回滚
             art_before = order_data.get('art_status')
-            db_manager.update_work_order_art_status(order_data['id'], '美工设计中')
-            # 记录美工开始时间（API 失败时整体回滚 art_status 与时间字段）
             current_time = datetime.datetime.now()
-            ok, error_msg = update_time_with_api(order_data['id'], 'art_start_time', current_time, art_status_before=art_before)
-            if not ok:
+            ok, error_msg = update_time_with_api(order_data['id'], 'art_start_time', current_time,
+                                                 art_status_before=art_before, art_status_new='美工设计中')
+            if ok:
+                # 同步内存快照，供后续步骤（选成品/分发）作为正确的回滚目标
+                order_data['art_status'] = '美工设计中'
+            else:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未写入，不显示"领取完成"，保留对话框可重试
             parent.refresh_work_orders()
             # 显示完成消息（对话框已关闭时跳过 UI 提示）
             try:
@@ -431,7 +434,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 for file in files:
                     rel_path = os.path.relpath(os.path.join(root, file), src)
                     all_items.append(rel_path)
-    
+        if not all_items:
+            # 空目录领取会以"0 文件移动"假成功推进状态，必须拦截
+            QMessageBox.warning(dialog, "提示", f"素材目录中没有可领取的文件：\n{src}")
+            return
+
         _add_file_task(
             name=task_name,
             files=all_items,
@@ -445,14 +452,19 @@ def show_art_dialog(parent, order_data, callbacks):
         if not dir_path:
             return
         parent.product_dir = dir_path
-        # 美工链专属状态：已选成品，待分发
+        # 美工链专属状态：已选成品，待分发；
+        # art_status 与 art_end_time 合并为单条原子写入，API 失败时整体回滚
         art_before = order_data.get('art_status')
-        db_manager.update_work_order_art_status(order_data['id'], '美工待分发')
-        # 记录美工结束时间（API 失败时整体回滚 art_status 与时间字段）
         current_time = datetime.datetime.now()
-        ok, error_msg = update_time_with_api(order_data['id'], 'art_end_time', current_time, art_status_before=art_before)
-        if not ok:
+        ok, error_msg = update_time_with_api(order_data['id'], 'art_end_time', current_time,
+                                             art_status_before=art_before, art_status_new='美工待分发')
+        if ok:
+            order_data['art_status'] = '美工待分发'
+        else:
+            # 状态未写入：清空 product_dir，避免"选路径失败仍可分发"导致流程断链
+            parent.product_dir = None
             show_api_update_error(dialog, error_msg)
+            return  # 中断后续 UI 成功展示
         # 更新成品路径显示
         product_label.setText(dir_path)
         product_label.setStyleSheet("""
@@ -470,6 +482,9 @@ def show_art_dialog(parent, order_data, callbacks):
     def on_distribute_ops():
         if not parent.product_dir:
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
+            return
+        if not os.path.exists(parent.product_dir):
+            QMessageBox.warning(dialog, "提示", f"成品路径不存在：\n{parent.product_dir}")
             return
         src = parent.product_dir
         review_on = is_art_post_review_enabled()
@@ -489,17 +504,18 @@ def show_art_dialog(parent, order_data, callbacks):
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
-            new_status = '美工后期审核中' if review_now else '后期已完成'
-            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）；API 失败时整体回滚
-            art_before = order_data.get('art_status')
-            db_manager.update_work_order_art_status(order_data['id'], '美工后期审核中' if review_now else '美工已完成')
-            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）。
+            # 只写 art_status，不再写全局 status（避免覆盖剪辑链状态）；本地字段无 API 同步
+            ok, error_msg = update_local_status_only(order_data['id'],
+                                                     {'art_status': '美工后期审核中' if review_now else '美工已完成'})
             if not ok:
                 try:
                     if dialog.isVisible():
-                        show_api_update_error(dialog, error_msg)
+                        QMessageBox.warning(dialog, "提示", error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未写入，中止后续通知与成功提示
+            order_data['art_status'] = '美工后期审核中' if review_now else '美工已完成'
             parent.refresh_work_orders()
             # 发送通知：美工分发运营
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -532,7 +548,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 for file in files:
                     rel_path = os.path.relpath(os.path.join(root, file), src)
                     all_items.append(rel_path)
-    
+        if not all_items:
+            # 过滤后无文件时禁止空分发推进状态（task_manager 空任务会"假成功"）
+            QMessageBox.warning(dialog, "提示", f"成品目录中没有可分发的文件：\n{src}")
+            return
+
         _add_file_task(
             name=task_name,
             files=all_items,
@@ -545,6 +565,9 @@ def show_art_dialog(parent, order_data, callbacks):
     def on_distribute_sales():
         if not parent.product_dir:
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
+            return
+        if not os.path.exists(parent.product_dir):
+            QMessageBox.warning(dialog, "提示", f"成品路径不存在：\n{parent.product_dir}")
             return
         src = parent.product_dir
         review_on = is_art_post_review_enabled()
@@ -562,19 +585,20 @@ def show_art_dialog(parent, order_data, callbacks):
                     pass
                 return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
-            _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
+            _log_action("美工分发销售", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
-            new_status = '美工后期审核中' if review_now else '后期已完成'
-            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）；API 失败时整体回滚
-            art_before = order_data.get('art_status')
-            db_manager.update_work_order_art_status(order_data['id'], '美工后期审核中' if review_now else '美工已完成')
-            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）。
+            # 只写 art_status，不再写全局 status（避免覆盖剪辑链状态）；本地字段无 API 同步
+            ok, error_msg = update_local_status_only(order_data['id'],
+                                                     {'art_status': '美工后期审核中' if review_now else '美工已完成'})
             if not ok:
                 try:
                     if dialog.isVisible():
-                        show_api_update_error(dialog, error_msg)
+                        QMessageBox.warning(dialog, "提示", error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未写入，中止后续通知与成功提示
+            order_data['art_status'] = '美工后期审核中' if review_now else '美工已完成'
             parent.refresh_work_orders()
             # 发送通知：美工分发销售
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -607,7 +631,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 for file in files:
                     rel_path = os.path.relpath(os.path.join(root, file), src)
                     all_items.append(rel_path)
-    
+        if not all_items:
+            # 过滤后无文件时禁止空分发推进状态（task_manager 空任务会"假成功"）
+            QMessageBox.warning(dialog, "提示", f"成品目录中没有可分发的文件：\n{src}")
+            return
+
         _add_file_task(
             name=task_name,
             files=all_items,
@@ -628,4 +656,3 @@ def show_art_dialog(parent, order_data, callbacks):
     button_layout.addStretch()
     main_layout.addWidget(button_widget)
     dialog.exec()
-            # 剪辑弹窗

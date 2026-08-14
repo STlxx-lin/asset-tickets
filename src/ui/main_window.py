@@ -700,7 +700,8 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.settings_page)
         self.apply_styles()
         self.showMaximized()
-        self.log_action("系统启动", "登录成功")
+        # 日志治理（2026-08-14）："系统启动"不再入库，避免日志表噪音膨胀；
+        # 如需审计登录行为可恢复 self.log_action("系统启动", "登录成功")
         self.refresh_work_orders()
         self.update_history_list()
         # 只绑定一次双击信号，防止多次弹窗
@@ -862,7 +863,11 @@ class MainWindow(QMainWindow):
         # 状态筛选
         self.status_filter = QComboBox()
         self.status_filter.addItem("全部状态")
-        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄", "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑", "美工后期审核中", "美工后期重新制作", "后期已完成", "待上架", "已上架"])
+        # 全局状态（摄影/剪辑/运营链）+ 美工链 art_status 原始值（筛选同时匹配 status 与 art_status）
+        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄",
+                                     "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑",
+                                     "美工设计中", "美工待分发", "美工后期审核中", "美工后期重新制作", "美工已完成",
+                                     "后期已完成", "待上架", "已上架"])
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
@@ -3567,24 +3572,31 @@ class MainWindow(QMainWindow):
                     continue
             filtered.append(order)
         # 更新筛选后的数据
-        # 若仅日期条件导致结果为空（无关键字/状态/产线/发起人额外筛选），回退显示最新30条
-        if (not filtered and not keyword
-                and dept == "全部产线"
-                and status == "全部状态"
-                and creator == "全部发起人"):
-            filtered = all_orders[:30]
+        # 日期筛选命中为空时不再静默回退显示前30条（会违反日期筛选条件且无提示）
         self.work_orders_data = filtered
         # 重新设置表格数据
         self.setup_work_orders_table()
         # 更新统计信息
         self.update_statistics()
+        # 筛选结果为空时给出可见提示（不静默显示不符合条件的数据）
+        if not filtered:
+            self.table_view.setToolTip("当前筛选条件下无符合条件的工单")
     def show_task_manager(self):
         """显示任务管理器窗口"""
         self.task_manager.show()
         self.task_manager.raise_()
         self.task_manager.activateWindow()
     def update_work_order_status_and_ui(self, order_id, new_status):
-        db_manager.update_work_order_status(order_id, new_status)
+        """兼容回调（dispatcher callbacks['update_status']）：各流程已改走 status_sync 封装。
+
+        保留实现但带乐观锁版本检查，避免未来误用时静默覆盖并发修改。
+        """
+        version = db_manager.get_work_order_version(order_id)
+        if version is None:
+            QMessageBox.warning(self, "提示", f"工单 {order_id} 不存在，状态更新失败")
+            return
+        if not db_manager.update_work_order_status(order_id, new_status, expected_version=version):
+            QMessageBox.warning(self, "提示", f"工单 {order_id} 已被其他客户端修改，请刷新后重试")
         self.refresh_work_orders()
 
     def add_file_task(self, name, files, src_dir, dest_dir, file_filter=None, op_type="copy", update_status_func=None):
@@ -3811,13 +3823,14 @@ class MainWindow(QMainWindow):
         order_item = self.model.item(row, 0)
         if not order_item:
             return
-        order_data = order_item.data(Qt.ItemDataRole.UserRole)
-        # 优先复用列表加载时的批量日志缓存（列表刷新后可能未及时更新，兜底单查）
-        cached = getattr(self, '_logs_cache', {}) or {}
-        logs = cached.get(order_data['id'])
-        if logs is None:
-            logs = db_manager.get_logs_by_order_id(order_data['id'])
-        
+        # 打开详情前从数据库重新查询最新工单数据（列表快照可能过期，如他端客户端改过状态）
+        order_data = db_manager.get_work_order_by_id(order_item.data(Qt.ItemDataRole.UserRole)['id'])
+        if order_data is None:
+            QMessageBox.warning(self, "提示", "工单不存在（可能已被删除），无法查看详情")
+            return
+        # 日志按需单查，不依赖列表刷新时的批量缓存
+        logs = db_manager.get_logs_by_order_id(order_data['id'])
+
         # 使用新的详情窗口
         dialog = WorkOrderDetailDialog(order_data, logs, is_admin=self.is_admin, parent=self)
         dialog.exec()

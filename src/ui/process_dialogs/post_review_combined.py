@@ -46,7 +46,8 @@ def show_post_review_combined_dialog(parent, order_data, callbacks):
     if BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK:
         video_status_ok = True
     else:
-        video_status_ok = status in ('视频后期审核中', '后期已完成')
+        # 仅「视频后期审核中」可审（剪辑分发后的「后期已完成」不可再审，避免状态降级）
+        video_status_ok = status in ('视频后期审核中',)
         # 兼容全局状态被 API 回滚的场景：剪辑已提交审核且尚未通过 → 仍可视频后期审批
         if not video_status_ok:
             video_status_ok = has_pending_edit_review(order_data['id'])

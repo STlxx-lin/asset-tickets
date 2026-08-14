@@ -60,16 +60,16 @@ def show_video_post_review_dialog(parent, order_data, callbacks):
             "视频后期审核功能当前已关闭。\n如需开启，请管理员前往【系统设置 → 功能设置】进行配置。"
         )
         return
-    # 只有状态为「视频后期审核中」或「后期已完成」才可审核（支持通过配置跳过）
+    # 只有状态为「视频后期审核中」才可审核（剪辑分发后的「后期已完成」不可再审，避免状态降级；支持通过配置跳过）
     if not BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK:
         current_status = order_data.get('status', '')
-        status_ok = current_status in ['视频后期审核中', '后期已完成']
+        status_ok = current_status in ['视频后期审核中']
         # 兼容全局状态被 API 回滚的场景：剪辑已提交审核且尚未通过 → 仍可审核
         if not status_ok:
             status_ok = has_pending_edit_review(order_data['id'])
         if not status_ok:
             QMessageBox.information(parent, "提示",
-                f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】或【后期已完成】的工单才可进行后期审核。"
+                f"当前工单状态为【{current_status}】\n只有状态为【视频后期审核中】的工单才可进行后期审核。"
             )
             return
 
@@ -103,7 +103,6 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
         callbacks:  回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -422,12 +421,15 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
     cancel_btn.clicked.connect(dialog.reject)
 
     def on_approve():
-        # 更新状态并同步 API（失败时回滚本地状态）
+        # 更新状态并同步 API（失败时回滚本地状态）；失败即中止，避免"假成功"
         ok, error_msg = update_status_with_api(order_data['id'], '后期审核通过', order_data['status'])
         if not ok:
             show_api_update_error(dialog, error_msg)
-        parent.refresh_work_orders()
+            return  # 状态未变更，保留对话框可重试；不写日志/不发通知/不关闭
+        # 注意："视频后期审核通过"日志只在成功后写入——失败时写入会使
+        # has_pending_edit_review 判定已通过，门禁永久失效导致工单卡死
 
+        parent.refresh_work_orders()
         _log_action("视频后期审核通过", f"工单ID={order_data['id']}, 角色=视频后期审核, 成品路径={edit_product_path}")
         send_notification(
             "工单后期审核通过通知",
@@ -448,6 +450,13 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
             QMessageBox.warning(dialog, "提示", "请选择至少一个不通过的视频文件")
             return
 
+        # 先同步状态（失败即中止，文件保持原位可重试），成功后再移动文件，
+        # 避免"文件已移走但状态回滚"的两端不一致
+        ok, error_msg = update_status_with_api(order_data['id'], '后期重新剪辑', order_data['status'])
+        if not ok:
+            show_api_update_error(dialog, error_msg)
+            return  # 状态未变更，文件未动，可重试
+
         fail_count = 0
         for i in selected_indices:
             fname, fpath = files_found[i]
@@ -465,12 +474,7 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
                 QMessageBox.warning(dialog, "错误", f"移动视频 {fname} 失败: {e!s}")
 
         if fail_count > 0:
-            # 更新状态并同步 API（失败时回滚本地状态）
-            ok, error_msg = update_status_with_api(order_data['id'], '后期重新剪辑', order_data['status'])
-            if not ok:
-                show_api_update_error(dialog, error_msg)
             parent.refresh_work_orders()
-
             _log_action("视频后期审核退回", f"工单ID={order_data['id']}, 角色=视频后期审核, 不通过文件数={fail_count}, 原因={reason}")
             send_notification(
                 "工单后期审核退回通知",
@@ -480,7 +484,8 @@ def build_video_post_review_ui(container, dialog, parent, order_data, callbacks)
             dialog.accept()
             QMessageBox.information(parent, "提示", f"已成功将 {fail_count} 个不通过视频移至“不通过”文件夹，并通知剪辑师重新剪辑。")
         else:
-            QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
+            # 状态已变但文件移动全部失败：提示人工处理（状态不可回退，避免误覆盖并发修改）
+            QMessageBox.critical(dialog, "失败", "状态已更新为后期重新剪辑，但文件退回移动失败，请手动检查成品目录或联系管理员")
 
     pass_btn.clicked.connect(on_approve)
     reject_btn.clicked.connect(on_reject)

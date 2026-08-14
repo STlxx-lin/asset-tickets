@@ -50,7 +50,6 @@ def show_editing_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -293,6 +292,27 @@ def show_editing_dialog(parent, order_data, callbacks):
             distribute_sales_btn.setEnabled(True)
             distribute_ops_btn.setToolTip("")
             distribute_sales_btn.setToolTip("")
+        elif current_status == '后期已完成':
+            # 已分发完成：允许补发另一通道（运营/销售），禁止再次提交审核
+            submit_review_btn.setEnabled(False)
+            submit_review_btn.setToolTip("成品视频已分发完成，无需再次提交审核")
+            distribute_ops_btn.setEnabled(True)
+            distribute_sales_btn.setEnabled(True)
+            distribute_ops_btn.setToolTip("")
+            distribute_sales_btn.setToolTip("")
+        elif current_status == '视频后期审核中':
+            # 已提交待审：禁止重复提交，避免覆盖已审核状态（曾导致审核通过后被误覆盖回滚）
+            submit_review_btn.setEnabled(False)
+            submit_review_btn.setToolTip("已提交视频后期审核，请等待审核结果")
+            distribute_ops_btn.setEnabled(False)
+            distribute_sales_btn.setEnabled(False)
+            distribute_ops_btn.setToolTip("需要后期视频审核通过后方可分发")
+            distribute_sales_btn.setToolTip("需要后期视频审核通过后方可分发")
+            # 使用置灰的样式
+            gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+            submit_review_btn.setStyleSheet(gray_style)
+            distribute_ops_btn.setStyleSheet(gray_style)
+            distribute_sales_btn.setStyleSheet(gray_style)
         else:
             submit_review_btn.setEnabled(True)
             distribute_ops_btn.setEnabled(False)
@@ -330,16 +350,20 @@ def show_editing_dialog(parent, order_data, callbacks):
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑领取素材", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
             status_before = order_data['status']
-            db_manager.update_work_order_status(order_data['id'], '后期处理中')
-            # 记录剪辑开始时间（API 失败时整体回滚状态与时间字段）
+            # 记录剪辑开始时间并推进状态（status + edit_start_time 单条原子写入，API 失败整体回滚）
             current_time = datetime.datetime.now()
-            ok, error_msg = update_time_with_api(order_data['id'], 'edit_start_time', current_time, status_before=status_before)
-            if not ok:
+            ok, error_msg = update_time_with_api(order_data['id'], 'edit_start_time', current_time,
+                                                 status_before=status_before, status_new='后期处理中')
+            if ok:
+                # 同步内存快照，供提交审核/分发作为正确的回滚目标
+                order_data['status'] = '后期处理中'
+            else:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未写入，不显示"领取完成"，保留对话框可重试
             parent.refresh_work_orders()
             # 显示完成消息（对话框已关闭时跳过 UI 提示）
             try:
@@ -358,7 +382,11 @@ def show_editing_dialog(parent, order_data, callbacks):
                 for file in files:
                     rel_path = os.path.relpath(os.path.join(root, file), src)
                     all_items.append(rel_path)
-    
+        if not all_items:
+            # 空目录领取会以"0 文件移动"假成功推进状态，必须拦截
+            QMessageBox.warning(dialog, "提示", f"素材目录中没有可领取的文件：\n{src}")
+            return
+
         _add_file_task(
             name=task_name,
             files=all_items,
@@ -432,12 +460,16 @@ def show_editing_dialog(parent, order_data, callbacks):
             # 更新工单状态为 视频后期审核中（API 失败时整体回滚状态与成品路径）
             new_status = '视频后期审核中'
             ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], product_path_before=product_path_before)
-            if not ok:
+            if ok:
+                # 同步内存快照，供分发步骤作为正确的回滚目标
+                order_data['status'] = new_status
+            else:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未变更，中止后续日志/通知/成功提示，保留对话框可重试
 
             # 记录日志
             _log_action("提交视频后期审核", f"工单ID={order_data['id']}, 角色=剪辑, 成品路径={transit_dir}, 原路径={src}")
@@ -467,6 +499,9 @@ def show_editing_dialog(parent, order_data, callbacks):
         if not parent.product_dir:
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
             return
+        if not os.path.exists(parent.product_dir):
+            QMessageBox.warning(dialog, "提示", f"成品路径不存在：\n{parent.product_dir}")
+            return
         src = parent.product_dir
         dest = get_edit_dist_ops()
         os.makedirs(dest, exist_ok=True)
@@ -484,12 +519,15 @@ def show_editing_dialog(parent, order_data, callbacks):
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑分发运营", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
             ok, error_msg = update_status_with_api(order_data['id'], '后期已完成', order_data['status'])
-            if not ok:
+            if ok:
+                order_data['status'] = '后期已完成'
+            else:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未变更，中止后续通知与成功提示
             parent.refresh_work_orders()
             # 发送通知：剪辑分发运营
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -512,7 +550,11 @@ def show_editing_dialog(parent, order_data, callbacks):
                 for file in files:
                     rel_path = os.path.relpath(os.path.join(root, file), src)
                     all_items.append(rel_path)
-    
+        if not all_items:
+            # 过滤后无文件时禁止空分发推进状态（task_manager 空任务会"假成功"）
+            QMessageBox.warning(dialog, "提示", f"成品目录中没有可分发的文件：\n{src}")
+            return
+
         _add_file_task(
             name=task_name,
             files=all_items,
@@ -525,6 +567,9 @@ def show_editing_dialog(parent, order_data, callbacks):
     def on_distribute_sales():
         if not parent.product_dir:
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
+            return
+        if not os.path.exists(parent.product_dir):
+            QMessageBox.warning(dialog, "提示", f"成品路径不存在：\n{parent.product_dir}")
             return
         src = parent.product_dir
         dest = get_edit_dist_sales()
@@ -543,12 +588,15 @@ def show_editing_dialog(parent, order_data, callbacks):
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑分发销售", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
             ok, error_msg = update_status_with_api(order_data['id'], '后期已完成', order_data['status'])
-            if not ok:
+            if ok:
+                order_data['status'] = '后期已完成'
+            else:
                 try:
                     if dialog.isVisible():
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未变更，中止后续通知与成功提示
             parent.refresh_work_orders()
             # 发送通知：剪辑分发销售
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
@@ -571,7 +619,11 @@ def show_editing_dialog(parent, order_data, callbacks):
                 for file in files:
                     rel_path = os.path.relpath(os.path.join(root, file), src)
                     all_items.append(rel_path)
-    
+        if not all_items:
+            # 过滤后无文件时禁止空分发推进状态（task_manager 空任务会"假成功"）
+            QMessageBox.warning(dialog, "提示", f"成品目录中没有可分发的文件：\n{src}")
+            return
+
         _add_file_task(
             name=task_name,
             files=all_items,
@@ -594,4 +646,3 @@ def show_editing_dialog(parent, order_data, callbacks):
     button_layout.addStretch()
     main_layout.addWidget(button_widget)
     dialog.exec()
-            # 运营弹窗

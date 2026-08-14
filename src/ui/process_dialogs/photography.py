@@ -56,7 +56,6 @@ def show_photography_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -498,11 +497,11 @@ def show_photography_dialog(parent, order_data, callbacks):
         
             if is_video_review_enabled():
                 new_status = '视频审核中'
-                status_str = "拍摄完成"
+                status_str = "视频审核中"
             else:
                 new_status = '审核通过'
                 status_str = "审核通过"
-            # 状态同步（API 失败时回滚本地状态）
+            # 状态同步（API 失败时回滚本地状态）；失败即中止，不发通知/不报成功
             ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'])
             if not ok:
                 try:
@@ -510,6 +509,8 @@ def show_photography_dialog(parent, order_data, callbacks):
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return
+            # 仅成功后同步内存快照（失败时本地已回滚，内存必须保持旧值，避免分发门禁误放行）
             order_data['status'] = new_status
             # 更新按钮状态（对话框已关闭时跳过 UI 操作）
             try:
@@ -552,7 +553,12 @@ def show_photography_dialog(parent, order_data, callbacks):
             op_type="copy",
             update_status_func=update_status
         )
-    def get_src_files_when_images_available(src_dir):
+    def get_src_files_when_type_available(src_dir, exts, type_label):
+        """校验源目录存在且包含指定扩展名的文件，返回全量文件列表。
+
+        按分发目标类型分别校验（图片分发校验 IMG_EXTS、视频分发校验 VID_EXTS），
+        避免"混合目录下视频任务被过滤为空仍假成功推进状态"。
+        """
         try:
             src_files = os.listdir(src_dir)
         except FileNotFoundError:
@@ -561,9 +567,9 @@ def show_photography_dialog(parent, order_data, callbacks):
         except OSError as e:
             QMessageBox.warning(dialog, "提示", f"无法读取素材目录：\n{src_dir}\n{e}")
             return None
-        image_files = [f for f in src_files if os.path.splitext(f)[1].lower() in IMG_EXTS]
-        if not image_files:
-            QMessageBox.warning(dialog, "提示", "素材目录中没有图片，无法分发。")
+        matched = [f for f in src_files if os.path.splitext(f)[1].lower() in exts]
+        if not matched:
+            QMessageBox.warning(dialog, "提示", f"素材目录中没有{type_label}，无法分发。")
             return None
         return src_files
     def on_distribute_img():
@@ -574,13 +580,13 @@ def show_photography_dialog(parent, order_data, callbacks):
             return
         src_dir = get_upload_dir()
         target_dir = get_dist_img_dir()
-        src_files = get_src_files_when_images_available(src_dir)
+        src_files = get_src_files_when_type_available(src_dir, IMG_EXTS, "图片")
         if src_files is None:
             return
         try:
             os.makedirs(target_dir, exist_ok=True)
         except OSError as e:
-            if e.winerror == 1326:
+            if getattr(e, 'winerror', None) == 1326:
                 QMessageBox.warning(parent, "权限错误", "没有素材库访问权限，请联系系统管理员获取相应权限")
                 return
             raise
@@ -597,7 +603,7 @@ def show_photography_dialog(parent, order_data, callbacks):
                 return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发图片", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
-            # 更新工单状态（API 失败时回滚本地状态）
+            # 更新工单状态（API 失败时回滚本地状态）；失败即中止，不发通知/不报成功
             ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', order_data['status'])
             if not ok:
                 try:
@@ -605,6 +611,9 @@ def show_photography_dialog(parent, order_data, callbacks):
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return
+            # 成功后同步内存快照，避免对话框内重复分发（分发门禁基于内存状态）
+            order_data['status'] = '后期待领取'
             parent.refresh_work_orders()
             # 发送通知：摄影分发图片
             send_notification(
@@ -635,13 +644,13 @@ def show_photography_dialog(parent, order_data, callbacks):
             return
         src_dir = get_upload_dir()
         target_dir = get_dist_video_dir()
-        src_files = get_src_files_when_images_available(src_dir)
+        src_files = get_src_files_when_type_available(src_dir, VID_EXTS, "视频")
         if src_files is None:
             return
         try:
             os.makedirs(target_dir, exist_ok=True)
         except OSError as e:
-            if e.winerror == 1326:
+            if getattr(e, 'winerror', None) == 1326:
                 QMessageBox.warning(parent, "权限错误", "没有素材库访问权限，请联系系统管理员获取相应权限")
                 return
             raise
@@ -658,7 +667,7 @@ def show_photography_dialog(parent, order_data, callbacks):
                 return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发视频", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
-            # 更新工单状态（API 失败时回滚本地状态）
+            # 更新工单状态（API 失败时回滚本地状态）；失败即中止，不发通知/不报成功
             ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', order_data['status'])
             if not ok:
                 try:
@@ -666,6 +675,9 @@ def show_photography_dialog(parent, order_data, callbacks):
                         show_api_update_error(dialog, error_msg)
                 except RuntimeError:
                     pass
+                return
+            # 成功后同步内存快照，避免对话框内重复分发
+            order_data['status'] = '后期待领取'
             parent.refresh_work_orders()
             # 发送通知：摄影分发视频
             send_notification(
@@ -697,4 +709,3 @@ def show_photography_dialog(parent, order_data, callbacks):
     button_layout.addStretch()
     main_layout.addWidget(button_widget)
     dialog.exec()
-            # 视频审核弹窗

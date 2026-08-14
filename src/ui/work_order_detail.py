@@ -144,7 +144,10 @@ class WorkOrderDetailDialog(QDialog):
         """展示重新拍摄 / 后期重新剪辑 / 美工后期重新制作的反馈原因"""
         from src.core.database import db_manager
         current_status = self.order_data.get('status')
-        if current_status not in ['重新拍摄', '后期重新剪辑', '美工后期重新制作']:
+        art_status = self.order_data.get('art_status')
+        # 美工退回只写 art_status（'美工后期重新制作'），全局 status 属于剪辑链 → 需同时检查
+        if (current_status not in ['重新拍摄', '后期重新剪辑', '美工后期重新制作']
+                and art_status != '美工后期重新制作'):
             return
             
         feedbacks = db_manager.get_review_feedback(self.order_data['id'])
@@ -167,8 +170,10 @@ class WorkOrderDetailDialog(QDialog):
                 title_text = "⚠️ 视频审核退回提示（需要重新拍摄）"
             elif current_status == '后期重新剪辑':
                 title_text = "⚠️ 视频后期审核退回提示（需要重新剪辑）"
-            else:
+            elif current_status == '美工后期重新制作' or art_status == '美工后期重新制作':
                 title_text = "⚠️ 美工后期审批退回提示（需要重新制作）"
+            else:
+                title_text = "⚠️ 退回提示"
             title_label = QLabel(title_text)
             title_label.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 15px;")
             layout.addWidget(title_label)
@@ -191,8 +196,18 @@ class WorkOrderDetailDialog(QDialog):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(15)
 
-        # 状态标签
+        # 状态标签：美工链状态优先（与列表列展示一致，art_status 与全局 status 解耦），空时回退全局状态
         status = self.order_data.get('status', '未知')
+        art_status = self.order_data.get('art_status')
+        if art_status:
+            art_display_map = {
+                '美工设计中': '美工设计中',
+                '美工待分发': '美工待分发',
+                '美工后期审核中': '美工待审批',
+                '美工后期重新制作': '美工重新制作',
+                '美工已完成': '美工已完成',
+            }
+            status = art_display_map.get(art_status, art_status)
         status_label = QLabel(status)
         status_label.setAlignment(Qt.AlignCenter)
         status_color = self.get_status_color(status)
@@ -523,7 +538,8 @@ class WorkOrderDetailDialog(QDialog):
                 continue
                 
         if not formatted_rows:
-            return details # 如果解析失败，显示原始内容
+            # 解析失败时显示原始内容，但必须转义（调用方以 RichText 渲染，未转义存在注入风险）
+            return html.escape(details)
             
         return "".join([f"<div style='margin-bottom: 3px;'>{row}</div>" for row in formatted_rows])
 
@@ -632,14 +648,14 @@ class WorkOrderDetailDialog(QDialog):
             details = log.get('details') or ''
             content = action + details
 
-            # 美工分发
-            if "美工" in role and "分发" in content:
+            # 美工分发（action 精确匹配：日志 action 为固定字符串，与登录角色无关）
+            if action in ('美工分发运营', '美工分发销售'):
                 has_art_dist = True
             # 美工后期审批通过
-            if "美工后期审批" in action and "通过" in action:
+            if action == '美工后期审批通过':
                 has_art_approved = True
-            # 剪辑分发（含合并登录的「后期审批」角色）
-            if ("剪辑" in role or "视频后期审核" in role or "后期审批" in role) and ("分发" in content or "审核通过" in content) and ("运营" in content or "销售" in content or "视频" in content or "后期" in content):
+            # 剪辑分发（action 精确匹配；合并登录的「后期审批」角色分发时 action 仍为固定字符串）
+            if action in ('剪辑分发运营', '剪辑分发销售'):
                 has_edit_dist = True
             # 剪辑提交视频后期审核 / 视频后期审核通过
             if action == '提交视频后期审核':
@@ -661,8 +677,10 @@ class WorkOrderDetailDialog(QDialog):
                         has_art_sales_collected = True
 
         if status in ['后期已完成', '待上架', '已上架']:
-            has_art_dist = True
-            # 剪辑分发仅当有剪辑链日志证据时点亮（避免美工链完成误判为剪辑完成）
+            # 新架构下美工链完成以 art_status 为准（美工不再写全局状态）；
+            # art_status 为空的历史数据回退用上方日志证据（has_art_dist）
+            if art_status in ('美工后期审核中', '美工已完成'):
+                has_art_dist = True
 
         if has_art_dist:
             art_finished.add("美工分发")

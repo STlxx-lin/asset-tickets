@@ -11,11 +11,12 @@ from .config import DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
 # 默认角色列表（唯一来源，新增角色仅在此维护）
 DEFAULT_ROLES = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
 
-# 时间字段白名单（唯一来源，供 update_work_order_time_field 与 status_sync 回滚共用，
-# 必须与 api_manager.TIME_FIELD_MAP 的 key 集合保持一致）
+# 本地表存在的时间字段白名单（供 update_work_order_time_field 与 status_sync 回滚共用）。
+# 注意：photographer_*/start_time/end_time 仅存在于外部 API 字段映射（api_manager.TIME_FIELD_MAP），
+# 本地 mcs_by_takuya_work_orders 表无对应列——摄影时间只直调外部 API 同步（photography.py），
+# 禁止写入本地，避免白名单与真实 schema 漂移造成 Unknown column 误用陷阱。
 TIME_FIELDS = [
     'art_start_time', 'art_end_time', 'edit_start_time', 'edit_end_time',
-    'start_time', 'end_time', 'photographer_start_time', 'photographer_end_time',
 ]
 
 # 数据库操作全局锁：pymysql 连接对象非线程安全（主线程 UI 槽函数与 QThread 任务回调
@@ -379,21 +380,28 @@ class DatabaseManager:
             return 0
 
     @_db_locked
-    def update_work_order_status(self, order_id: str, new_status: str) -> bool:
+    def update_work_order_status(self, order_id: str, new_status: str, expected_version: int | None = None) -> bool:
         """
         更新单个工单的状态。
         :param order_id: 工单ID
         :param new_status: 新状态
+        :param expected_version: 乐观锁期望版本号；非 None 时仅当版本匹配才更新（并发保护）
         :return: 是否成功
         """
         if not self.connect():
             return False
         try:
             with self.connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE mcs_by_takuya_work_orders SET status=%s WHERE id=%s",
-                    (new_status, order_id)
-                )
+                if expected_version is not None:
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_work_orders SET status=%s, version=version+1 WHERE id=%s AND version=%s",
+                        (new_status, order_id, expected_version)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_work_orders SET status=%s, version=version+1 WHERE id=%s",
+                        (new_status, order_id)
+                    )
                 self.connection.commit()
                 return cursor.rowcount > 0
         except Exception as e:
@@ -402,23 +410,30 @@ class DatabaseManager:
             return False
 
     @_db_locked
-    def update_work_order_art_status(self, order_id: str, new_status: str) -> bool:
+    def update_work_order_art_status(self, order_id: str, new_status: str, expected_version: int | None = None) -> bool:
         """
         更新单个工单的美工专属状态（art_status 字段，与全局 status 解耦）。
 
         美工链状态独立记录，避免与剪辑链的全局状态互相覆盖。
         :param order_id: 工单ID
         :param new_status: 美工新状态
+        :param expected_version: 乐观锁期望版本号；非 None 时仅当版本匹配才更新
         :return: 是否成功
         """
         if not self.connect():
             return False
         try:
             with self.connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE mcs_by_takuya_work_orders SET art_status=%s WHERE id=%s",
-                    (new_status, order_id)
-                )
+                if expected_version is not None:
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_work_orders SET art_status=%s, version=version+1 WHERE id=%s AND version=%s",
+                        (new_status, order_id, expected_version)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_work_orders SET art_status=%s, version=version+1 WHERE id=%s",
+                        (new_status, order_id)
+                    )
                 self.connection.commit()
                 return cursor.rowcount > 0
         except Exception as e:
@@ -427,12 +442,13 @@ class DatabaseManager:
             return False
 
     @_db_locked
-    def update_work_order_time_field(self, order_id: str, field_name: str, time_value: datetime) -> bool:
+    def update_work_order_time_field(self, order_id: str, field_name: str, time_value: datetime, expected_version: int | None = None) -> bool:
         """
         更新工单的时间字段。
         :param order_id: 工单ID
         :param field_name: 时间字段名称
         :param time_value: 时间值
+        :param expected_version: 乐观锁期望版本号；非 None 时仅当版本匹配才更新
         :return: 是否成功
         """
         if not self.connect():
@@ -443,11 +459,17 @@ class DatabaseManager:
                 if field_name not in TIME_FIELDS:
                     self.logger.error(f"无效的时间字段: {field_name}")
                     return False
-                
-                cursor.execute(
-                    f"UPDATE mcs_by_takuya_work_orders SET {field_name}=%s WHERE id=%s",
-                    (time_value, order_id)
-                )
+
+                if expected_version is not None:
+                    cursor.execute(
+                        f"UPDATE mcs_by_takuya_work_orders SET {field_name}=%s, version=version+1 WHERE id=%s AND version=%s",
+                        (time_value, order_id, expected_version)
+                    )
+                else:
+                    cursor.execute(
+                        f"UPDATE mcs_by_takuya_work_orders SET {field_name}=%s, version=version+1 WHERE id=%s",
+                        (time_value, order_id)
+                    )
                 self.connection.commit()
                 return cursor.rowcount > 0
         except Exception as e:
@@ -456,27 +478,123 @@ class DatabaseManager:
             return False
 
     @_db_locked
-    def update_work_order_product_path(self, order_id: str, product_path: str) -> bool:
+    def update_work_order_product_path(self, order_id: str, product_path: str, expected_version: int | None = None) -> bool:
         """
         更新工单的成品路径字段值。
         :param order_id: 工单ID
         :param product_path: 成品路径
+        :param expected_version: 乐观锁期望版本号；非 None 时仅当版本匹配才更新
         :return: 是否成功
         """
         if not self.connect():
             return False
         try:
             with self.connection.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE mcs_by_takuya_work_orders SET edit_product_path=%s WHERE id=%s",
-                    (product_path, order_id)
-                )
+                if expected_version is not None:
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_work_orders SET edit_product_path=%s, version=version+1 WHERE id=%s AND version=%s",
+                        (product_path, order_id, expected_version)
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE mcs_by_takuya_work_orders SET edit_product_path=%s, version=version+1 WHERE id=%s",
+                        (product_path, order_id)
+                    )
                 self.connection.commit()
                 return cursor.rowcount > 0
         except Exception as e:
             self.logger.error(f"更新工单成品路径失败: {e}")
             self.connection.rollback()
             return False
+
+    # 供 status_sync 多字段原子写入使用的字段白名单（status/art_status/成品路径 + 时间字段）
+    _WORK_ORDER_UPDATE_FIELDS = {'status', 'art_status', 'edit_product_path'} | set(TIME_FIELDS)
+
+    @_db_locked
+    def update_work_order_fields(self, order_id: str, updates: dict, expected_version: int | None = None) -> int:
+        """
+        单条 UPDATE 原子更新多个字段（带可选乐观锁版本检查）。
+
+        供 status_sync 使用：把"状态 + art_status + 时间"收敛进同一条 UPDATE，
+        消除"先写后调封装、本地失败不回滚"的窗口期。
+
+        :param order_id: 工单ID
+        :param updates: 字段名 → 值 字典（键必须位于 _WORK_ORDER_UPDATE_FIELDS 白名单）
+        :param expected_version: 期望版本号；非 None 时仅当版本匹配才更新
+        :return: 受影响行数；-1 表示异常（区别于"版本冲突/工单不存在"的 0）
+        """
+        if not updates:
+            return 0
+        invalid = set(updates) - self._WORK_ORDER_UPDATE_FIELDS
+        if invalid:
+            self.logger.error(f"更新工单字段包含白名单外字段: {invalid}")
+            return -1
+        if not self.connect():
+            return -1
+        try:
+            sets = ", ".join(f"{k}=%s" for k in updates)
+            params = list(updates.values())
+            with self.connection.cursor() as cursor:
+                if expected_version is not None:
+                    cursor.execute(
+                        f"UPDATE mcs_by_takuya_work_orders SET {sets}, version=version+1 WHERE id=%s AND version=%s",
+                        params + [order_id, expected_version]
+                    )
+                else:
+                    cursor.execute(
+                        f"UPDATE mcs_by_takuya_work_orders SET {sets}, version=version+1 WHERE id=%s",
+                        params + [order_id]
+                    )
+                self.connection.commit()
+                return cursor.rowcount
+        except Exception as e:
+            self.logger.error(f"更新工单字段失败: {e}")
+            self.connection.rollback()
+            return -1
+
+    @_db_locked
+    def get_work_order_version(self, order_id: str) -> int | None:
+        """读取工单乐观锁版本号；工单不存在或查询失败返回 None。"""
+        if not self.connect():
+            return None
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SELECT version FROM mcs_by_takuya_work_orders WHERE id=%s", (order_id,))
+                row = cursor.fetchone()
+                return int(row[0]) if row else None
+        except Exception as e:
+            self.logger.error(f"读取工单版本失败: {e}")
+            return None
+
+    @_db_locked
+    def get_work_order_by_id(self, order_id: str) -> dict[str, Any] | None:
+        """按工单ID查询最新数据（办理对话框打开前刷新，避免使用列表快照）。
+
+        字段集与 get_work_orders 保持一致；工单不存在或查询失败返回 None。
+        """
+        if not self.connect():
+            return None
+        try:
+            with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                cursor.execute("""
+                    SELECT wo.id, d.name as department, wo.model, wo.name,
+                           wo.creator, wo.requester, wo.type, wo.status,
+                           wo.created_at, wo.updated_at,
+                           pt.name as project_type, pc.name as project_content,
+                           wo.project_type_id, wo.project_content_id, wo.remarks,
+                           wo.edit_product_path, wo.art_status,
+                           wo.art_start_time, wo.art_end_time,
+                           wo.edit_start_time, wo.edit_end_time
+                    FROM mcs_by_takuya_work_orders wo
+                    JOIN mcs_by_takuya_departments d ON wo.department_id = d.id
+                    LEFT JOIN mcs_by_takuya_project_types pt ON wo.project_type_id = pt.id
+                    LEFT JOIN mcs_by_takuya_project_contents pc ON wo.project_content_id = pc.id
+                    WHERE wo.id = %s
+                """, (order_id,))
+                return cursor.fetchone()
+        except Exception as e:
+            self.logger.error(f"获取工单{order_id}失败: {e}")
+            return None
 
     @_db_locked
     def get_logs_by_order_id(self, order_id: str):

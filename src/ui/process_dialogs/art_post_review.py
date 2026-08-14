@@ -43,8 +43,7 @@ from src.core.paths import (
     IMG_EXTS,
     VID_EXTS,
 )
-from src.core.status_sync import update_status_with_api
-from src.ui.dialog_helpers import show_api_update_error
+from src.core.status_sync import update_local_status_only
 from src.ui.video_preview import VideoPreviewWidget
 
 logger = logging.getLogger(__name__)
@@ -107,7 +106,6 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         callbacks:  回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -473,10 +471,12 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
     def on_approve():
         # 不要求勾选，两个子目录的成品全部通过，移动到对应运营/销售目录
-        nonlocal all_files
+        # 每次点击时重新扫描目录（不用打开时的 all_files 快照）：
+        # 部分文件移动失败后重试时，已成功移动的文件源已不存在，
+        # 快照会导致任务必败、审批永远无法通过的"死循环"
         pending = []  # [(sub_dir, target_dir, files)]
         for i, sub_name in enumerate(_SUB_DIRS):
-            files_found = all_files[i]
+            files_found = scan_files(sub_dirs[i])
             if files_found and os.path.exists(sub_dirs[i]):
                 pending.append((sub_dirs[i], targets[i], files_found))
         if not pending:
@@ -508,17 +508,16 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
             if completed['count'] < total:
                 return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
-            new_status = '后期已完成'
-            # 美工链专属状态：审批通过（与全局 status 解耦）；API 失败时整体回滚
-            art_before = order_data.get('art_status')
-            db_manager.update_work_order_art_status(order_data['id'], '美工已完成')
-            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            # 美工链专属状态：审批通过（只写 art_status，不覆盖剪辑链全局状态）；本地字段无 API 同步
+            ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工已完成'})
             if not ok:
                 try:
                     if dialog.isVisible():
-                        show_api_update_error(dialog, error_msg)
+                        QMessageBox.warning(dialog, "提示", error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未写入，中止后续通知与成功提示
+            order_data['art_status'] = '美工已完成'
             parent.refresh_work_orders()
 
             _log_action("美工后期审批通过", f"工单ID={order_data['id']}, 角色=美工后期审批, 待审批路径={transit_root}")
@@ -586,17 +585,16 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 QMessageBox.warning(dialog, "错误", f"移动文件 {rel_path} 失败: {e!s}")
 
         if fail_count > 0:
-            new_status = '美工后期重新制作'
-            # 美工链专属状态：审批退回（与全局 status 解耦）；API 失败时整体回滚
-            art_before = order_data.get('art_status')
-            db_manager.update_work_order_art_status(order_data['id'], '美工后期重新制作')
-            ok, error_msg = update_status_with_api(order_data['id'], new_status, order_data['status'], art_status_before=art_before)
+            # 美工链专属状态：审批退回（只写 art_status，不覆盖剪辑链全局状态）；本地字段无 API 同步
+            ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工后期重新制作'})
             if not ok:
                 try:
                     if dialog.isVisible():
-                        show_api_update_error(dialog, error_msg)
+                        QMessageBox.warning(dialog, "提示", error_msg)
                 except RuntimeError:
                     pass
+                return  # 状态未写入，中止后续通知与成功提示
+            order_data['art_status'] = '美工后期重新制作'
             parent.refresh_work_orders()
 
             _log_action("美工后期审批退回", f"工单ID={order_data['id']}, 角色=美工后期审批, 不通过文件数={fail_count}, 原因={reason}")

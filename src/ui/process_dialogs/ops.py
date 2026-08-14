@@ -29,7 +29,8 @@ from src.core.database import db_manager
 from src.core.paths import (
     OPS_GET_SRC,
 )
-from src.ui.dialog_helpers import show_path_result
+from src.core.status_sync import update_status_with_api
+from src.ui.dialog_helpers import show_api_update_error, show_path_result
 
 
 def show_ops_dialog(parent, order_data, callbacks):
@@ -42,7 +43,6 @@ def show_ops_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -514,8 +514,13 @@ def show_ops_dialog(parent, order_data, callbacks):
         delete_btn.clicked.connect(delete_product)
         # 记录日志
         _log_action("添加产品信息", f"工单ID={order_data['id']}, 角色=运营, 产品标题={title}, 关键词={keywords}, URL={url}")
-        # 自动变更状态为"已上架"
-        db_manager.update_work_order_status(order_data['id'], '已上架')
+        # 自动变更状态为"已上架"（本地+外部 API 同步，失败时回滚）
+        ok, error_msg = update_status_with_api(order_data['id'], '已上架', order_data['status'])
+        if not ok:
+            show_api_update_error(dialog, error_msg)
+            return
+        # 成功后同步内存快照，避免二次添加时用陈旧回滚目标覆盖已上架状态
+        order_data['status'] = '已上架'
         parent.refresh_work_orders()
     def delete_selected_products():
         """删除选中的产品信息"""
@@ -562,6 +567,11 @@ def show_ops_dialog(parent, order_data, callbacks):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         # 使用任务管理器处理文件移动
         task_name = f"运营领取素材 - 工单{order_data['id']}"
+        src_files = os.listdir(src)
+        if not src_files:
+            # 空目录领取会以"0 文件移动"假成功推进状态，必须拦截
+            QMessageBox.warning(dialog, "提示", f"素材目录中没有可领取的文件：\n{src}")
+            return
         def update_status(task_ok=True, task_errors=None):
             # 任务失败时不推进状态，避免状态与磁盘不一致
             if not task_ok:
@@ -573,8 +583,18 @@ def show_ops_dialog(parent, order_data, callbacks):
                 return
             # 日志/状态更新为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("运营领取素材", f"工单ID={order_data['id']}, 角色=运营, 源路径={src}, 目标路径={dest}")
-            # 自动变更状态为"待上架"
-            db_manager.update_work_order_status(order_data['id'], '待上架')
+            # 自动变更状态为"待上架"（本地+外部 API 同步，失败时回滚；对话框可能已关闭，UI 提示需保护）
+            ok, error_msg = update_status_with_api(order_data['id'], '待上架', order_data['status'])
+            if ok:
+                # 成功后同步内存快照，避免二次添加产品信息时用陈旧回滚目标覆盖已上架状态
+                order_data['status'] = '待上架'
+            else:
+                try:
+                    if dialog.isVisible():
+                        show_api_update_error(dialog, error_msg)
+                except RuntimeError:
+                    pass
+                return  # 状态未写入，不显示"领取完成"
             parent.refresh_work_orders()
             # 显示完成消息（对话框已关闭时跳过 UI 提示）
             try:
@@ -584,7 +604,7 @@ def show_ops_dialog(parent, order_data, callbacks):
                 pass
         _add_file_task(
             name=task_name,
-            files=os.listdir(src),
+            files=src_files,
             src_dir=src,
             dest_dir=dest,
             op_type="move",
@@ -597,4 +617,3 @@ def show_ops_dialog(parent, order_data, callbacks):
     button_layout.addStretch()
     main_layout.addWidget(button_widget)
     dialog.exec()
-            # 销售弹窗

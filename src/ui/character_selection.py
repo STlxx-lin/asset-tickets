@@ -414,8 +414,11 @@ class CharacterSelection(QWidget):
         QApplication.quit() 
 
     def enter_main(self, user_info):
-        # 角色选择（如有多个）
-        role = user_info['role']
+        # 角色选择：单选按钮存在时以选中项为准；无单选按钮时（单角色，
+        # 或双审批角色合并显示为「后期审批」）用 setup_ui 已计算好的 selected_role。
+        # 修复：此前取 user_info['role'] 原始逗号串，双审批合并场景下
+        # role=='后期审批' 判断失败 → 主窗口无办理按钮且 dispatcher 无法分发
+        role = getattr(self, 'selected_role', '')
         if hasattr(self, 'role_buttons'):
             for btn in self.role_buttons:
                 if btn.isChecked():

@@ -37,7 +37,6 @@ def show_sales_dialog(parent, order_data, callbacks):
         callbacks: 回调字典，含 update_status / add_file_task / log_action
     """
     # ---- 解包 callbacks ----
-    _update_status = callbacks['update_status']
     _add_file_task = callbacks['add_file_task']
     _log_action    = callbacks['log_action']
 
@@ -238,6 +237,15 @@ def show_sales_dialog(parent, order_data, callbacks):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         # 使用任务管理器处理文件移动
         task_name = f"销售领取素材 - 工单{order_data['id']}"
+        try:
+            src_files = os.listdir(src)
+        except OSError as e:
+            QMessageBox.warning(dialog, "提示", f"无法读取素材目录：\n{src}\n{e}")
+            return
+        if not src_files:
+            # 空目录领取会以"0 文件移动"假成功推进状态，必须拦截
+            QMessageBox.warning(dialog, "提示", f"素材目录中没有可领取的文件：\n{src}")
+            return
         def update_status(task_ok=True, task_errors=None):
             # 任务失败时不显示"领取完成"成功提示
             if not task_ok:
@@ -257,7 +265,7 @@ def show_sales_dialog(parent, order_data, callbacks):
                 pass
         _add_file_task(
             name=task_name,
-            files=os.listdir(src),
+            files=src_files,
             src_dir=src,
             dest_dir=dest,
             op_type="move",
