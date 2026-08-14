@@ -26,6 +26,7 @@
 - 统一 API 时间字段映射为单份常量（修复创建接口中美工开始/剪辑开始字段码互换的问题）。
 - 状态/时间同步与回滚统一封装（status_sync.py），替换 17 处复制粘贴的回滚逻辑；API 失败时 art_status、成品路径、时间字段均完整回滚（此前仅回滚全局状态）。
 - API Token 改为数据库存储（app_system_settings.api_token），管理员设置页「功能设置」新增「外部系统 API 配置」在线更新 Token，保存后立即生效，无需重启；读取优先级：数据库 > 环境变量。
+- 修复云上（CI）打包产物无法访问数据库的问题：.env 支持从程序目录/项目根/当前目录多位置加载；Nuitka 打包自动包含 .env；CI 工作流新增从 GitHub Secrets 生成 .env（需在仓库配置 DB1_PASSWORD/DB2_PASSWORD/ADMIN_PASSWORD/API_TOKEN 四个 Secrets）。
 
 ### Fixed
 

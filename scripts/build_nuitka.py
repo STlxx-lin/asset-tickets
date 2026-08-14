@@ -192,10 +192,14 @@ def build():
         "--include-package=encodings",
         "--include-module=codecs",
         f"--include-data-files={icon_png}={icon_png}",
-        
+        # 打包 .env（数据库密码/API Token 配置），运行时从程序目录读取
+        "--include-data-files=.env=.env" if os.path.exists(".env") else "",
+
         # 优化选项
         "--lto=no",          # 链接时间优化 (yes=更小但慢, no=快)
     ]
+    # 移除空参数（.env 不存在时）
+    cmd = [c for c in cmd if c]
 
     # 平台特定选项
     if system == "Windows":

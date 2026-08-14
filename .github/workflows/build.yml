@@ -87,6 +87,23 @@ jobs:
         pip install -r requirements.txt
         pip install "nuitka[onefile]" pyinstaller
 
+    - name: Create .env from secrets
+      shell: bash
+      run: |
+        # 从 GitHub Secrets 生成 .env（随产物打包，运行时供程序读取数据库/API 配置）
+        cat > .env << 'EOF'
+        DB1_PASSWORD=${{ secrets.DB1_PASSWORD }}
+        DB2_PASSWORD=${{ secrets.DB2_PASSWORD }}
+        ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+        API_TOKEN=${{ secrets.API_TOKEN }}
+        EOF
+        if [ -z "${{ secrets.API_TOKEN }}" ]; then
+          echo "警告: 未配置 secrets.API_TOKEN，产物将无法访问外部工单系统 API"
+        fi
+        if [ -z "${{ secrets.DB1_PASSWORD }}" ]; then
+          echo "警告: 未配置 secrets.DB1_PASSWORD，产物将无法连接数据库"
+        fi
+
     - name: Build Windows
       if: matrix.os == 'windows-latest'
       run: |
