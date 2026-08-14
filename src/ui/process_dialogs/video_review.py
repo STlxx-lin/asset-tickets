@@ -31,6 +31,7 @@ from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
+    PHOTOGRAPHERS,
     PHOTOGRAPHY_UPLOAD,
 )
 from src.core.status_sync import update_status_with_api
@@ -188,8 +189,8 @@ def show_video_review_dialog(parent, order_data, callbacks):
     file_table.setEditTriggers(QTableWidget.NoEditTriggers)
 
     files_found = []
-    photographers = ["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项","08Arin"]
-    for pg in photographers:
+    # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）
+    for pg in PHOTOGRAPHERS:
         upload_dir = PHOTOGRAPHY_UPLOAD(pg, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
         if os.path.exists(upload_dir):
             try:

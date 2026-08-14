@@ -12,6 +12,11 @@ import time
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
+# 超时未退出的检查线程引用池（网络盘阻塞时保留引用直到线程自然结束，
+# 避免 "QThread: Destroyed while thread is still running" 崩溃）
+_detached_workers = []
+
+
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -353,7 +358,10 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
         if worker is not None and worker.isRunning():
             worker.requestInterruption()
             if not worker.wait(5000):
-                logger.warning("权限检查线程在 5 秒内未退出，强制继续关闭对话框")
+                logger.warning("权限检查线程在 5 秒内未退出（可能为网络盘阻塞），转入后台完成")
+                _detached_workers.append(worker)  # 保留引用防止线程销毁崩溃
+                return
+            worker.deleteLater()
     dialog.finished.connect(lambda _result: stop_worker())
 
     run_check()

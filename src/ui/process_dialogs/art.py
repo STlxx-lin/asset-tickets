@@ -479,90 +479,11 @@ def show_art_dialog(parent, order_data, callbacks):
         product_label.setToolTip("双击打开路径")
         product_label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
         show_path_result(dialog, "已选择", f"成品路径：\n{dir_path}", dir_path)
-    def on_distribute_ops():
-        if not parent.product_dir:
-            QMessageBox.warning(dialog, "提示", "请先选择成品路径")
-            return
-        if not os.path.exists(parent.product_dir):
-            QMessageBox.warning(dialog, "提示", f"成品路径不存在：\n{parent.product_dir}")
-            return
-        src = parent.product_dir
-        review_on = is_art_post_review_enabled()
-        dest = os.path.join(get_art_transit(), '01运营') if review_on else get_art_dist_ops()
-        os.makedirs(dest, exist_ok=True)
-        # 使用任务管理器处理文件复制
-        task_name = f"美工分发运营 - 工单{order_data['id']}"
-        def update_status(task_ok=True, task_errors=None):
-            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
-            if not task_ok:
-                try:
-                    if dialog.isVisible():
-                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
-                except RuntimeError:
-                    pass
-                return
-            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
-            _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
-            review_now = is_art_post_review_enabled()
-            # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）。
-            # 只写 art_status，不再写全局 status（避免覆盖剪辑链状态）；本地字段无 API 同步
-            ok, error_msg = update_local_status_only(order_data['id'],
-                                                     {'art_status': '美工后期审核中' if review_now else '美工已完成'})
-            if not ok:
-                try:
-                    if dialog.isVisible():
-                        QMessageBox.warning(dialog, "提示", error_msg)
-                except RuntimeError:
-                    pass
-                return  # 状态未写入，中止后续通知与成功提示
-            order_data['art_status'] = '美工后期审核中' if review_now else '美工已完成'
-            parent.refresh_work_orders()
-            # 发送通知：美工分发运营
-            department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
-            if review_now:
-                send_notification(
-                    "工单美工审批提请通知",
-                    f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发运营并提请审批\n- 状态：美工后期审核中\n- 提示：美工已完成后期处理，成品图片已提交审批，请美工后期审批员登录系统进行审批！",
-                    order_data.get('department')
-                )
-            else:
-                send_notification(
-                    "工单状态变更通知",
-                    f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}运营同事在工作时间段1小时内登录'工单管理'系统领取图片并进行上架！",
-                    order_data.get('department')
-                )
-            # 显示完成消息（对话框已关闭时跳过 UI 提示）
-            try:
-                if dialog.isVisible():
-                    if review_now:
-                        show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
-                    else:
-                        show_path_result(dialog, "分发完成", f"成功分发到运营部：\n{dest}", dest)
-            except RuntimeError:
-                pass
-    
-        # 获取源路径中的所有文件（包含子文件夹）
-        all_items = []
-        if os.path.exists(src):
-            for root, dirs, files in os.walk(src):
-                for file in files:
-                    rel_path = os.path.relpath(os.path.join(root, file), src)
-                    all_items.append(rel_path)
-        if not all_items:
-            # 过滤后无文件时禁止空分发推进状态（task_manager 空任务会"假成功"）
-            QMessageBox.warning(dialog, "提示", f"成品目录中没有可分发的文件：\n{src}")
-            return
+    def on_distribute(target_kind):
+        """美工分发成品到运营/销售（共用逻辑，避免两份 150 行重复代码漂移）。
 
-        _add_file_task(
-            name=task_name,
-            files=all_items,
-            src_dir=src,
-            dest_dir=dest,
-            file_filter=lambda f: "源文件" not in f,
-            op_type="copy",
-            update_status_func=update_status
-        )
-    def on_distribute_sales():
+        target_kind: '01运营' / '02销售'
+        """
         if not parent.product_dir:
             QMessageBox.warning(dialog, "提示", "请先选择成品路径")
             return
@@ -571,10 +492,17 @@ def show_art_dialog(parent, order_data, callbacks):
             return
         src = parent.product_dir
         review_on = is_art_post_review_enabled()
-        dest = os.path.join(get_art_transit(), '02销售') if review_on else get_art_dist_sales()
+        if target_kind == '01运营':
+            dest = os.path.join(get_art_transit(), '01运营') if review_on else get_art_dist_ops()
+            target_label = "运营"
+            target_text = "领取图片并进行上架"
+        else:
+            dest = os.path.join(get_art_transit(), '02销售') if review_on else get_art_dist_sales()
+            target_label = "销售"
+            target_text = "领取图片"
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
-        task_name = f"美工分发销售 - 工单{order_data['id']}"
+        task_name = f"美工分发{target_label} - 工单{order_data['id']}"
         def update_status(task_ok=True, task_errors=None):
             # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
             if not task_ok:
@@ -585,7 +513,7 @@ def show_art_dialog(parent, order_data, callbacks):
                     pass
                 return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
-            _log_action("美工分发销售", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
+            _log_action(f"美工分发{target_label}", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
             # 美工链专属状态：分发后进入审批中（或审批功能关闭时已完成）。
             # 只写 art_status，不再写全局 status（避免覆盖剪辑链状态）；本地字段无 API 同步
@@ -600,18 +528,18 @@ def show_art_dialog(parent, order_data, callbacks):
                 return  # 状态未写入，中止后续通知与成功提示
             order_data['art_status'] = '美工后期审核中' if review_now else '美工已完成'
             parent.refresh_work_orders()
-            # 发送通知：美工分发销售
+            # 发送通知
             department = order_data.get('department') or order_data.get('部门') or order_data.get('产线') or '相关'
             if review_now:
                 send_notification(
                     "工单美工审批提请通知",
-                    f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发销售并提请审批\n- 状态：美工后期审核中\n- 提示：美工已完成后期处理，成品图片已提交审批，请美工后期审批员登录系统进行审批！",
+                    f"### 工单号：{order_data['id']}\n- 角色：美工\n- 操作：分发{target_label}并提请审批\n- 状态：美工后期审核中\n- 提示：美工已完成后期处理，成品图片已提交审批，请美工后期审批员登录系统进行审批！",
                     order_data.get('department')
                 )
             else:
                 send_notification(
                     "工单状态变更通知",
-                    f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}销售同事在工作时间段1小时内登录'工单管理'系统领取图片！",
+                    f"{order_data['id']} {order_data['model']} {order_data['name']}，美工已完成后期处理，成品图片已分发，请{department}{target_label}同事在工作时间段1小时内登录'工单管理'系统{target_text}！",
                     order_data.get('department')
                 )
             # 显示完成消息（对话框已关闭时跳过 UI 提示）
@@ -620,10 +548,10 @@ def show_art_dialog(parent, order_data, callbacks):
                     if review_now:
                         show_path_result(dialog, "已提交审批", f"成品已提交美工后期审批：\n{dest}", dest)
                     else:
-                        show_path_result(dialog, "分发完成", f"成功分发到销售部：\n{dest}", dest)
+                        show_path_result(dialog, "分发完成", f"成功分发到{target_label}部：\n{dest}", dest)
             except RuntimeError:
                 pass
-    
+
         # 获取源路径中的所有文件（包含子文件夹）
         all_items = []
         if os.path.exists(src):
@@ -647,8 +575,8 @@ def show_art_dialog(parent, order_data, callbacks):
         )
     get_material_btn.clicked.connect(on_get_material)
     select_product_btn.clicked.connect(on_select_product)
-    distribute_ops_btn.clicked.connect(on_distribute_ops)
-    distribute_sales_btn.clicked.connect(on_distribute_sales)
+    distribute_ops_btn.clicked.connect(lambda: on_distribute('01运营'))
+    distribute_sales_btn.clicked.connect(lambda: on_distribute('02销售'))
     button_layout.addWidget(get_material_btn)
     button_layout.addWidget(select_product_btn)
     button_layout.addWidget(distribute_ops_btn)

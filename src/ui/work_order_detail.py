@@ -714,11 +714,6 @@ class WorkOrderDetailDialog(QDialog):
         # 简单处理，如果已经是格式化的字符串则直接返回
         return str(time_str)
 
-    def mask_phone(self, phone):
-        if not phone or len(phone) < 7:
-            return phone
-        return phone[:3] + "****" + phone[-4:]
-
     def apply_styles(self):
         self.setStyleSheet("""
             QDialog {
