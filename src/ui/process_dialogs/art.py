@@ -390,7 +390,15 @@ def show_art_dialog(parent, order_data, callbacks):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         # 使用任务管理器处理文件移动
         task_name = f"美工领取素材 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工领取素材", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             # 美工链专属状态：领取素材后进入设计中（与全局 status 解耦）
@@ -469,7 +477,15 @@ def show_art_dialog(parent, order_data, callbacks):
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"美工分发运营 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("美工分发运营", f"工单ID={order_data['id']}, 角色=美工, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()
@@ -536,7 +552,15 @@ def show_art_dialog(parent, order_data, callbacks):
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"美工分发销售 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action(f"{parent.role}分发销售", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src}, 目标路径={dest}")
             review_now = is_art_post_review_enabled()

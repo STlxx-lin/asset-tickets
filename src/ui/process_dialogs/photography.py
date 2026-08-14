@@ -452,21 +452,33 @@ def show_photography_dialog(parent, order_data, callbacks):
         if not files:
             return
     
-        # 重新上传时自动物理删除不通过文件夹并清理反馈记录
-        fail_dir = os.path.join(upload_dir, "不通过")
-        if os.path.exists(fail_dir):
-            try:
-                shutil.rmtree(fail_dir, ignore_errors=True)
-                logger.info(f"摄影师重新上传，已成功物理删除不通过文件夹: {fail_dir}")
-            except Exception as e:
-                logger.error(f"物理删除不通过文件夹失败: {e}")
-        db_manager.delete_review_feedback(order_data['id'])
-
         # 使用任务管理器处理文件上传
         task_name = f"上传素材 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"素材上传失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("上传素材", f"工单ID={order_data['id']}, 角色={parent.role}, 摄影师={photographer}, 目标路径={upload_dir}, 文件数={len(files)}")
+
+            # 仅在上传复制成功后才清理"不通过"目录与反馈记录（避免复制失败时反馈数据永久丢失）
+            fail_dir = os.path.join(upload_dir, "不通过")
+            if os.path.exists(fail_dir):
+                try:
+                    shutil.rmtree(fail_dir)
+                    logger.info(f"摄影师重新上传成功，已物理删除不通过文件夹: {fail_dir}")
+                except Exception as e:
+                    logger.error(f"物理删除不通过文件夹失败: {e}")
+                    try:
+                        if dialog.isVisible():
+                            QMessageBox.warning(dialog, "提示", f"素材已上传，但删除不通过文件夹失败：\n{e}")
+                    except RuntimeError:
+                        pass
+            db_manager.delete_review_feedback(order_data['id'])
         
             # 记录当前时间作为摄影师结束时间
             current_time = datetime.datetime.now()
@@ -574,7 +586,15 @@ def show_photography_dialog(parent, order_data, callbacks):
             raise
         # 使用任务管理器处理图片分发
         task_name = f"分发图片 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"图片分发失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发图片", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
             # 更新工单状态（API 失败时回滚本地状态）
@@ -627,7 +647,15 @@ def show_photography_dialog(parent, order_data, callbacks):
             raise
         # 使用任务管理器处理视频分发
         task_name = f"分发视频 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"视频分发失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发视频", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
             # 更新工单状态（API 失败时回滚本地状态）

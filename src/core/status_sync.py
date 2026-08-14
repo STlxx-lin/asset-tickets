@@ -9,7 +9,7 @@ status_sync.py — 状态/时间同步与回滚封装。
 import logging
 
 from src.core.api_manager import api_manager
-from src.core.database import db_manager
+from src.core.database import db_manager, TIME_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +30,27 @@ def update_status_with_api(order_id: str, new_status: str, old_status: str,
         (ok, error_msg): 本地+API 均成功返回 (True, '')；
                          否则返回 (False, error_msg)，本地已回滚到改动前。
     """
-    db_manager.update_work_order_status(order_id, new_status)
+    if not db_manager.update_work_order_status(order_id, new_status):
+        error_msg = f"本地更新工单{order_id}状态为{new_status}失败，已跳过外部同步"
+        logger.error(error_msg)
+        return False, error_msg
     api_response = api_manager.update_work_order_status(order_id, new_status)
     if api_response['success']:
         logger.info(f"API更新工单{order_id}状态为{new_status}成功")
         return True, ""
     error_msg = f"API更新工单{order_id}状态为{new_status}失败: {api_response['error']}"
     logger.error(error_msg)
-    # 回滚本地改动，保持两端一致
-    db_manager.update_work_order_status(order_id, old_status)
-    if art_status_before is not None:
-        db_manager.update_work_order_art_status(order_id, art_status_before)
-    if product_path_before is not None:
-        db_manager.update_work_order_product_path(order_id, product_path_before)
+    # 回滚本地改动，保持两端一致；逐一检查回滚结果，任一失败都如实上报
+    rollback_failures = []
+    if not db_manager.update_work_order_status(order_id, old_status):
+        rollback_failures.append(f"状态回滚至{old_status}失败")
+    if art_status_before is not None and not db_manager.update_work_order_art_status(order_id, art_status_before):
+        rollback_failures.append(f"美工状态回滚至{art_status_before}失败")
+    if product_path_before is not None and not db_manager.update_work_order_product_path(order_id, product_path_before):
+        rollback_failures.append("成品路径回滚失败")
+    if rollback_failures:
+        error_msg += "；且本地回滚失败: " + "; ".join(rollback_failures)
+        logger.error(error_msg)
     return False, error_msg
 
 
@@ -63,7 +71,10 @@ def update_time_with_api(order_id: str, time_field: str, time_value,
     """
     import datetime
 
-    db_manager.update_work_order_time_field(order_id, time_field, time_value)
+    if not db_manager.update_work_order_time_field(order_id, time_field, time_value):
+        error_msg = f"本地更新工单{order_id}{time_field}失败，已跳过外部同步"
+        logger.error(error_msg)
+        return False, error_msg
     if isinstance(time_value, datetime.datetime):
         formatted = time_value.strftime('%Y-%m-%d %H:%M:%S')
     else:
@@ -74,15 +85,19 @@ def update_time_with_api(order_id: str, time_field: str, time_value,
         return True, ""
     error_msg = f"API更新工单{order_id}{time_field}失败: {api_response['error']}"
     logger.error(error_msg)
-    # 回滚本地改动，保持两端一致
+    # 回滚本地改动，保持两端一致；逐一检查回滚结果，任一失败都如实上报
+    rollback_failures = []
     # 时间字段无"旧值快照"语义，回滚到 NULL（写入失败即视为未发生）
-    if time_field in ('art_start_time', 'art_end_time', 'edit_start_time', 'edit_end_time',
-                      'photographer_start_time', 'photographer_end_time', 'start_time', 'end_time'):
-        db_manager.update_work_order_time_field(order_id, time_field, None)
-    if status_before is not None:
-        db_manager.update_work_order_status(order_id, status_before)
-    if art_status_before is not None:
-        db_manager.update_work_order_art_status(order_id, art_status_before)
+    if time_field in TIME_FIELDS:
+        if not db_manager.update_work_order_time_field(order_id, time_field, None):
+            rollback_failures.append(f"时间字段{time_field}回滚失败")
+    if status_before is not None and not db_manager.update_work_order_status(order_id, status_before):
+        rollback_failures.append(f"状态回滚至{status_before}失败")
+    if art_status_before is not None and not db_manager.update_work_order_art_status(order_id, art_status_before):
+        rollback_failures.append(f"美工状态回滚至{art_status_before}失败")
+    if rollback_failures:
+        error_msg += "；且本地回滚失败: " + "; ".join(rollback_failures)
+        logger.error(error_msg)
     return False, error_msg
 
 
@@ -97,5 +112,7 @@ def has_pending_edit_review(order_id: str) -> bool:
         has_submit = any(l.get('action_type') == '提交视频后期审核' for l in logs)
         has_approved = any(l.get('action_type') == '视频后期审核通过' for l in logs)
         return has_submit and not has_approved
-    except Exception:
+    except Exception as e:
+        # 记录异常而非静默吞掉：DB 故障不应被当作"无待审核"放行审核门禁
+        logger.error(f"查询工单{order_id}待审核状态失败: {e}")
         return False

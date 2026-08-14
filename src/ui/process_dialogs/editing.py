@@ -318,7 +318,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         # 使用任务管理器处理文件移动
         task_name = f"剪辑领取素材 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑领取素材", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
             status_before = order_data['status']
@@ -401,7 +409,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         # 使用任务管理器异步复制视频到中转路径
         task_name = f"上传成品视频 - 工单{order_data['id']}"
     
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"视频上传失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             # 上传成功后，将中转路径写入数据库成品路径
             product_path_before = order_data.get('edit_product_path')
@@ -442,7 +458,8 @@ def show_editing_dialog(parent, order_data, callbacks):
             files=all_items,
             src_dir=src,
             dest_dir=transit_dir,
-            file_filter=lambda f: not (os.path.isdir(os.path.join(src, f)) and "源文件" in f),
+            # 排除「源文件」子目录与「不通过」退回目录中的文件，避免旧视频/源素材被重复上传
+            file_filter=lambda f: not any(k in f for k in ["源文件", "不通过"]),
             op_type="copy",
             update_status_func=update_status
         )
@@ -455,7 +472,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"剪辑分发运营 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑分发运营", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
             ok, error_msg = update_status_with_api(order_data['id'], '后期已完成', order_data['status'])
@@ -506,7 +531,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"剪辑分发销售 - 工单{order_data['id']}"
-        def update_status():
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不推进状态/发通知，避免状态与磁盘文件不一致
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败，工单状态未更新：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
+                return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("剪辑分发销售", f"工单ID={order_data['id']}, 角色=剪辑, 源路径={src}, 目标路径={dest}")
             ok, error_msg = update_status_with_api(order_data['id'], '后期已完成', order_data['status'])

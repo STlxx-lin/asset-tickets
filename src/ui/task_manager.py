@@ -21,8 +21,13 @@ logger = logging.getLogger(__name__)
 
 
 class TaskStatusUpdater(QObject):
-    """任务状态更新器，用于在主线程中更新状态"""
-    update_status = Signal()
+    """任务状态更新器，用于在主线程中更新状态。
+
+    update_status 携带任务执行结果 (ok, errors)：
+    - ok: 任务是否全部成功（无错误）
+    - errors: 任务执行中的错误列表（失败时非空，供回调决定是否推进状态/发通知）
+    """
+    update_status = Signal(bool, list)
 
 class Task(QThread):
     """文件操作任务类"""
@@ -61,11 +66,24 @@ class Task(QThread):
         else:
             self.status_updater = None
 
+    def _is_valid_copy(self, src_path, dest_path):
+        """判断目标是否为源文件的完整等价副本（类型一致且文件大小一致）。
+
+        仅凭存在性判断不可靠：目标可能是中断残留的残缺副本、同名不同内容，
+        此时若删除源文件会造成数据永久丢失，因此必须校验等价性。
+        """
+        try:
+            if os.path.isdir(src_path):
+                return os.path.isdir(dest_path)
+            return os.path.isfile(dest_path) and os.path.getsize(dest_path) == os.path.getsize(src_path)
+        except OSError:
+            return False
+
     def run(self):
         """运行任务"""
         total = len(self.files)
         move_successful = True  # 标记移动操作是否成功
-        skipped_existing = []  # 目标已存在而被跳过的文件（目标有完整副本，可安全清理）
+        skipped_existing = []  # 目标已存在且为等价副本而被跳过的文件（确认后可安全清理）
 
         for i, fname in enumerate(self.files):
             if self._is_canceled:
@@ -73,6 +91,10 @@ class Task(QThread):
                 return
 
             while self._is_paused:
+                # 暂停期间也要响应取消，否则任务将永久卡死在暂停循环
+                if self._is_canceled:
+                    self.canceled.emit()
+                    return
                 self.msleep(200)  # 使用QThread的msleep而不是time.sleep
 
             if self.file_filter and not self.file_filter(fname):
@@ -81,10 +103,20 @@ class Task(QThread):
             src_file = os.path.join(self.src_dir, fname)
             dest_file = os.path.join(self.dest_dir, fname)
 
-            # 如果目标文件已存在，跳过（目标已有副本，源文件稍后确认后可清理）
+            # 目标已存在：仅在目标为源文件的等价副本时才跳过（源文件稍后确认后可清理）
             if os.path.exists(dest_file):
-                skipped_existing.append(fname)
-                continue
+                if self.op_type == "move":
+                    if self._is_valid_copy(src_file, dest_file):
+                        skipped_existing.append(fname)
+                        continue
+                    # 目标存在但并非等价副本：禁止覆盖与删除源，报错保留，避免数据丢失
+                    msg = f"目标文件已存在但与源文件不一致（类型或大小不同），已跳过并保留源文件: {fname}"
+                    logger.error(msg)
+                    self.errors.append(msg)
+                    move_successful = False
+                    continue
+                # copy 模式：目标已存在视为更新覆盖（copy2 天然覆盖旧文件）
+                pass
 
             try:
                 # 新增：确保目标文件的父目录存在
@@ -108,7 +140,7 @@ class Task(QThread):
 
             self.progress_changed.emit(int((i + 1) / total * 100))
 
-        # 清理源目录：仅在所有文件均已成功移动/确认目标有副本后执行
+        # 清理源目录：仅在所有文件均已成功移动/确认目标有等价副本后执行
         if self.op_type == "move" and move_successful and os.path.exists(self.src_dir):
             try:
                 # 先删除移动后遗留的空子目录（文件已全部移走，目录本身不在任务列表中）
@@ -120,9 +152,18 @@ class Task(QThread):
                             logger.info(f"已删除空子目录: {f}")
                         except Exception as e:
                             logger.error(f"删除空子目录 {f} 时出错: {e}")
-                remaining_files = os.listdir(self.src_dir)
-                # 仅删除“目标已存在”被跳过的重复项（目标有完整副本）
-                removable = [f for f in remaining_files if f in skipped_existing]
+                # 仅删除“目标已存在且等价”被跳过的重复项；删除前再次校验目标副本等价，防止删除不可恢复数据
+                removable = []
+                for f in list(os.listdir(self.src_dir)):
+                    if f in skipped_existing:
+                        src_path = os.path.join(self.src_dir, f)
+                        dest_path = os.path.join(self.dest_dir, f)
+                        if self._is_valid_copy(src_path, dest_path):
+                            removable.append(f)
+                        else:
+                            msg = f"源目录重复文件 {f} 的目标副本校验不通过，已保留源文件"
+                            logger.warning(msg)
+                            self.errors.append(msg)
                 for f in removable:
                     path = os.path.join(self.src_dir, f)
                     try:
@@ -151,7 +192,8 @@ class Task(QThread):
                 self.errors.append(msg)
 
         if self.status_updater:
-            self.status_updater.update_status.emit()
+            # 携带任务结果：ok=False 时 errors 非空，回调可据此中止状态推进/通知，避免"文件失败仍报成功"
+            self.status_updater.update_status.emit(not self.errors, list(self.errors))
 
         self.finished.emit()
 
@@ -409,9 +451,17 @@ class TaskManagerDialog(QDialog):
             
     
     def closeEvent(self, event):
-        """窗口关闭时清理定时器"""
+        """窗口关闭时清理定时器，并取消/等待仍在运行的任务，避免 QThread 泄漏或退出崩溃"""
         if self.auto_close_timer.isActive():
             self.auto_close_timer.stop()
         if self.delay_close_timer.isActive():
             self.delay_close_timer.stop()
+        # 取消并等待仍在运行的任务，防止 "QThread: Destroyed while thread is still running" 崩溃
+        for task in self.tasks:
+            if task.isRunning():
+                task.cancel()
+        for task in self.tasks:
+            if task.isRunning():
+                if not task.wait(5000):
+                    logger.warning(f"任务 {task.name} 在 5 秒内未退出，强制继续关闭窗口")
         super().closeEvent(event)

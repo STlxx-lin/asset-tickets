@@ -1,3 +1,5 @@
+import html
+
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -403,7 +405,7 @@ class WorkOrderDetailDialog(QDialog):
                 header_layout = QHBoxLayout()
                 header_layout.setSpacing(10)
                 
-                role_text = log.get('role', '')
+                role_text = str(log.get('role') or '')
                 user_name = log.get('user_name', '')
                 action_type = log.get('action_type', '未知操作')
                 timestamp = str(log.get('timestamp', ''))
@@ -494,11 +496,19 @@ class WorkOrderDetailDialog(QDialog):
                 
                 if key in ignore_keys or not value:
                     continue
+
+                # HTML 转义：日志内容来自数据库（用户可输入），直接拼接会引入 HTML 注入风险
+                key = html.escape(key)
+                value = html.escape(value)
                     
                 row_html = ""
                 
                 if key == 'URL':
-                    row_html = f'<span style="{styles["key"]}">{key}:</span> <a href="{value}" style="{styles["link"]}">{value}</a>'
+                    # 仅 http/https 协议渲染为可点击链接，其余协议（file:// 等）显示为纯文本，避免被诱导打开本地路径
+                    if value.startswith(('http://', 'https://')):
+                        row_html = f'<span style="{styles["key"]}">{key}:</span> <a href="{value}" style="{styles["link"]}">{value}</a>'
+                    else:
+                        row_html = f'<span style="{styles["key"]}">{key}:</span> <span style="{styles["value"]}">{value}</span>'
                 elif key in ['源路径', '目标路径']:
                     # 路径单独占一行
                     row_html = f'<div style="margin-bottom: 4px;"><span style="{styles["key"]}">{key}:</span> <br><span style="{styles["path"]}">{value}</span></div>'
@@ -617,9 +627,9 @@ class WorkOrderDetailDialog(QDialog):
         has_edit_approved = False
 
         for log in self.logs:
-            role = log.get('role', '')
-            action = log.get('action_type', '')
-            details = log.get('details', '')
+            role = log.get('role') or ''
+            action = log.get('action_type') or ''
+            details = log.get('details') or ''
             content = action + details
 
             # 美工分发

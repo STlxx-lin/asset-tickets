@@ -94,7 +94,13 @@ else:
 DEFAULT_NOTIFICATION_TYPE = 'wechat_work'
 
 # 管理员登录密码配置（从环境变量 ADMIN_PASSWORD 读取）
+# 安全说明：未配置时保持为空字符串，登录校验处会拒绝空密码，避免空密码绕过管理员认证。
 ADMIN_PASSWORD = _env('ADMIN_PASSWORD')
+if not ADMIN_PASSWORD:
+    _logger.error(
+        "环境变量 ADMIN_PASSWORD 未配置，管理员登录功能将被禁用（拒绝所有管理员登录）。"
+        "请在生产环境 .env 中配置强密码。"
+    )
 
 # 测试开关：是否跳过视频后期审核的状态校验（默认为True方便调试测试）
 # BYPASS_VIDEO_POST_REVIEW_STATUS_CHECK = True #跳过

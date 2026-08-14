@@ -73,9 +73,16 @@ print()
 print('video_post_review.py 含 BYPASS 开关:', 'OK' if has_bypass else 'MISSING - 需要检查')
 
 # 6. 验证 VideoPreviewWidget 在 video_review 和 video_post_review 中
+ok_all = True
 for fname in ['video_review.py', 'video_post_review.py']:
     fpath = r'e:\2025\pyproj\src\ui\process_dialogs\\' + fname
     with open(fpath, 'r', encoding='utf-8') as f:
         c = f.read()
     has_vp = 'VideoPreviewWidget' in c
+    ok_all = ok_all and has_vp
     print(f'{fname} 含 VideoPreviewWidget:', 'OK' if has_vp else 'MISSING')
+
+# 校验失败必须以非零退出码结束，否则 CI/脚本化调用无法感知失败（门禁形同虚设）
+if missing or ok_all is False:
+    sys.exit(1)
+sys.exit(0)

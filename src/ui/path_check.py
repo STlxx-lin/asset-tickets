@@ -182,6 +182,9 @@ class _PathScanWorker(QThread):
 
     def run(self):
         for row, (label, path, note) in enumerate(self.checks):
+            # 对话框关闭或用户取消时提前退出，避免线程泄漏与访问已销毁控件
+            if self.isInterruptionRequested():
+                return
             result = _inspect_path(path)
             result['note'] = note
             self.item_done.emit(row, result)
@@ -521,6 +524,15 @@ def show_path_check_dialog(parent, order_data: dict):
     refresh_btn.clicked.connect(run_check)
     close_btn.clicked.connect(dialog.reject)
     show_missing_cb.toggled.connect(lambda _checked: apply_fold())
+
+    def stop_worker():
+        """关闭对话框时中断并等待后台扫描线程，避免 "QThread: Destroyed while thread is still running" 崩溃"""
+        nonlocal worker
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            if not worker.wait(5000):
+                logger.warning("路径扫描线程在 5 秒内未退出，强制继续关闭对话框")
+    dialog.finished.connect(lambda _result: stop_worker())
 
     run_check()
     dialog.exec()

@@ -1,4 +1,6 @@
+import functools
 import logging
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -8,6 +10,27 @@ from .config import DB_CONFIG, DEFAULT_NOTIFICATION_TYPE
 
 # 默认角色列表（唯一来源，新增角色仅在此维护）
 DEFAULT_ROLES = ["采购", "摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批"]
+
+# 时间字段白名单（唯一来源，供 update_work_order_time_field 与 status_sync 回滚共用，
+# 必须与 api_manager.TIME_FIELD_MAP 的 key 集合保持一致）
+TIME_FIELDS = [
+    'art_start_time', 'art_end_time', 'edit_start_time', 'edit_end_time',
+    'start_time', 'end_time', 'photographer_start_time', 'photographer_end_time',
+]
+
+# 数据库操作全局锁：pymysql 连接对象非线程安全（主线程 UI 槽函数与 QThread 任务回调
+# 可能并发访问同一个 db_manager 单例），用可重入锁将所有涉及 self.connection 的
+# 操作串行化，避免协议状态污染（cursor 交错 / Packet sequence number wrong）与并发建连泄漏。
+_db_lock = threading.RLock()
+
+
+def _db_locked(func):
+    """装饰器：对 DatabaseManager 公开方法加全局可重入锁。"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with _db_lock:
+            return func(*args, **kwargs)
+    return wrapper
 
 
 class DatabaseManager:
@@ -20,6 +43,7 @@ class DatabaseManager:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
+    @_db_locked
     def connect(self):
         """获取数据库连接；若已有存活连接则复用，否则重新连接。"""
         # 复用存活连接，避免每次查询都新建连接
@@ -42,6 +66,7 @@ class DatabaseManager:
             self.logger.error(f"数据库连接失败: {e}")
             return False
 
+    @_db_locked
     def disconnect(self):
         if self.connection:
             try:
@@ -51,6 +76,7 @@ class DatabaseManager:
             self.connection = None
             self.logger.info("数据库连接已关闭")
 
+    @_db_locked
     def get_roles(self) -> list[str]:
         if not self.connect():
             return []
@@ -83,6 +109,7 @@ class DatabaseManager:
             self.logger.error(f"获取角色失败: {e}")
             return []
 
+    @_db_locked
     def get_departments(self) -> list[str]:
         if not self.connect():
             return []
@@ -94,6 +121,7 @@ class DatabaseManager:
             self.logger.error(f"获取部门失败: {e}")
             return []
 
+    @_db_locked
     def get_work_orders(self, user_departments: list[str] = None) -> list[dict[str, Any]]:
         if not self.connect():
             return []
@@ -137,6 +165,7 @@ class DatabaseManager:
             self.logger.error(f"获取工单失败: {e}")
             return []
 
+    @_db_locked
     def add_role(self, role_name: str) -> bool:
         if not self.connect():
             return False
@@ -149,6 +178,7 @@ class DatabaseManager:
             self.logger.error(f"添加角色失败: {e}")
             return False
 
+    @_db_locked
     def remove_role(self, role_name: str) -> bool:
         if not self.connect():
             return False
@@ -161,6 +191,7 @@ class DatabaseManager:
             self.logger.error(f"删除角色失败: {e}")
             return False
 
+    @_db_locked
     def add_department(self, dept_name: str) -> bool:
         if not self.connect():
             return False
@@ -173,6 +204,7 @@ class DatabaseManager:
             self.logger.error(f"添加部门失败: {e}")
             return False
 
+    @_db_locked
     def remove_department(self, dept_name: str) -> bool:
         if not self.connect():
             return False
@@ -185,6 +217,7 @@ class DatabaseManager:
             self.logger.error(f"删除部门失败: {e}")
             return False
 
+    @_db_locked
     def add_log(self, role: str, action_type: str, details: str, ip_address: str = "N/A", user_name: str = "") -> bool:
         if not self.connect(): return False
         try:
@@ -206,6 +239,7 @@ class DatabaseManager:
             self.logger.error(f"记录日志失败: {e}")
             return False
 
+    @_db_locked
     def get_logs(self, limit: int = 200, role: str | None = None, user_name: str | None = None, action_type: str | None = None, ip_address: str | None = None, start_time: str | None = None, end_time: str | None = None, offset: int = 0) -> list[dict[str, Any]]:
         if not self.connect(): return []
         try:
@@ -242,6 +276,7 @@ class DatabaseManager:
             self.logger.error(f"获取日志失败: {e}")
             return []
 
+    @_db_locked
     def add_work_order(self, order_data: dict[str, Any]) -> bool:
         if not self.connect(): return False
         try:
@@ -321,6 +356,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def update_work_orders_status_bulk(self, ids: list[str], new_status: str) -> int:
         """
         批量更新工单状态。
@@ -342,6 +378,7 @@ class DatabaseManager:
             self.connection.rollback()
             return 0
 
+    @_db_locked
     def update_work_order_status(self, order_id: str, new_status: str) -> bool:
         """
         更新单个工单的状态。
@@ -364,6 +401,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def update_work_order_art_status(self, order_id: str, new_status: str) -> bool:
         """
         更新单个工单的美工专属状态（art_status 字段，与全局 status 解耦）。
@@ -388,6 +426,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def update_work_order_time_field(self, order_id: str, field_name: str, time_value: datetime) -> bool:
         """
         更新工单的时间字段。
@@ -400,9 +439,8 @@ class DatabaseManager:
             return False
         try:
             with self.connection.cursor() as cursor:
-                # 检查字段是否存在
-                valid_fields = ['art_start_time', 'art_end_time', 'edit_start_time', 'edit_end_time', 'start_time', 'photographer_start_time', 'photographer_end_time']
-                if field_name not in valid_fields:
+                # 检查字段是否存在（引用模块级白名单 TIME_FIELDS，避免与 status_sync 回滚白名单漂移）
+                if field_name not in TIME_FIELDS:
                     self.logger.error(f"无效的时间字段: {field_name}")
                     return False
                 
@@ -417,6 +455,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def update_work_order_product_path(self, order_id: str, product_path: str) -> bool:
         """
         更新工单的成品路径字段值。
@@ -439,6 +478,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def get_logs_by_order_id(self, order_id: str):
         if not self.connect():
             return []
@@ -455,6 +495,7 @@ class DatabaseManager:
             self.logger.error(f"获取工单日志失败: {e}")
             return []
 
+    @_db_locked
     def get_logs_by_order_ids(self, order_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
         if not order_ids:
             return {}
@@ -482,11 +523,15 @@ class DatabaseManager:
             return {}
 
 
+    @_db_locked
     def save_product_info(self, work_order_id: str, products: list[dict[str, str]]) -> bool:
-        """保存产品信息到数据库"""
+        """保存产品信息到数据库（DELETE + 全部 INSERT 在同一事务内，中途失败整体回滚）"""
         if not self.connect():
             return False
         try:
+            # autocommit 模式下 begin() 会挂起自动提交，直到 COMMIT/ROLLBACK 后恢复，
+            # 保证 DELETE 与全部 INSERT 原子化：任一条插入失败都不会留下"旧数据已删、新数据残缺"的半写状态
+            self.connection.begin()
             with self.connection.cursor() as cursor:
                 # 先删除该工单的旧产品信息
                 cursor.execute("DELETE FROM mcs_by_takuya_product_info WHERE work_order_id = %s", (work_order_id,))
@@ -502,8 +547,13 @@ class DatabaseManager:
                 return True
         except Exception as e:
             self.logger.error(f"保存产品信息失败: {e}")
+            try:
+                self.connection.rollback()
+            except Exception:
+                pass
             return False
 
+    @_db_locked
     def get_product_info(self, work_order_id: str) -> list[dict[str, str]]:
         """获取工单的产品信息"""
         if not self.connect():
@@ -521,6 +571,7 @@ class DatabaseManager:
             self.logger.error(f"获取产品信息失败: {e}")
             return []
 
+    @_db_locked
     def delete_work_order(self, order_id: str) -> bool:
         """根据工单ID删除工单（产品信息通过外键 ON DELETE CASCADE 自动删除；日志表无外键，历史日志保留）"""
         if not self.connect():
@@ -535,6 +586,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def update_work_order_full(self, order_id: str, department: str, model: str, name: str, creator: str, requester: str = "", project_type: str = "", project_content: str = "", projecttype_id: int = None, project_contentid: int = None, remarks: str = "") -> bool:
         if not self.connect(): return False
         try:
@@ -587,6 +639,7 @@ class DatabaseManager:
                 pass
             return False
 
+    @_db_locked
     def get_users(self, name: str | None = None, ip: str | None = None, role: str | None = None, department: str | None = None) -> list[dict[str, Any]]:
         if not self.connect():
             return []
@@ -623,6 +676,7 @@ class DatabaseManager:
             self.logger.error(f"获取用户失败: {e}")
             return []
 
+    @_db_locked
     def add_user(self, ip: str, name: str, role: str, department: str) -> bool:
         if not self.connect():
             return False
@@ -639,6 +693,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def update_user(self, user_id: int, ip: str, name: str, role: str, department: str) -> bool:
         if not self.connect():
             return False
@@ -655,6 +710,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def delete_user(self, user_id: int) -> bool:
         if not self.connect():
             return False
@@ -668,6 +724,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def get_action_types(self) -> list:
         if not self.connect(): return []
         try:
@@ -678,6 +735,7 @@ class DatabaseManager:
             self.logger.error(f"获取操作类型失败: {e}")
             return []
 
+    @_db_locked
     def get_user_names(self) -> list:
         if not self.connect(): return []
         try:
@@ -688,6 +746,7 @@ class DatabaseManager:
             self.logger.error(f"获取用户姓名失败: {e}")
             return []
 
+    @_db_locked
     def get_latest_version(self) -> dict:
         """获取最新版本信息，包括版本号和下载链接"""
         if not self.connect():
@@ -714,6 +773,7 @@ class DatabaseManager:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+    @_db_locked
     def get_all_notification_settings(self) -> dict[str, dict[str, str]]:
         """获取所有产线的通知配置。"""
         if not self.connect():
@@ -743,6 +803,7 @@ class DatabaseManager:
             self.logger.error(f"获取通知配置失败: {e}")
             return {}
 
+    @_db_locked
     def upsert_notification_setting(self, line_name: str, settings: dict[str, str]) -> bool:
         """保存单个产线的通知配置。"""
         if not self.connect():
@@ -774,6 +835,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def seed_notification_settings_if_empty(self, seed_data: dict[str, dict[str, str]]) -> bool:
         """当通知配置表为空时，写入当前代码内的通知配置作为初始数据。"""
         if not self.connect():
@@ -815,6 +877,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def get_project_types(self) -> list[dict[str, Any]]:
         """获取所有项目类型"""
         if not self.connect():
@@ -827,6 +890,7 @@ class DatabaseManager:
             self.logger.error(f"获取项目类型失败: {e}")
             return []
 
+    @_db_locked
     def get_project_contents_by_type(self, type_id: int) -> list[dict[str, Any]]:
         """根据项目类型ID获取关联的项目内容"""
         if not self.connect():
@@ -845,6 +909,7 @@ class DatabaseManager:
             self.logger.error(f"获取项目内容失败: {e}")
             return []
 
+    @_db_locked
     def get_project_type_name(self, type_id) -> str | None:
         """根据项目类型ID获取名称，未找到时返回 None"""
         if type_id is None:
@@ -860,6 +925,7 @@ class DatabaseManager:
             self.logger.error(f"获取项目类型名称失败: {e}")
             return None
 
+    @_db_locked
     def get_project_content_name(self, content_id) -> str | None:
         """根据项目内容ID获取名称，未找到时返回 None"""
         if content_id is None:
@@ -875,6 +941,7 @@ class DatabaseManager:
             self.logger.error(f"获取项目内容名称失败: {e}")
             return None
 
+    @_db_locked
     def get_work_order_project_names(self, order_id: str) -> dict[str, Any]:
         """根据工单ID获取项目类型和项目内容名称"""
         if not self.connect():
@@ -893,6 +960,7 @@ class DatabaseManager:
             self.logger.error(f"获取工单项目信息失败: {e}")
             return {}
 
+    @_db_locked
     def update_work_order_project_info(self, order_id: str, project_type_id: int, project_content_id: int, remarks: str = None) -> bool:
         """更新工单的项目类型、项目内容和备注信息"""
         if not self.connect():
@@ -925,6 +993,7 @@ class DatabaseManager:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+    @_db_locked
     def add_review_feedback(self, work_order_id: str, file_name: str, directory: str, reason: str) -> bool:
         """添加一条审核不通过反馈。"""
         if not self.connect():
@@ -943,6 +1012,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def get_review_feedback(self, work_order_id: str) -> list[dict[str, Any]]:
         """获取某个工单的所有审核反馈记录。"""
         if not self.connect():
@@ -961,6 +1031,7 @@ class DatabaseManager:
             self.logger.error(f"获取审核反馈失败: {e}")
             return []
 
+    @_db_locked
     def delete_review_feedback(self, work_order_id: str) -> bool:
         """删除某个工单的所有审核反馈记录。"""
         if not self.connect():
@@ -989,6 +1060,7 @@ class DatabaseManager:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
+    @_db_locked
     def get_system_setting(self, key: str, default: str = None) -> str | None:
         """读取系统设置项。表不存在或键不存在时返回 default。"""
         if not self.connect():
@@ -1006,6 +1078,7 @@ class DatabaseManager:
             self.logger.error(f"读取系统设置 [{key}] 失败: {e}")
             return default
 
+    @_db_locked
     def set_system_setting(self, key: str, value: str) -> bool:
         """写入或更新系统设置项。"""
         if not self.connect():
@@ -1025,6 +1098,7 @@ class DatabaseManager:
             self.connection.rollback()
             return False
 
+    @_db_locked
     def get_local_ip(self) -> str:
         """获取本机最适合系统的本地 IP 地址，支持在开启 VPN 时智能识别物理局域网 IP。"""
         import socket

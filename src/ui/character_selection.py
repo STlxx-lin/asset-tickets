@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import hmac
 
 # 从配置文件导入版本号
 from src.core.config import APP_VERSION
@@ -266,7 +267,11 @@ class CharacterSelection(QWidget):
     def verify_admin_password(self, dialog, password):
         """验证管理员密码"""
         from src.core.config import ADMIN_PASSWORD
-        if password == ADMIN_PASSWORD:  # 管理员密码
+        # 安全：未配置 ADMIN_PASSWORD 或输入为空时一律拒绝，避免空密码绕过管理员认证
+        if not ADMIN_PASSWORD or not password:
+            QMessageBox.warning(dialog, "错误", "密码错误！")
+            return
+        if hmac.compare_digest(password.encode('utf-8'), ADMIN_PASSWORD.encode('utf-8')):  # 管理员密码
             dialog.accept()
             # 以管理员身份进入主窗口
             from src.ui.main_window import MainWindow

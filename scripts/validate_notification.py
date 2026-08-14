@@ -71,3 +71,5 @@ except Exception as e:
 
 print()
 print('全部通过' if ok else '存在错误，请检查')
+# 校验失败必须以非零退出码结束，否则 CI/脚本化调用无法感知失败（门禁形同虚设）
+sys.exit(0 if ok else 1)
