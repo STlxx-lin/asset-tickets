@@ -67,11 +67,15 @@ bundle_info_plist = {
 if bundle_icon:
     bundle_info_plist['CFBundleIconFile'] = os.path.basename(bundle_icon)
 
+# 打包 .env（数据库密码/API Token 配置），运行时由 config._load_env_file 从解压目录读取
+ENV_FILE = os.path.join(PROJECT_ROOT, '.env')
+DATA_FILES = [('.env', '.')] if os.path.exists(ENV_FILE) else []
+
 a = Analysis(
     [MAIN_SCRIPT],
     pathex=[PROJECT_ROOT],
     binaries=[],
-    datas=[],
+    datas=DATA_FILES,
     hiddenimports=[
         'pymysql',
         'PySide6.QtCore',
