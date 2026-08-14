@@ -65,6 +65,16 @@ from src.core.database import db_manager
 from .task_manager import Task, TaskManagerDialog
 from .work_order_detail import WorkOrderDetailDialog
 
+# 状态筛选下拉选项（单一来源）：原始值 = 全局 status（摄影/剪辑/运营链） + 美工链 art_status。
+# 与 StatusProgressDelegate.STATUS_PROGRESS_MAP 的 key 对应（该 MAP 额外含展示值）。
+# 新增状态时在此追加，并同步 STATUS_PROGRESS_MAP。
+STATUS_FILTER_OPTIONS = [
+    "拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄",
+    "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑",
+    "美工设计中", "美工待分发", "美工后期审核中", "美工后期重新制作", "美工已完成",
+    "后期已完成", "待上架", "已上架",
+]
+
 # 为兼容现有调用保留变量名，统一使用配置模块中的单一默认值
 NOTIFICATION_TYPE = DEFAULT_NOTIFICATION_TYPE
 
@@ -706,9 +716,6 @@ class MainWindow(QMainWindow):
         self.update_history_list()
         # 只绑定一次双击信号，防止多次弹窗
         self.table_view.doubleClicked.connect(self.on_work_order_row_double_clicked)
-        # 2. 在 __init__ 初始化时检测版本
-        self.version_label = QLabel(f"版本：{APP_VERSION}")
-        self.version_label.setStyleSheet("font-size: 13px; color: #888;")
     def get_ip_address(self):
         ip = db_manager.get_local_ip()
         return "N/A" if ip == "无法获取IP" else ip
@@ -863,11 +870,9 @@ class MainWindow(QMainWindow):
         # 状态筛选
         self.status_filter = QComboBox()
         self.status_filter.addItem("全部状态")
-        # 全局状态（摄影/剪辑/运营链）+ 美工链 art_status 原始值（筛选同时匹配 status 与 art_status）
-        self.status_filter.addItems(["拍摄中", "拍摄完成", "视频审核中", "审核通过", "重新拍摄",
-                                     "后期待领取", "后期处理中", "视频后期审核中", "后期审核通过", "后期重新剪辑",
-                                     "美工设计中", "美工待分发", "美工后期审核中", "美工后期重新制作", "美工已完成",
-                                     "后期已完成", "待上架", "已上架"])
+        # 选项来自单一常量 STATUS_FILTER_OPTIONS（全局状态 + 美工链 art_status 原始值；
+        # 筛选时同时匹配 status 与 art_status 列）
+        self.status_filter.addItems(STATUS_FILTER_OPTIONS)
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
@@ -3133,60 +3138,6 @@ class MainWindow(QMainWindow):
             'log_action':    self.log_action,
         }
         _dispatch(self, order_data, callbacks)
-    def handle_field_button(self, field, order_data):
-        if field == "上传素材":
-            parent_dialog = self.sender().parent()
-            photographer = None
-            # 优先查找下拉框
-            photographer_combo = parent_dialog.findChild(QComboBox, 'photographer_combo')
-            if photographer_combo:
-                val = photographer_combo.currentText()
-                if val and val.strip():
-                    photographer = val.strip()
-            # 查找输入框
-            if not photographer:
-                photographer_edit = parent_dialog.findChild(QLineEdit, 'photographer_edit')
-                if photographer_edit:
-                    val = photographer_edit.text()
-                    if val and val.strip():
-                        photographer = val.strip()
-            # 兜底：遍历所有QLineEdit和QComboBox
-            if not photographer:
-                for w in parent_dialog.findChildren(QLineEdit):
-                    val = w.text()
-                    if val and val.strip():
-                        photographer = val.strip()
-                        break
-            if not photographer:
-                for cb in parent_dialog.findChildren(QComboBox):
-                    val = cb.currentText()
-                    if val and val.strip():
-                        photographer = val.strip()
-                        break
-            if not photographer:
-                QMessageBox.warning(self, "提示", "请先选择摄影师")
-                return
-            files, _ = QFileDialog.getOpenFileNames(self, "选择要上传的素材")
-            if not files:
-                return
-            department = order_data.get('department', '')
-            if platform.system() == 'Windows':
-                base_dir = r'\\dabadoc\01原始素材\01原始素材'
-            else:
-                base_dir = '/Volumes/01原始素材/01原始素材'
-            target_dir = os.path.join(base_dir, photographer, department, f"{order_data['id']} {order_data['model']} {order_data['name']}")
-            os.makedirs(target_dir, exist_ok=True)
-            # 使用任务管理器处理文件上传
-            task_name = f"上传素材 - 工单{order_data['id']}"
-            self.add_file_task(
-                name=task_name,
-                files=[os.path.basename(f) for f in files],
-                src_dir=os.path.dirname(files[0]),
-                dest_dir=target_dir,
-                op_type="copy"
-            )
-        else:
-            QMessageBox.information(self, "操作", f"点击了按钮：{field}")
     def handle_edit_selected_order(self):
         index = self.table_view.currentIndex()
         if not index.isValid():

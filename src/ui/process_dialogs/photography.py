@@ -35,6 +35,7 @@ from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
     IMG_EXTS,
+    PHOTOGRAPHERS,
     PHOTOGRAPHY_DIST_IMG,
     PHOTOGRAPHY_DIST_VIDEO,
     PHOTOGRAPHY_UPLOAD,
@@ -273,7 +274,8 @@ def show_photography_dialog(parent, order_data, callbacks):
     operation_layout.setLabelAlignment(Qt.AlignRight)
     photographer_combo = QComboBox()
     photographer_combo.addItem("")
-    photographer_combo.addItems(["01阿乐", "02杨钧", "03Peter", "04玉瑞", "05Jessie", "06Candy", "07项项","08Arin"])
+    # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）
+    photographer_combo.addItems(PHOTOGRAPHERS)
     photographer_combo.setObjectName('photographer_combo')
     photographer_combo.setPlaceholderText("请选择摄影师")
     operation_layout.addRow("摄影师:", photographer_combo)
