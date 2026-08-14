@@ -22,11 +22,35 @@ TIME_FIELD_MAP = {
 }
 
 
+# Token 缓存：优先数据库 app_system_settings.api_token（管理员设置页可在线更新），
+# 其次环境变量 API_TOKEN（.env 由 config 模块加载）；设置保存后调用 refresh_api_token_cache() 刷新。
+_token_cache: str | None = None
+
+
+def _get_token() -> str:
+    global _token_cache
+    if _token_cache is None:
+        # 数据库优先（管理员设置页可在线更新，无需重启）
+        try:
+            _token_cache = db_manager.get_system_setting('api_token', default='') or ''
+        except Exception:
+            _token_cache = ''
+        if not _token_cache:
+            _token_cache = os.environ.get('API_TOKEN', '')
+    return _token_cache
+
+
+def refresh_api_token_cache() -> None:
+    """清空 token 缓存（管理员在设置页保存新 token 后调用，立即生效）。"""
+    global _token_cache
+    _token_cache = None
+
+
 def _build_headers() -> dict:
-    """构建请求头；token 从环境变量 API_TOKEN 读取（.env 由 config 模块加载）"""
-    token = os.environ.get('API_TOKEN', '')
+    """构建请求头；token 从数据库设置或环境变量读取。"""
+    token = _get_token()
     if not token:
-        logger.warning("环境变量 API_TOKEN 未配置，外部工单系统 API 将无法访问")
+        logger.warning("API Token 未配置（数据库 api_token 或环境变量 API_TOKEN），外部工单系统 API 将无法访问")
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
