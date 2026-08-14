@@ -52,6 +52,7 @@ sql/*.sql
 src/core/config.local.py
 .review/
 .cache/
+.mimosa/
 
 # ===== IDE / 编辑器 =====
 .vscode/
