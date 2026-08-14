@@ -314,6 +314,9 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         fname, fpath = files_found[idx]
         preview_filename_label.setText(f"[{idx + 1}/{len(files_found)}]  {fname}")
         preview_widget.show_file(fpath)
+        # 同步更新「上一个/下一个」按钮状态（此前缺失导致按钮始终禁用、点击无反应）
+        prev_file_btn.setEnabled(idx > 0)
+        next_file_btn.setEnabled(idx < len(files_found) - 1)
         return len(files_found)
 
     def build_tab(files_found, title):
@@ -423,19 +426,11 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
     def on_prev_file():
         files_found = current_tab_files()
-        idx = preview_state['index'] - 1
-        if 0 <= idx < len(files_found):
-            load_preview(files_found, idx)
-            prev_file_btn.setEnabled(idx > 0)
-            next_file_btn.setEnabled(idx < len(files_found) - 1)
+        load_preview(files_found, preview_state['index'] - 1)
 
     def on_next_file():
         files_found = current_tab_files()
-        idx = preview_state['index'] + 1
-        if 0 <= idx < len(files_found):
-            load_preview(files_found, idx)
-            prev_file_btn.setEnabled(idx > 0)
-            next_file_btn.setEnabled(idx < len(files_found) - 1)
+        load_preview(files_found, preview_state['index'] + 1)
 
     prev_file_btn.clicked.connect(on_prev_file)
     next_file_btn.clicked.connect(on_next_file)
