@@ -514,6 +514,12 @@ def show_ops_dialog(parent, order_data, callbacks):
         delete_btn.clicked.connect(delete_product)
         # 记录日志
         _log_action("添加产品信息", f"工单ID={order_data['id']}, 角色=运营, 产品标题={title}, 关键词={keywords}, URL={url}")
+        # 业务顺序门禁：领取素材 → 待上架(95%) → 添加产品信息 → 已上架(100%)，
+        # 状态单调递增不回退（此前无条件置"已上架"，先上架后领取会把状态降级）
+        if order_data['status'] != '待上架':
+            QMessageBox.warning(dialog, "提示",
+                f"当前工单状态为【{order_data['status']}】，请先领取素材（状态变为待上架）后再添加产品信息上架。")
+            return
         # 自动变更状态为"已上架"（本地+外部 API 同步，失败时回滚）
         ok, error_msg = update_status_with_api(order_data['id'], '已上架', order_data['status'])
         if not ok:
