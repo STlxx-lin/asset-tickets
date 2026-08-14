@@ -67,9 +67,10 @@ bundle_info_plist = {
 if bundle_icon:
     bundle_info_plist['CFBundleIconFile'] = os.path.basename(bundle_icon)
 
-# 打包 .env（数据库密码/API Token 配置），运行时由 config._load_env_file 从解压目录读取
+# 打包 .env（数据库密码/API Token 配置），运行时由 config._load_env_file 从解压目录读取。
+# 注意：源路径必须为绝对路径——PyInstaller 会把 datas 中的相对路径按 spec 文件所在目录解析
 ENV_FILE = os.path.join(PROJECT_ROOT, '.env')
-DATA_FILES = [('.env', '.')] if os.path.exists(ENV_FILE) else []
+DATA_FILES = [(ENV_FILE, '.')] if os.path.exists(ENV_FILE) else []
 
 a = Analysis(
     [MAIN_SCRIPT],
