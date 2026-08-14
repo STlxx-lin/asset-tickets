@@ -490,9 +490,26 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
         total = len(pending)
         completed = {'count': 0}
+        failed = {'count': 0}
 
-        def update_status():
-            completed['count'] += 1
+        def update_status(task_ok=True, task_errors=None):
+            if task_ok:
+                completed['count'] += 1
+            else:
+                failed['count'] += 1
+            if failed['count'] > 0:
+                # 存在失败任务：不推进审批状态，提示用户重试，避免"审批通过但文件未分发"的状态不一致
+                if completed['count'] + failed['count'] >= total:
+                    try:
+                        if dialog.isVisible():
+                            QMessageBox.warning(
+                                dialog, "审批未完成",
+                                f"有 {failed['count']} 个文件分发任务失败，审批未通过，请重试：\n"
+                                + "\n".join((task_errors or [])[:5])
+                            )
+                    except RuntimeError:
+                        pass
+                return
             if completed['count'] < total:
                 return
             # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）

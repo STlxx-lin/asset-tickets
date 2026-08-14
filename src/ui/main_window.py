@@ -1058,22 +1058,35 @@ class MainWindow(QMainWindow):
                 if dialog.exec() != QDialog.DialogCode.Accepted:
                     return
                 
-                # 先删除数据库工单，成功后再删除文件，避免 DB 失败导致文件丢失
-                if not db_manager.delete_work_order(order_id):
-                    self.show_error_dialog("失败: 删除工单失败，未删除任何文件，请重试或联系管理员")
-                    return
-
-                # 执行删除操作
+                # 先删除文件，再删除数据库工单：文件删除失败时保留 DB 记录，避免产生无法定位的孤儿文件
                 delete_results = []
+                delete_failures = 0
                 for path, exists in all_paths:
                     if exists:
                         try:
-                            shutil.rmtree(path, ignore_errors=True)
+                            if os.path.isdir(path):
+                                shutil.rmtree(path)
+                            else:
+                                os.remove(path)
                             delete_results.append((path, "已删除", "#4caf50"))
                         except Exception as e:
+                            delete_failures += 1
                             delete_results.append((path, f"删除失败: {e}", "#ff4d4f"))
+                            self.log_action("删除工单文件失败", f"{path} 删除失败：{e}")
                     else:
                         delete_results.append((path, "不存在", "#ff4d4f"))
+
+                if delete_failures > 0:
+                    # 有文件删除失败：不删除数据库记录，提示用户重试，防止文件成为无法定位的孤儿数据
+                    self.show_error_dialog(
+                        f"有 {delete_failures} 个路径删除失败，工单记录已保留（未删除），请处理后重试"
+                    )
+                    self.refresh_work_orders()
+                    return
+
+                if not db_manager.delete_work_order(order_id):
+                    self.show_error_dialog("失败: 文件已删除但数据库工单删除失败，请重试或联系管理员")
+                    return
 
                 # 构建结果HTML
                 res_rows = []
@@ -2634,7 +2647,7 @@ class MainWindow(QMainWindow):
         basic_layout.setSpacing(12)
         basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         # 创建字段
-        id_label = QLabel(order_data['id'])
+        id_label = QLabel(str(order_data['id']))
         dept_combo = QComboBox()
         dept_combo.addItems(self.departments)
         dept_combo.setCurrentText(order_data['department'])
@@ -2965,6 +2978,7 @@ class MainWindow(QMainWindow):
                 return
             # 执行移动/重命名
             move_results = []
+            moved_pairs = []  # 记录已成功移动的 (旧路径, 新路径)，用于 DB 失败时回滚
             for old_path, new_path, old_exists, new_exists in path_checks:
                 if old_exists:
                     if new_exists:
@@ -2974,6 +2988,7 @@ class MainWindow(QMainWindow):
                     try:
                         os.makedirs(os.path.dirname(new_path), exist_ok=True)
                         shutil.move(old_path, new_path)
+                        moved_pairs.append((old_path, new_path))
                         move_results.append((f"{old_path} → {new_path}", "已移动/重命名", "#4caf50"))
                         self.log_action("工单路径变更", f"{old_path} → {new_path} 已移动/重命名")
                     except Exception as e:
@@ -3023,7 +3038,21 @@ class MainWindow(QMainWindow):
                 self.refresh_work_orders()
                 dialog.accept()
             else:
-                QMessageBox.critical(dialog, "失败", "更新工单失败")
+                # DB 更新失败：反向回滚已移动的文件，避免文件系统与数据库不一致
+                rollback_failures = []
+                for old_path, new_path in reversed(moved_pairs):
+                    try:
+                        if os.path.exists(new_path) and not os.path.exists(old_path):
+                            shutil.move(new_path, old_path)
+                    except Exception as e:
+                        rollback_failures.append(f"{new_path} 回滚失败：{e}")
+                if rollback_failures:
+                    QMessageBox.critical(
+                        dialog, "失败",
+                        "更新工单失败，且部分已移动文件回滚失败，请手动检查：\n" + "\n".join(rollback_failures)
+                    )
+                else:
+                    QMessageBox.critical(dialog, "失败", "更新工单失败，已回滚文件移动")
         ok_btn.clicked.connect(on_ok)
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(ok_btn)
@@ -3523,25 +3552,31 @@ class MainWindow(QMainWindow):
         # 保存当前选中的发起人
         current_creator = self.creator_filter.currentText()
         
-        # 清除现有选项（保留"全部发起人"）
-        self.creator_filter.clear()
-        self.creator_filter.addItem("全部发起人")
-        
-        # 获取所有发起人，并去重（基于全量数据而非筛选结果）
-        creators = set()
-        for order in (self.all_orders_data or self.work_orders_data):
-            creator = order.get('creator')
-            if creator:
-                creators.add(creator)
-        
-        # 添加发起人选项
-        for creator in sorted(creators):
-            self.creator_filter.addItem(creator)
-        
-        # 尝试恢复之前选中的发起人
-        index = self.creator_filter.findText(current_creator)
-        if index >= 0:
-            self.creator_filter.setCurrentIndex(index)
+        # 抑制 currentIndexChanged 信号：clear/addItem/setCurrentIndex 会发射该信号，
+        # 避免 refresh_work_orders 时 apply_filters 被级联触发 3~4 次（每次全量重建表格+重复查询日志）
+        self.creator_filter.blockSignals(True)
+        try:
+            # 清除现有选项（保留"全部发起人"）
+            self.creator_filter.clear()
+            self.creator_filter.addItem("全部发起人")
+            
+            # 获取所有发起人，并去重（基于全量数据而非筛选结果）
+            creators = set()
+            for order in (self.all_orders_data or self.work_orders_data):
+                creator = order.get('creator')
+                if creator:
+                    creators.add(creator)
+            
+            # 添加发起人选项
+            for creator in sorted(creators):
+                self.creator_filter.addItem(creator)
+            
+            # 尝试恢复之前选中的发起人
+            index = self.creator_filter.findText(current_creator)
+            if index >= 0:
+                self.creator_filter.setCurrentIndex(index)
+        finally:
+            self.creator_filter.blockSignals(False)
     def calculate_art_status(self, order, logs):
         global_status = order.get('status', '')
         
@@ -3579,7 +3614,7 @@ class MainWindow(QMainWindow):
         has_distribute = False
         for log in logs:
             action = log.get('action_type', '')
-            details = log.get('details', '')
+            details = log.get('details') or ''
             if action in ['美工分发运营', '美工分发销售'] and f"工单ID={order['id']}" in details:
                 has_distribute = True
                 break
@@ -3622,7 +3657,7 @@ class MainWindow(QMainWindow):
         has_edit_dist = False
         for log in logs:
             action = log.get('action_type', '')
-            details = log.get('details', '')
+            details = log.get('details') or ''
             if f"工单ID={order['id']}" not in details:
                 continue
             if action in ['剪辑分发运营', '剪辑分发销售']:

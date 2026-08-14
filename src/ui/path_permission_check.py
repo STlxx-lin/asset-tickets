@@ -165,6 +165,9 @@ class _PermissionScanWorker(QThread):
 
     def run(self):
         for row, (label, path, need_write) in enumerate(self.checks):
+            # 对话框关闭或用户取消时提前退出，避免线程泄漏与访问已销毁控件
+            if self.isInterruptionRequested():
+                return
             result = check_path_permission(path, need_write)
             self.item_done.emit(row, result)
         self.all_done.emit()
@@ -343,6 +346,15 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
 
     refresh_btn.clicked.connect(run_check)
     close_btn.clicked.connect(dialog.reject)
+
+    def stop_worker():
+        """关闭对话框时中断并等待后台检查线程，避免 "QThread: Destroyed while thread is still running" 崩溃"""
+        nonlocal worker
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            if not worker.wait(5000):
+                logger.warning("权限检查线程在 5 秒内未退出，强制继续关闭对话框")
+    dialog.finished.connect(lambda _result: stop_worker())
 
     run_check()
     dialog.exec()

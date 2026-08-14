@@ -6,7 +6,7 @@ import logging
 
 import requests
 
-from src.core.api_manager import api_manager
+from src.core.api_manager import _build_headers, api_manager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -48,7 +48,7 @@ def update_work_order_status_and_times(order_id, status, file_distribution_time,
             # 发送请求更新状态
             logger.info(f"更新素材工单{order_id}状态为: {status}")
             response = requests.post(api_manager._update_url, params=params, json=payload, 
-                                     headers=api_manager._headers, timeout=10)
+                                     headers=_build_headers(), timeout=10)
             
             if response.status_code != 200:
                 logger.error(f"更新素材工单{order_id}状态失败: {response.status_code}, {response.text}")
@@ -111,7 +111,7 @@ def main():
         print("使用方法:")
         print("python update_work_order_status.py <工单ID> [状态] [文件分发时间] [美工素材领取时间] [美工选择成品目录时间] [剪辑素材领取时间] [剪辑选择成品目录时间]")
         print("时间格式: YYYY-MM-DD HH:MM:SS，若不更新某字段可传入空字符串")
-        return
+        sys.exit(1)  # 用法错误应以非零退出，便于脚本化调用区分"用法错误"与"成功"
 
     order_id = sys.argv[1]
     status = sys.argv[2] if len(sys.argv) > 2 else ''

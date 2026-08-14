@@ -238,16 +238,23 @@ def show_sales_dialog(parent, order_data, callbacks):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         # 使用任务管理器处理文件移动
         task_name = f"销售领取素材 - 工单{order_data['id']}"
-        def update_status():
-            # 对话框可能已被用户关闭，防护访问已销毁控件
-            try:
-                if not dialog.isVisible():
-                    return
-            except RuntimeError:
+        def update_status(task_ok=True, task_errors=None):
+            # 任务失败时不显示"领取完成"成功提示
+            if not task_ok:
+                try:
+                    if dialog.isVisible():
+                        QMessageBox.warning(dialog, "任务失败", f"文件操作失败：\n" + "\n".join((task_errors or [])[:5]))
+                except RuntimeError:
+                    pass
                 return
+            # 日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("销售领取素材", f"工单ID={order_data['id']}, 角色=销售, 源路径={src}, 目标路径={dest}")
-            # 显示完成消息
-            show_path_result(dialog, "领取完成", f"素材已领取到：\n{dest}", dest)
+            # 显示完成消息（对话框已关闭时跳过 UI 提示）
+            try:
+                if dialog.isVisible():
+                    show_path_result(dialog, "领取完成", f"素材已领取到：\n{dest}", dest)
+            except RuntimeError:
+                pass
         _add_file_task(
             name=task_name,
             files=os.listdir(src),

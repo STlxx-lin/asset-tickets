@@ -39,8 +39,8 @@ def build_windows(onefile=False):
         # 确保 spec 文件中设置了 onefile=True
         pass  # 已在 spec 文件中设置
     subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT)
-    # 生成带版本号的文件名
-    exe_name = f"素材工单系统{APP_VERSION}.exe"
+    # 生成带版本号的文件名（须与 specs/工单管理系统.spec 中 name 一致，否则提示的路径与实际产物不符）
+    exe_name = f"素材工单系统_{APP_VERSION}_pyinstaller.exe"
     print(f"Windows 版本构建完成: dist/{exe_name}")
 
 def build_mac(onefile=False):
@@ -52,30 +52,34 @@ def build_mac(onefile=False):
     # 执行打包命令
     subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT)
     
-    # 生成带版本号的文件名
+    # 生成带版本号的文件名（须与 specs/工单管理系统_mac.spec 中 name 一致，否则 DMG 步骤会因源目录不存在而失败）
     if onefile:
-        exe_name = f"素材工单系统{APP_VERSION}_mac"
+        exe_name = f"工单管理系统{APP_VERSION}_mac"
         print(f"macOS 单文件版本构建完成: dist/{exe_name}")
     else:
-        app_name = f"素材工单系统{APP_VERSION}_mac.app"
+        app_name = f"工单管理系统{APP_VERSION}_mac.app"
         print(f"macOS App版本构建完成: dist/{app_name}")
     
     # 生成DMG安装包
     if platform.system() == "Darwin":  # 确保在macOS系统上运行
         print("正在生成DMG安装包...")
         dmg_name = f"素材工单系统{APP_VERSION}_mac.dmg"
-        app_path = os.path.join("dist", f"素材工单系统{APP_VERSION}_mac.app")
+        app_path = os.path.join("dist", f"工单管理系统{APP_VERSION}_mac.app")
         dmg_path = os.path.join("dist", dmg_name)
         
         # 使用hdiutil（macOS系统自带工具）创建DMG文件
         # 步骤1: 创建临时目录
         temp_dir = os.path.join("dist", "temp_dmg")
+        # 若上次运行被中断残留临时目录，先清理，避免 copytree 目标已存在而失败
+        if os.path.exists(temp_dir):
+            import shutil
+            shutil.rmtree(temp_dir)
         os.makedirs(temp_dir, exist_ok=True)
         
         try:
             # 步骤2: 将App复制到临时目录
             import shutil
-            shutil.copytree(app_path, os.path.join(temp_dir, f"素材工单系统{APP_VERSION}_mac.app"))
+            shutil.copytree(app_path, os.path.join(temp_dir, f"工单管理系统{APP_VERSION}_mac.app"))
             
             # 步骤3: 添加Applications链接（macOS安装惯例）
             applications_link = os.path.join(temp_dir, "Applications")

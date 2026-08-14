@@ -1,14 +1,76 @@
+# ===== Python =====
 __pycache__/
-.vscode/
-*.pyc
-*.zip
-dist/
+*.py[cod]
+*$py.class
+*.so
+
+# ===== 构建产物 =====
 build/
-src/core/config.local.py
+dist/
+*.egg-info/
+.eggs/
+eggs/
+sdist/
+wheels/
+.installed.cfg
+*.egg
+
+# Nuitka 打包临时产物（scripts/build_nuitka.py）
+*.build/
+*.dist/
+*.onefile-build/
+
+# ===== 测试与静态检查缓存 =====
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+ENV/
+
+# ===== 环境变量与密钥 =====
 .env
 .env.*
-.venv/
+!.env.example
+
+# ===== 本地配置 / 审查草稿 =====
+src/core/config.local.py
+.review/
+.cache/
+
+# ===== IDE / 编辑器 =====
+.vscode/
+.idea/
 .trae/
 .zcode/
+*.swp
+*.swo
+*~
 
-!.env.example
+# ===== 日志 / 临时文件 =====
+*.log
+logs/
+*.tmp
+*.temp
+
+# ===== 压缩包 =====
+*.zip
+*.7z
+*.rar
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
