@@ -12,6 +12,7 @@ from PySide6.QtGui import (
     QDesktopServices,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -178,7 +179,7 @@ def show_photography_dialog(parent, order_data, callbacks):
             padding: 10px 0;
         }
     """)
-    title_label.setAlignment(Qt.AlignCenter)
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     main_layout.addWidget(title_label)
 
     # 获取不通过反馈
@@ -255,7 +256,7 @@ def show_photography_dialog(parent, order_data, callbacks):
     basic_group = QGroupBox("工单基本信息")
     basic_layout = QFormLayout(basic_group)
     basic_layout.setSpacing(12)
-    basic_layout.setLabelAlignment(Qt.AlignRight)
+    basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     id_label = QLabel(order_data['id'])
     dept_label = QLabel(order_data['department'])
     model_label = QLabel(order_data['model'])
@@ -271,7 +272,7 @@ def show_photography_dialog(parent, order_data, callbacks):
     operation_group = QGroupBox("操作设置")
     operation_layout = QFormLayout(operation_group)
     operation_layout.setSpacing(12)
-    operation_layout.setLabelAlignment(Qt.AlignRight)
+    operation_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     photographer_combo = QComboBox()
     photographer_combo.addItem("")
     # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）
@@ -284,7 +285,7 @@ def show_photography_dialog(parent, order_data, callbacks):
     path_group = QGroupBox("路径信息")
     path_layout = QFormLayout(path_group)
     path_layout.setSpacing(12)
-    path_layout.setLabelAlignment(Qt.AlignRight)
+    path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
         label.setStyleSheet("""
@@ -301,7 +302,9 @@ def show_photography_dialog(parent, order_data, callbacks):
             }
         """)
         label.setToolTip(f"双击打开：{tooltip_text}")
-        label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        def on_mouse_press(event):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        label.mousePressEvent = on_mouse_press
         return label
     upload_path = get_upload_dir()
     dist_img_path = get_dist_img_dir()
@@ -319,7 +322,9 @@ def show_photography_dialog(parent, order_data, callbacks):
             new_upload_path = PHOTOGRAPHY_UPLOAD(photographer, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
             upload_label.setText(new_upload_path)
             upload_label.setToolTip("双击打开：上传素材路径")
-            upload_label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(new_upload_path))
+            def on_mouse_press_updated(event):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(new_upload_path))
+            upload_label.mousePressEvent = on_mouse_press_updated
     photographer_combo.currentTextChanged.connect(update_path_display)
     info_label = QLabel("💡 提示：请先选择摄影师，然后进行相应的操作")
     info_label.setStyleSheet("""
@@ -343,11 +348,11 @@ def show_photography_dialog(parent, order_data, callbacks):
         fb_table = QTableWidget()
         fb_table.setColumnCount(3)
         fb_table.setHorizontalHeaderLabels(["文件名", "素材目录", "退回原因"])
-        fb_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        fb_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         fb_table.setRowCount(len(feedbacks))
-        fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
-        fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
-        fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        fb_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        fb_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        fb_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         fb_table.setColumnWidth(0, 200)
         fb_table.setColumnWidth(1, 140)
         fb_table.setStyleSheet("""
@@ -416,23 +421,45 @@ def show_photography_dialog(parent, order_data, callbacks):
     distribute_img_btn = QPushButton("分发图片")
     distribute_vid_btn = QPushButton("分发视频")
 
-    # 仅在“审核通过”状态下才允许分发。如果视频审核已关闭，允许“视频审核中”的工单进行分发。
-    status = order_data.get('status')
-    if is_video_review_enabled():
-        is_approved = status == '审核通过'
-        tooltip_text = "需要视频审核通过后方可分发"
-    else:
-        is_approved = status in ['审核通过', '视频审核中']
-        tooltip_text = "需要先上传素材方可分发"
-        
-    distribute_img_btn.setEnabled(is_approved)
-    distribute_vid_btn.setEnabled(is_approved)
-    if not is_approved:
-        gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
-        distribute_img_btn.setStyleSheet(gray_style)
-        distribute_vid_btn.setStyleSheet(gray_style)
-        distribute_img_btn.setToolTip(tooltip_text)
-        distribute_vid_btn.setToolTip(tooltip_text)
+    gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
+
+    def refresh_button_states():
+        """根据当前状态与开关，解耦刷新「分发图片」与「分发视频」按钮的可用性及提示。"""
+        current_status = order_data.get('status', '')
+        vr_enabled = is_video_review_enabled()
+
+        # 1. 分发图片（美工链）：不受视频审核限制，只要不是退回重拍状态均可分发
+        img_allowed = current_status != '重新拍摄'
+        distribute_img_btn.setEnabled(img_allowed)
+        if img_allowed:
+            distribute_img_btn.setStyleSheet("")
+            distribute_img_btn.setToolTip("分发图片素材给美工")
+        else:
+            distribute_img_btn.setStyleSheet(gray_style)
+            distribute_img_btn.setToolTip("工单已被退回重拍，请重新上传素材后再分发")
+
+        # 2. 分发视频（剪辑链）：若启用视频审核，需审核通过或已进入后期阶段；若未启用视频审核，只要不是退回重拍即可分发
+        if vr_enabled:
+            post_approved_statuses = {
+                '审核通过', '后期待领取', '后期处理中', '正在剪辑',
+                '视频后期审核中', '后期审核通过', '后期已完成', '美工已完成'
+            }
+            vid_allowed = current_status in post_approved_statuses
+            vid_tooltip = "分发视频素材给剪辑" if vid_allowed else "需要视频审核通过后方可分发"
+        else:
+            vid_allowed = current_status != '重新拍摄'
+            vid_tooltip = "分发视频素材给剪辑" if vid_allowed else "工单已被退回重拍，请重新上传素材后再分发"
+
+        distribute_vid_btn.setEnabled(vid_allowed)
+        if vid_allowed:
+            distribute_vid_btn.setStyleSheet("")
+            distribute_vid_btn.setToolTip(vid_tooltip)
+        else:
+            distribute_vid_btn.setStyleSheet(gray_style)
+            distribute_vid_btn.setToolTip(vid_tooltip)
+
+    # 初始刷新按钮状态
+    refresh_button_states()
 
     def on_upload_material():
         # 验证摄影师是否已选择
@@ -514,24 +541,10 @@ def show_photography_dialog(parent, order_data, callbacks):
                 return
             # 仅成功后同步内存快照（失败时本地已回滚，内存必须保持旧值，避免分发门禁误放行）
             order_data['status'] = new_status
-            # 更新按钮状态（对话框已关闭时跳过 UI 操作）
+            # 刷新按钮状态（对话框已关闭时跳过 UI 操作）
             try:
                 if dialog.isVisible():
-                    if is_video_review_enabled():
-                        distribute_img_btn.setEnabled(False)
-                        distribute_vid_btn.setEnabled(False)
-                        gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
-                        distribute_img_btn.setStyleSheet(gray_style)
-                        distribute_vid_btn.setStyleSheet(gray_style)
-                        distribute_img_btn.setToolTip("需要视频审核通过后方可分发")
-                        distribute_vid_btn.setToolTip("需要视频审核通过后方可分发")
-                    else:
-                        distribute_img_btn.setEnabled(True)
-                        distribute_vid_btn.setEnabled(True)
-                        distribute_img_btn.setStyleSheet("")
-                        distribute_vid_btn.setStyleSheet("")
-                        distribute_img_btn.setToolTip("")
-                        distribute_vid_btn.setToolTip("")
+                    refresh_button_states()
             except RuntimeError:
                 pass
             parent.refresh_work_orders()
@@ -576,9 +589,8 @@ def show_photography_dialog(parent, order_data, callbacks):
         return src_files
     def on_distribute_img():
         status = order_data.get('status')
-        allow_distribute = (status == '审核通过') or (not is_video_review_enabled() and status == '视频审核中')
-        if not allow_distribute:
-            QMessageBox.warning(dialog, "提示", "工单未审核通过，无法分发！")
+        if status == '重新拍摄':
+            QMessageBox.warning(dialog, "提示", "工单已被退回重拍，请先重新上传素材后再分发！")
             return
         src_dir = get_upload_dir()
         target_dir = get_dist_img_dir()
@@ -605,17 +617,27 @@ def show_photography_dialog(parent, order_data, callbacks):
                 return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发图片", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
-            # 更新工单状态（API 失败时回滚本地状态）；失败即中止，不发通知/不报成功
-            ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', order_data['status'])
-            if not ok:
-                try:
-                    if dialog.isVisible():
-                        show_api_update_error(dialog, error_msg)
-                except RuntimeError:
-                    pass
-                return
-            # 成功后同步内存快照，避免对话框内重复分发（分发门禁基于内存状态）
-            order_data['status'] = '后期待领取'
+            
+            # 若当前处于前期阶段，推进为「后期待领取」；若已在后续状态（如剪辑/美工已处理或补发）则保持
+            current_s = order_data.get('status')
+            if current_s in ['审核通过', '视频审核中', '拍摄完成', '拍摄中']:
+                ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', current_s)
+                if not ok:
+                    try:
+                        if dialog.isVisible():
+                            show_api_update_error(dialog, error_msg)
+                    except RuntimeError:
+                        pass
+                    return
+                order_data['status'] = '后期待领取'
+
+            # 刷新按钮状态（避免分发图片后锁死分发视频按钮）
+            try:
+                if dialog.isVisible():
+                    refresh_button_states()
+            except RuntimeError:
+                pass
+
             parent.refresh_work_orders()
             # 发送通知：摄影分发图片
             send_notification(
@@ -640,9 +662,16 @@ def show_photography_dialog(parent, order_data, callbacks):
         )
     def on_distribute_vid():
         status = order_data.get('status')
-        allow_distribute = (status == '审核通过') or (not is_video_review_enabled() and status == '视频审核中')
-        if not allow_distribute:
-            QMessageBox.warning(dialog, "提示", "工单未审核通过，无法分发！")
+        vr_enabled = is_video_review_enabled()
+        post_approved_statuses = {
+            '审核通过', '后期待领取', '后期处理中', '正在剪辑',
+            '视频后期审核中', '后期审核通过', '后期已完成', '美工已完成'
+        }
+        if status == '重新拍摄':
+            QMessageBox.warning(dialog, "提示", "工单已被退回重拍，请先重新上传素材后再分发！")
+            return
+        if vr_enabled and status not in post_approved_statuses:
+            QMessageBox.warning(dialog, "提示", "需要视频审核通过后方可分发视频！")
             return
         src_dir = get_upload_dir()
         target_dir = get_dist_video_dir()
@@ -669,17 +698,27 @@ def show_photography_dialog(parent, order_data, callbacks):
                 return
             # 状态更新/日志为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
             _log_action("分发视频", f"工单ID={order_data['id']}, 角色={parent.role}, 源路径={src_dir}, 目标路径={target_dir}")
-            # 更新工单状态（API 失败时回滚本地状态）；失败即中止，不发通知/不报成功
-            ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', order_data['status'])
-            if not ok:
-                try:
-                    if dialog.isVisible():
-                        show_api_update_error(dialog, error_msg)
-                except RuntimeError:
-                    pass
-                return
-            # 成功后同步内存快照，避免对话框内重复分发
-            order_data['status'] = '后期待领取'
+            
+            # 若当前处于前期状态，推进为「后期待领取」；若已在后续状态（如补发）则保持
+            current_s = order_data.get('status')
+            if current_s in ['审核通过', '视频审核中', '拍摄完成', '拍摄中']:
+                ok, error_msg = update_status_with_api(order_data['id'], '后期待领取', current_s)
+                if not ok:
+                    try:
+                        if dialog.isVisible():
+                            show_api_update_error(dialog, error_msg)
+                    except RuntimeError:
+                        pass
+                    return
+                order_data['status'] = '后期待领取'
+
+            # 刷新按钮状态
+            try:
+                if dialog.isVisible():
+                    refresh_button_states()
+            except RuntimeError:
+                pass
+
             parent.refresh_work_orders()
             # 发送通知：摄影分发视频
             send_notification(
