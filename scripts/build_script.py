@@ -8,8 +8,10 @@ python scripts/build_script.py --release
 import argparse
 import os
 import platform
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,14 +99,11 @@ def build_mac(onefile=False):
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
-import re
-
-
 def increment_version():
     """读取 config.py，增加版本号，并保存"""
-    config_path = 'src/core/config.py'
-    with open(config_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+    # 基于脚本位置解析固定路径（不依赖当前工作目录），避免误写其他位置的 config.py
+    config_path = (Path(PROJECT_ROOT) / 'src' / 'core' / 'config.py').resolve()
+    content = config_path.read_text(encoding='utf-8')
     
     # 匹配 APP_VERSION = "v1.2.3" 或 'v1.2.3'
     pattern = r'APP_VERSION\s*=\s*["\']v?(\d+)\.(\d+)\.(\d+)["\']'
@@ -121,8 +120,7 @@ def increment_version():
     # 替换内容
     new_content = re.sub(pattern, f'APP_VERSION = "{new_version}"', content)
     
-    with open(config_path, 'w', encoding='utf-8') as f:
-        f.write(new_content)
+    config_path.write_text(new_content, encoding='utf-8')
         
     print(f"版本号已更新: v{major}.{minor}.{patch} -> {new_version}")
     return new_version

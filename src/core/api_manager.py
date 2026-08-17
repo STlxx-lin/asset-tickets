@@ -1,12 +1,50 @@
+import ipaddress
 import logging
 import os
+import socket
 import time
+import urllib.parse
 
 import requests
 
 from .database import db_manager
 
 logger = logging.getLogger('API Manager')
+
+# 外部工单系统 API 仅允许访问此固定内网主机（白名单比对即解析后 IP 校验，杜绝 DNS rebinding）
+_API_ALLOWED_HOSTS = {'192.168.0.54'}
+_API_ALLOWED_SCHEMES = ('http', 'https')
+
+
+def _safe_api_url(url: str) -> str | None:
+    """校验并规范化外部 API 地址，不合法返回 None。
+
+    校验项：协议白名单、主机白名单、解析后 IP 子集校验（防 DNS rebinding）、去除 fragment。
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in _API_ALLOWED_SCHEMES:
+            return None
+        host = parsed.hostname
+        if not host or host not in _API_ALLOWED_HOSTS:
+            return None
+        allowed_ips = {ipaddress.ip_address(ip) for ip in _API_ALLOWED_HOSTS}
+        resolved_ips = {ipaddress.ip_address(addr[4][0]) for addr in socket.getaddrinfo(host, None)}
+        if not resolved_ips or not resolved_ips.issubset(allowed_ips):
+            return None
+        # 去除 fragment 后返回规范化 URL（urlparse 6 字段与 urlunsplit 5 元组不匹配，用 geturl 规范化）
+        return parsed._replace(fragment='').geturl()
+    except Exception:
+        return None
+
+
+def _post_api(url: str, *, json=None, params=None, timeout=10):
+    """发送外部工单系统 API 请求：地址经 _safe_api_url 强校验且禁止重定向，防止 SSRF。不合法返回 None。"""
+    safe = _safe_api_url(url)
+    if safe is None:
+        logger.error(f"拒绝发送API请求 - 地址不在允许列表: {url}")
+        return None
+    return requests.post(safe, params=params, json=json, headers=_build_headers(), allow_redirects=False, timeout=timeout)
 
 # 时间字段 → 外部系统字段码 的统一映射（create 与 update 共用，避免两处映射分叉）
 # 语义：摄影师开始/结束、美工开始/结束、剪辑开始/结束、工单开始/结束
@@ -175,7 +213,9 @@ class APIManager:
 
             # 发送请求
             logger.info(f"发送创建工单API请求: {payload}")
-            response = requests.post(self._create_url, json=payload, headers=_build_headers(), timeout=10)
+            response = _post_api(self._create_url, json=payload)
+            if response is None:
+                return {"success": False, "error": "API 地址不在允许列表，已拒绝请求"}
 
             # 处理响应
             if response.status_code == 200:
@@ -220,7 +260,9 @@ class APIManager:
 
             # 发送请求
             logger.info(f"发送更新工单状态API请求: 工单ID={order_id}, 状态={status}")
-            response = requests.post(self._update_url, params=params, json=payload, headers=_build_headers(), timeout=10)
+            response = _post_api(self._update_url, params=params, json=payload)
+            if response is None:
+                return {"success": False, "error": "API 地址不在允许列表，已拒绝请求"}
 
             # 处理响应
             if response.status_code == 200:
@@ -278,7 +320,9 @@ class APIManager:
 
             # 发送请求
             logger.info(f"发送更新工单时间API请求: 工单ID={order_id}, 字段={time_field}, 值={time_value}")
-            response = requests.post(self._update_url, params=params, json=payload, headers=_build_headers(), timeout=10)
+            response = _post_api(self._update_url, params=params, json=payload)
+            if response is None:
+                return {"success": False, "error": "API 地址不在允许列表，已拒绝请求"}
 
             # 处理响应
             if response.status_code == 200:

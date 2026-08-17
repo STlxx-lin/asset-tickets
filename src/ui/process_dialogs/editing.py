@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.config import get_feature_enabled
+from src.core.config import get_blocked_dir_keywords, get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
 from src.core.paths import (
@@ -399,6 +399,15 @@ def show_editing_dialog(parent, order_data, callbacks):
         dir_path = QFileDialog.getExistingDirectory(dialog, "选择成品文件夹")
         if not dir_path:
             return
+        # 命中管理员配置的禁止目录关键字（如源文件/原始素材）时拒绝选择
+        blocked_hits = [k for k in get_blocked_dir_keywords() if k.lower() in dir_path.lower()]
+        if blocked_hits:
+            QMessageBox.warning(
+                dialog, "禁止的目录",
+                f"所选路径包含禁止的目录关键字：{', '.join(blocked_hits)}\n\n"
+                "请选择成品目录，不要选择源文件等指定目录！"
+            )
+            return
         parent.product_dir = dir_path
         # 记录剪辑结束时间（API 失败时回滚时间字段）
         current_time = datetime.datetime.now()
@@ -504,6 +513,14 @@ def show_editing_dialog(parent, order_data, callbacks):
             return
         src = parent.product_dir
         dest = get_edit_dist_ops()
+        # 分发前向用户明确展示目标目录，确认后才执行复制（防止分发到错误位置）
+        confirm = QMessageBox.question(
+            dialog, "确认分发",
+            f"成品源目录：\n{src}\n\n分发目标目录：\n{dest}\n\n确认将成品分发到该目标目录？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if confirm != QMessageBox.Yes:
+            return
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"剪辑分发运营 - 工单{order_data['id']}"
@@ -573,6 +590,14 @@ def show_editing_dialog(parent, order_data, callbacks):
             return
         src = parent.product_dir
         dest = get_edit_dist_sales()
+        # 分发前向用户明确展示目标目录，确认后才执行复制（防止分发到错误位置）
+        confirm = QMessageBox.question(
+            dialog, "确认分发",
+            f"成品源目录：\n{src}\n\n分发目标目录：\n{dest}\n\n确认将成品分发到该目标目录？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if confirm != QMessageBox.Yes:
+            return
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
         task_name = f"剪辑分发销售 - 工单{order_data['id']}"
