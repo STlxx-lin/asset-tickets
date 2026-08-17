@@ -536,8 +536,13 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 )
                 try:
                     if dialog.isVisible():
-                        dialog.accept()
-                        QMessageBox.information(parent, "成功", f"{target_label}侧审批已确认通过。")
+                        if all_done:
+                            dialog.accept()
+                            QMessageBox.information(parent, "成功", f"{target_label}侧审批已确认通过。")
+                        else:
+                            # 单侧通过不关闭对话框，便于继续审批另一侧
+                            QMessageBox.information(parent, "成功",
+                                                    f"{target_label}侧审批已确认通过，请继续审批另一侧。")
                 except RuntimeError:
                     pass
                 return
@@ -598,12 +603,13 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 )
             try:
                 if dialog.isVisible():
-                    dialog.accept()
                     if all_done:
+                        dialog.accept()
                         QMessageBox.information(parent, "成功", "美工后期审批已通过，成品已分发至运营/销售目录，已通知领取！")
                     else:
+                        # 单侧通过不关闭对话框，便于继续审批另一侧
                         QMessageBox.information(parent, "成功",
-                                                f"{target_label}侧审批已通过，成品已分发。另一侧待审批通过后工单完成。")
+                                                f"{target_label}侧审批已通过，成品已分发。请继续审批另一侧。")
             except RuntimeError:
                 pass
 
