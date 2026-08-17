@@ -7,6 +7,7 @@ path_check.py — 路径文件检查对话框
 import logging
 import os
 import shutil
+import threading
 import time
 
 from PySide6.QtCore import Qt, QThread, QUrl, Signal
@@ -46,10 +47,36 @@ from src.core.paths import (
     PHOTOGRAPHERS,
     PHOTOGRAPHY_UPLOAD,
     SALES_GET_SRC,
+    VOLUMES,
     to_local_path,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _check_with_timeout(func, timeout: float = 8.0):
+    """在守护线程中执行检查函数，超过 timeout 秒返回 None。
+
+    网络盘阻塞（\\dabadoc 不可达或响应慢）时，os.path.exists / os.walk /
+    getmtime 会长时间挂起。用线程 + join 限时，超时则放弃等待并返回 None，
+    界面得以继续；阻塞线程留在后台（daemon）自然结束，不阻塞程序退出。
+    """
+    box = {}
+
+    def _run():
+        try:
+            box['result'] = func()
+        except Exception as e:
+            box['error'] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        return None
+    if 'error' in box:
+        raise box['error']
+    return box.get('result')
 
 
 def _inspect_path(path: str) -> dict:
@@ -171,6 +198,7 @@ _STATUS_COLOR = {
     "正常": QColor(40, 167, 69),       # 绿色
     "已领取": QColor(0, 200, 180),     # 青绿色（文件已被运营/销售领取移走，属正常）
     "空": QColor(255, 140, 0),         # 橙色
+    "超时": QColor(220, 53, 69),       # 红色（网络盘响应慢）
     "不存在": QColor(220, 53, 69),     # 红色
 }
 
@@ -190,7 +218,14 @@ class _PathScanWorker(QThread):
             # 对话框关闭或用户取消时提前退出，避免线程泄漏与访问已销毁控件
             if self.isInterruptionRequested():
                 return
-            result = _inspect_path(path)
+            # 每项带超时：网络盘阻塞（os.walk 全目录遍历）时最多等待 8 秒，超时标记"超时"后继续
+            result = _check_with_timeout(lambda: _inspect_path(path))
+            if result is None:
+                result = {
+                    'exists': False, 'file_count': 0, 'mtime': '--',
+                    'empty_dirs': 0, 'garbage': {}, 'garbage_size': 0, 'valid_files': 0,
+                    'timeout': True,
+                }
             result['note'] = note
             self.item_done.emit(row, result)
         self.all_done.emit()
@@ -344,7 +379,9 @@ def show_path_check_dialog(parent, order_data: dict):
         label, path, note = checks[row]
 
         # 状态判定
-        if result.get('error'):
+        if result.get('timeout'):
+            status = "超时"
+        elif result.get('error'):
             status = f"检查失败: {result['error']}"
         elif result['exists']:
             status = "正常" if result['file_count'] > 0 else "空"
@@ -358,7 +395,9 @@ def show_path_check_dialog(parent, order_data: dict):
             counts['empty'] += 1
         else:
             counts['missing'] += 1
-            missing_rows.append(row)
+            # 超时行不折叠：网络盘响应慢的问题应保持可见
+            if status != "超时":
+                missing_rows.append(row)
 
         # 无用内容 + 推荐删除
         useless_text = "--"
@@ -471,6 +510,20 @@ def show_path_check_dialog(parent, order_data: dict):
         missing_rows.clear()
         checks.clear()
         checks.extend(build_path_checks(order_data))
+        # 预检网络盘根可达性：不可达/挂起时快速失败，避免逐项等待超时
+        reachable = _check_with_timeout(lambda: os.path.exists(VOLUMES), timeout=3)
+        if reachable is not True:
+            table.setRowCount(len(checks))
+            for row, (label, path, _note) in enumerate(checks):
+                for col, text in ((0, label), (1, path), (2, "网络盘不可达")):
+                    item = QTableWidgetItem(text)
+                    item.setForeground(QColor(220, 53, 69))
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    table.setItem(row, col, item)
+            dialog.unsetCursor()
+            refresh_btn.setEnabled(True)
+            summary_label.setText(f"共 {len(checks)} 项：网络共享盘不可达，未执行检查。请检查网络/共享盘连接后重试。")
+            return
         table.setRowCount(len(checks))
         # 先立即填充 用途/路径/状态(检查中)，其余列等待后台结果
         for row, (label, path, _note) in enumerate(checks):
