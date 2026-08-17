@@ -16,10 +16,14 @@ import io
 import os
 import re
 import sys
+from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-DIALOG_DIR = r'e:\2025\pyproj\src\ui\process_dialogs'
+# 路径基于脚本自身位置解析（不依赖硬编码的绝对路径），保证在任何机器上运行都指向本项目
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPTS_DIR)
+DIALOG_DIR = os.path.join(PROJECT_ROOT, 'src', 'ui', 'process_dialogs')
 
 # 替换规则：(pattern, replacement)  — 按顺序应用
 REPLACEMENTS = [
@@ -63,8 +67,12 @@ for fname in files:
         content = new_content
 
     if content != original:
-        with open(fpath, 'w', encoding='utf-8') as f:
-            f.write(content)
+        # 仅允许修改 DIALOG_DIR 目录内的固定文件：规范化路径并用 commonpath 校验（禁止 ../ 越界）
+        safe_path = (Path(DIALOG_DIR) / fname).resolve()
+        if os.path.commonpath([str(safe_path), os.path.abspath(DIALOG_DIR)]) != os.path.abspath(DIALOG_DIR):
+            print(f'[跳过] 路径越界: {fname!r}')
+            continue
+        safe_path.write_text(content, encoding='utf-8')
         print(f'[OK] {fname}  共替换 {total_replacements} 处')
     else:
         print(f'[--] {fname}  无需修改')

@@ -4,9 +4,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 
-import requests
-
-from src.core.api_manager import _build_headers, api_manager
+from src.core.api_manager import api_manager
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -37,21 +35,11 @@ def update_work_order_status_and_times(order_id, status, file_distribution_time,
     try:
         # 更新工单状态
         if status:
-            # 构造更新状态的请求
-            params = {
-                "filterByTk": str(order_id)
-            }
-            payload = {
-                "f_utqw1679w43": status
-            }
-            
-            # 发送请求更新状态
+            # 发送请求更新状态（复用 api_manager 加固后的接口：主机白名单校验 + 禁重定向，防 SSRF）
             logger.info(f"更新素材工单{order_id}状态为: {status}")
-            response = requests.post(api_manager._update_url, params=params, json=payload, 
-                                     headers=_build_headers(), timeout=10)
-            
-            if response.status_code != 200:
-                logger.error(f"更新素材工单{order_id}状态失败: {response.status_code}, {response.text}")
+            result = api_manager.update_work_order_status(order_id, status)
+            if not result.get('success'):
+                logger.error(f"更新素材工单{order_id}状态失败: {result.get('error')}")
                 return False
             else:
                 logger.info(f"成功更新素材工单{order_id}状态为: {status}")

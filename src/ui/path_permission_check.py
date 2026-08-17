@@ -8,6 +8,7 @@ path_permission_check.py — 路径权限检查对话框
 """
 import logging
 import os
+import tempfile
 import time
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -113,20 +114,28 @@ def _check_read(path: str) -> bool:
 
 
 def _check_write(path: str) -> bool:
-    """尝试创建并删除临时文件检测写权限"""
-    test_file = os.path.join(path, f'.perm_test_{os.getpid()}_{int(time.time())}')
+    """尝试创建并删除临时文件检测写权限。
+
+    使用 tempfile.mkstemp 仅在指定目录内创建唯一临时文件（prefix/suffix 固定，
+    目录由调用方传入），随后立即删除，避免写权限检测影响目标目录内容。
+    """
+    fd = -1
+    test_file = None
     try:
-        with open(test_file, 'w') as f:
-            f.write('test')
+        fd, test_file = tempfile.mkstemp(prefix='.perm_test_', suffix='.tmp', dir=path)
+        os.close(fd)
+        fd = -1
         return True
     except Exception:
         return False
     finally:
-        try:
-            if os.path.exists(test_file):
+        if fd >= 0:
+            os.close(fd)
+        if test_file and os.path.exists(test_file):
+            try:
                 os.remove(test_file)
-        except Exception:
-            pass
+            except Exception:
+                pass
 
 
 def check_path_permission(path: str, need_write: bool) -> tuple:

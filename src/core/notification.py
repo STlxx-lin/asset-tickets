@@ -17,7 +17,9 @@ notification.py — 消息推送模块。
 import base64
 import hashlib
 import hmac
+import ipaddress
 import logging
+import socket
 import time
 import urllib.parse
 
@@ -27,6 +29,45 @@ from src.core.config import DEFAULT_NOTIFICATION_TYPE
 from src.core.database import db_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _is_private_ip(ip) -> bool:
+    """判断 IP 是否为私网/回环/链路本地/保留/组播地址。"""
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
+
+
+def _check_webhook_url(url: str) -> bool:
+    """校验 webhook 地址：仅允许 http/https 公网地址（解析后 IP 非私网/回环等），防 SSRF。"""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ('http', 'https'):
+            return False
+        host = parsed.hostname
+        if not host:
+            return False
+        if host.lower() == 'localhost':
+            return False
+        resolved = False
+        for addr in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(addr[4][0])
+            resolved = True
+            if _is_private_ip(ip):
+                return False
+        return resolved
+    except Exception:
+        return False
+
+
+def _post_webhook(url: str, data: dict, desc: str) -> None:
+    """发送 webhook 通知：地址经公网校验且禁止重定向（防 SSRF），失败仅记日志不影响业务。"""
+    if not _check_webhook_url(url):
+        logger.error(f"{desc} 已跳过 - 地址不合法（仅允许公网 http/https）: {url[:120]}")
+        return
+    try:
+        requests.post(url, json=data, headers={"Content-Type": "application/json"}, allow_redirects=False, timeout=3)
+        logger.info(f"{desc} 成功")
+    except Exception as e:
+        logger.error(f"{desc} 失败: {e}")
 
 # ── 全局通知类型（default 行的值，供无产线场景回退） ──────────────────────
 NOTIFICATION_TYPE = DEFAULT_NOTIFICATION_TYPE
@@ -219,11 +260,7 @@ def send_dingtalk_markdown(title: str, text: str, department: str = None) -> Non
         "msgtype": "markdown",
         "markdown": {"title": title, "text": text}
     }
-    try:
-        requests.post(webhook_url, json=data, headers={"Content-Type": "application/json"}, timeout=3)
-        logger.info(f"钉钉推送成功 - 产线: {department or 'default'}")
-    except Exception as e:
-        logger.error(f"钉钉推送失败 - 产线: {department or 'default'}, 错误: {e}")
+    _post_webhook(webhook_url, data, f"钉钉推送 - 产线: {department or 'default'}")
 
 
 def send_wechat_work_markdown(title: str, text: str, department: str = None) -> None:
@@ -242,11 +279,7 @@ def send_wechat_work_markdown(title: str, text: str, department: str = None) -> 
         "msgtype": "markdown",
         "markdown": {"content": f"{title}\n\n{text}"}
     }
-    try:
-        requests.post(webhook, json=data, headers={"Content-Type": "application/json"}, timeout=3)
-        logger.info(f"企业微信推送成功 - 产线: {department or 'default'}")
-    except Exception as e:
-        logger.error(f"企业微信推送失败 - 产线: {department or 'default'}, 错误: {e}")
+    _post_webhook(webhook, data, f"企业微信推送 - 产线: {department or 'default'}")
 
 
 def send_notification(title: str, text: str, department: str = None) -> None:
