@@ -5,13 +5,18 @@ patch_main_window.py — 一次性完成 main_window.py 的三处修改：
   3. 替换 L3275-L6532 show_process_order_dialog 方法体 → 3 行调度代理
 """
 import io
+import os
 import shutil
 import sys
+from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-SRC = r'e:\2025\pyproj\src\ui\main_window.py'
-BAK = r'e:\2025\pyproj\src\ui\main_window.py.bak'
+# 路径基于脚本自身位置解析（不依赖硬编码的绝对路径），保证在任何机器上运行都指向本项目
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPTS_DIR)
+SRC = os.path.join(PROJECT_ROOT, 'src', 'ui', 'main_window.py')
+BAK = SRC + '.bak'
 
 # 先备份
 shutil.copy2(SRC, BAK)
@@ -84,7 +89,6 @@ while i < n:
 
 print(f'修改后行数: {len(result)}')
 
-with open(SRC, 'w', encoding='utf-8') as f:
-    f.writelines(result)
+Path(SRC).write_text(''.join(result), encoding='utf-8')
 
 print('写入完成。')
