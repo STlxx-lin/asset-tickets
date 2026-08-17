@@ -501,29 +501,6 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         target_dir = targets[side]
         target_label = _SIDE_LABELS[side]
 
-        files_found = scan_files(sub_dir)
-        if not files_found or not os.path.exists(sub_dir):
-            # 兜底：待审批目录无成品文件，但该侧目标目录已有成品（历史审批已分发但
-            # 状态未推进）→ 审批员确认后直接通过，无需重新移动文件
-            if not _side_has_content(side):
-                QMessageBox.warning(dialog, "提示", f"{target_label}侧没有待审批的成品文件")
-                return
-            confirm = QMessageBox.question(
-                dialog, "确认通过",
-                f"{target_label}侧待审批目录没有待审批文件，但目标目录已存在成品：\n{target_dir}\n\n"
-                f"这可能是审批已分发但状态未推进。\n确认直接通过本侧审批？",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-            )
-            if confirm != QMessageBox.Yes:
-                return
-            approved_sides.add(side)
-            _complete_side(side, via_fallback=True)
-            return
-
-        failed = {'count': 0}
-        completed = {'count': 0}
-        total = 1  # 单侧单任务
-
         def _complete_side(side, via_fallback):
             """该侧通过的统一收尾：判定两侧是否都完成；是则置「美工已完成」并关闭对话框。"""
             other_side = 1 - side
@@ -568,6 +545,29 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                                                 f"{target_label}侧审批已通过，请继续审批另一侧。")
             except RuntimeError:
                 pass
+
+        files_found = scan_files(sub_dir)
+        if not files_found or not os.path.exists(sub_dir):
+            # 兜底：待审批目录无成品文件，但该侧目标目录已有成品（历史审批已分发但
+            # 状态未推进）→ 审批员确认后直接通过，无需重新移动文件
+            if not _side_has_content(side):
+                QMessageBox.warning(dialog, "提示", f"{target_label}侧没有待审批的成品文件")
+                return
+            confirm = QMessageBox.question(
+                dialog, "确认通过",
+                f"{target_label}侧待审批目录没有待审批文件，但目标目录已存在成品：\n{target_dir}\n\n"
+                f"这可能是审批已分发但状态未推进。\n确认直接通过本侧审批？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if confirm != QMessageBox.Yes:
+                return
+            approved_sides.add(side)
+            _complete_side(side, via_fallback=True)
+            return
+
+        failed = {'count': 0}
+        completed = {'count': 0}
+        total = 1  # 单侧单任务
 
         def update_status(task_ok=True, task_errors=None):
             if task_ok:
