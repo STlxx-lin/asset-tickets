@@ -15,13 +15,13 @@ import re
 if platform.system() == 'Windows':
     RAW_ROOT = r'\\dabadoc\01原始素材'
     ART_ROOT = r'\\dabadoc\02图像部\01美工部'
-    VIDEO_ROOT = r'\\dabadoc\02图像部\01视频部'
+    VIDEO_ROOT = r'\\dabadoc\02图像部\02视频部'
     CENTER_ROOT = r'\\dabadoc\03素材中心'
     VOLUMES = r'\\dabadoc'
 else:
     RAW_ROOT = '/Volumes/01原始素材'
     ART_ROOT = '/Volumes/02图像部/01美工部'
-    VIDEO_ROOT = '/Volumes/02图像部/01视频部'
+    VIDEO_ROOT = '/Volumes/02图像部/02视频部'
     CENTER_ROOT = '/Volumes/03素材中心'
     VOLUMES = '/Volumes'
 
