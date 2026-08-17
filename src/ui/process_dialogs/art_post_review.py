@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 
 # 待审批中转目录下的两个子目录，与美工分发运营/销售一一对应
 _SUB_DIRS = ("01运营", "02销售")
+# 与 _SUB_DIRS 一一对应的侧别显示名（拆分为「运营通过」「销售通过」两个审批按钮）
+_SIDE_LABELS = ("运营", "销售")
 
 
 def show_art_post_review_dialog(parent, order_data, callbacks):
@@ -452,8 +454,11 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     button_layout = QHBoxLayout(button_widget)
     button_layout.setSpacing(15)
 
-    pass_btn = QPushButton("审核通过")
-    pass_btn.setStyleSheet("background-color: #28a745; color: white;")
+    pass_ops_btn = QPushButton("运营通过")
+    pass_ops_btn.setStyleSheet("background-color: #28a745; color: white;")
+
+    pass_sales_btn = QPushButton("销售通过")
+    pass_sales_btn.setStyleSheet("background-color: #28a745; color: white;")
 
     reject_btn = QPushButton("退回重做")
     reject_btn.setStyleSheet("background-color: #dc3545; color: white;")
@@ -461,7 +466,8 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     cancel_btn = QPushButton("取消")
     cancel_btn.setProperty("type", "cancel")
 
-    button_layout.addWidget(pass_btn)
+    button_layout.addWidget(pass_ops_btn)
+    button_layout.addWidget(pass_sales_btn)
     button_layout.addWidget(reject_btn)
     button_layout.addStretch()
     button_layout.addWidget(cancel_btn)
@@ -469,86 +475,101 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
     cancel_btn.clicked.connect(dialog.reject)
 
-    def on_approve():
-        # 不要求勾选，两个子目录的成品全部通过，移动到对应运营/销售目录
-        # 每次点击时重新扫描目录（不用打开时的 all_files 快照）：
-        # 部分文件移动失败后重试时，已成功移动的文件源已不存在，
-        # 快照会导致任务必败、审批永远无法通过的"死循环"
-        pending = []  # [(sub_dir, target_dir, files)]
-        for i, sub_name in enumerate(_SUB_DIRS):
-            files_found = scan_files(sub_dirs[i])
-            if files_found and os.path.exists(sub_dirs[i]):
-                pending.append((sub_dirs[i], targets[i], files_found))
-        if not pending:
-            QMessageBox.warning(dialog, "提示", "待审批目录中没有可审批的成品文件")
+    def on_approve(side):
+        """单侧审批通过：仅处理 01运营(0) / 02销售(1) 对应子目录。
+
+        移动该侧待审批成品到对应运营/销售目录；移动全部成功后，
+        若另一侧已无待审批成品（含已通过/未分发），则整体置为「美工已完成」并发通知；
+        否则保持「美工后期审核中」，仅推进该侧并单独通知。
+        每次点击重新扫描目录（不依赖打开时的快照），避免部分文件移动失败后重试死循环。
+        """
+        sub_dir = sub_dirs[side]
+        target_dir = targets[side]
+        target_label = SIDE_LABELS[side]
+
+        files_found = scan_files(sub_dir)
+        if not files_found or not os.path.exists(sub_dir):
+            QMessageBox.warning(dialog, "提示", f"{target_label}侧没有待审批的成品文件")
             return
 
-        total = len(pending)
-        completed = {'count': 0}
         failed = {'count': 0}
+        completed = {'count': 0}
+        total = 1  # 单侧单任务
 
         def update_status(task_ok=True, task_errors=None):
             if task_ok:
                 completed['count'] += 1
             else:
                 failed['count'] += 1
-            if failed['count'] > 0:
-                # 存在失败任务：不推进审批状态，提示用户重试，避免"审批通过但文件未分发"的状态不一致
-                if completed['count'] + failed['count'] >= total:
+            if failed['count'] > 0 or completed['count'] < total:
+                if failed['count'] > 0:
                     try:
                         if dialog.isVisible():
                             QMessageBox.warning(
                                 dialog, "审批未完成",
-                                f"有 {failed['count']} 个文件分发任务失败，审批未通过，请重试：\n"
+                                f"{target_label}侧文件分发失败，审批未通过，请重试：\n"
                                 + "\n".join((task_errors or [])[:5])
                             )
                     except RuntimeError:
                         pass
                 return
-            if completed['count'] < total:
-                return
-            # 状态更新/日志/通知为核心业务，不依赖对话框是否可见（异步任务完成时对话框可能已被关闭）
-            # 美工链专属状态：审批通过（只写 art_status，不覆盖剪辑链全局状态）；本地字段无 API 同步
-            ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工已完成'})
-            if not ok:
-                try:
-                    if dialog.isVisible():
-                        QMessageBox.warning(dialog, "提示", error_msg)
-                except RuntimeError:
-                    pass
-                return  # 状态未写入，中止后续通知与成功提示
-            order_data['art_status'] = '美工已完成'
-            parent.refresh_work_orders()
+            # 该侧文件全部分发成功：另一侧若无待审批成品（已通过或未分发）则整体完成
+            other_side = 1 - side
+            other_files = scan_files(sub_dirs[other_side]) if os.path.exists(sub_dirs[other_side]) else []
+            all_done = not other_files
+            if all_done:
+                # 美工链专属状态：审批通过（只写 art_status，不覆盖剪辑链全局状态）；本地字段无 API 同步
+                ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工已完成'})
+                if not ok:
+                    try:
+                        if dialog.isVisible():
+                            QMessageBox.warning(dialog, "提示", error_msg)
+                    except RuntimeError:
+                        pass
+                    return  # 状态未写入，中止后续通知与成功提示
+                order_data['art_status'] = '美工已完成'
+                parent.refresh_work_orders()
 
-            _log_action("美工后期审批通过", f"工单ID={order_data['id']}, 角色=美工后期审批, 待审批路径={transit_root}")
-            send_notification(
-                "工单美工后期审批通过通知",
-                f"### 工单号：{order_data['id']}\n- 角色：美工后期审批\n- 操作：审批通过\n- 状态：后期已完成\n- 提示：美工后期审批已通过，成品已分发，请运营/销售同事登录系统领取素材！",
-                order_data.get('department')
-            )
+            _log_action("美工后期审批通过",
+                        f"工单ID={order_data['id']}, 角色=美工后期审批, 分发侧={target_label}, 待审批路径={transit_root}")
+            if all_done:
+                send_notification(
+                    "工单美工后期审批通过通知",
+                    f"### 工单号：{order_data['id']}\n- 角色：美工后期审批\n- 操作：审批通过\n- 状态：后期已完成\n- 提示：美工后期审批已通过，成品已分发，请运营/销售同事登录系统领取素材！",
+                    order_data.get('department')
+                )
+            else:
+                send_notification(
+                    f"工单美工后期审批通过通知-{target_label}",
+                    f"### 工单号：{order_data['id']}\n- 角色：美工后期审批\n- 操作：审批通过（{target_label}侧）\n- 提示：{target_label}侧成品已审批通过并分发，请{target_label}同事登录系统领取素材！",
+                    order_data.get('department')
+                )
             try:
                 if dialog.isVisible():
                     dialog.accept()
-                    QMessageBox.information(parent, "成功", "美工后期审批已通过，成品已分发至运营/销售目录，已通知领取！")
+                    if all_done:
+                        QMessageBox.information(parent, "成功", "美工后期审批已通过，成品已分发至运营/销售目录，已通知领取！")
+                    else:
+                        QMessageBox.information(parent, "成功",
+                                                f"{target_label}侧审批已通过，成品已分发。另一侧待审批通过后工单完成。")
             except RuntimeError:
                 pass
 
-        for sub_dir, target_dir, files_found in pending:
-            try:
-                os.makedirs(target_dir, exist_ok=True)
-            except Exception as e:
-                logger.error(f"创建审批分发目标目录失败: {target_dir}, 错误: {e}")
-                QMessageBox.critical(dialog, "错误", f"创建目标目录失败：\n{target_dir}\n原因: {e}")
-                return
-            rel_files = [rel for rel, _ in files_found]
-            _add_file_task(
-                name=f"美工后期审批通过分发 - 工单{order_data['id']}",
-                files=rel_files,
-                src_dir=sub_dir,
-                dest_dir=target_dir,
-                op_type="move",
-                update_status_func=update_status
-            )
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"创建审批分发目标目录失败: {target_dir}, 错误: {e}")
+            QMessageBox.critical(dialog, "错误", f"创建目标目录失败：\n{target_dir}\n原因: {e}")
+            return
+        rel_files = [rel for rel, _ in files_found]
+        _add_file_task(
+            name=f"美工后期审批通过分发({target_label}) - 工单{order_data['id']}",
+            files=rel_files,
+            src_dir=sub_dir,
+            dest_dir=target_dir,
+            op_type="move",
+            update_status_func=update_status
+        )
 
     def on_reject():
         reason = reason_edit.toPlainText().strip()
@@ -608,5 +629,6 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         else:
             QMessageBox.critical(dialog, "失败", "文件退回移动失败，请重试或联系管理员")
 
-    pass_btn.clicked.connect(on_approve)
+    pass_ops_btn.clicked.connect(lambda: on_approve(0))
+    pass_sales_btn.clicked.connect(lambda: on_approve(1))
     reject_btn.clicked.connect(on_reject)

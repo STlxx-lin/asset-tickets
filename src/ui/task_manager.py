@@ -19,6 +19,10 @@ from PySide6.QtWidgets import (
 
 logger = logging.getLogger(__name__)
 
+# 系统垃圾文件（Mac/Windows 自动生成，与业务无关）：
+# 移动任务源目录残留时不计入失败，避免"成品已移动成功但任务整体报失败、状态无法推进"
+SYSTEM_JUNK_FILES = {'.DS_Store', 'Thumbs.db', 'desktop.ini', '.localized', '.fseventsd', '.Spotlight-V100'}
+
 
 class TaskStatusUpdater(QObject):
     """任务状态更新器，用于在主线程中更新状态。
@@ -102,6 +106,10 @@ class Task(QThread):
             if self.file_filter and not self.file_filter(fname):
                 continue
 
+            # 跳过系统垃圾文件（.DS_Store 等）：不移动、不计失败，避免污染目标目录或导致任务误判失败
+            if os.path.basename(fname) in SYSTEM_JUNK_FILES:
+                continue
+
             src_file = os.path.join(self.src_dir, fname)
             dest_file = os.path.join(self.dest_dir, fname)
 
@@ -178,8 +186,17 @@ class Task(QThread):
                         msg = f"删除源目录重复文件 {f} 时出错: {e}"
                         logger.error(msg)
                         self.errors.append(msg)
-                # 其余文件（新增/隐藏/未在任务列表中的）一律保留，不删除
-                still_remaining = [f for f in os.listdir(self.src_dir) if f not in removable]
+                # 其余文件（新增/隐藏/未在任务列表中的）一律保留，不删除；
+                # 系统垃圾文件与残留目录不计入失败：垃圾文件（如 .DS_Store）Mac 会随时
+                # 重新生成且不影响业务，此前计入失败会导致成品已移动但任务整体报失败，
+                # 状态/日志无法推进（典型：美工后期审批通过后卡在"美工后期审核中"）。
+                # 子目录中的业务文件若移动失败，已在前面逐文件循环中记录 errors。
+                still_remaining = [
+                    f for f in os.listdir(self.src_dir)
+                    if f not in removable
+                    and f not in SYSTEM_JUNK_FILES
+                    and not os.path.isdir(os.path.join(self.src_dir, f))
+                ]
                 if still_remaining:
                     msg = f"源目录仍有 {len(still_remaining)} 个文件未移动，已保留: {', '.join(still_remaining[:5])}"
                     logger.warning(msg)
