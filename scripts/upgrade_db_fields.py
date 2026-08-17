@@ -1,6 +1,7 @@
 import os
 import sys
 import traceback
+from pathlib import Path
 
 # 将项目路径加入 PYTHONPATH 搜索路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,12 +34,13 @@ def upgrade_database():
                         backup_cursor.execute("SHOW CREATE TABLE mcs_by_takuya_work_orders")
                         row = backup_cursor.fetchone()
                         if row and len(row) >= 2:
-                            backup_path = os.path.join(
-                                os.path.dirname(os.path.abspath(__file__)),
-                                f"backup_mcs_by_takuya_work_orders_{row[0] and 'schema'}.sql",
-                            )
-                            with open(backup_path, 'w', encoding='utf-8') as f:
-                                f.write(f"-- 备份时间: 执行前自动生成\n{row[1]};\n")
+                            backup_dir = os.path.dirname(os.path.abspath(__file__))
+                            backup_path = (Path(backup_dir) / f"backup_mcs_by_takuya_work_orders_{row[0] and 'schema'}.sql").resolve()
+                            # 仅允许写入脚本所在目录（commonpath 校验，禁止 ../ 越界）
+                            if os.path.commonpath([str(backup_path), os.path.abspath(backup_dir)]) != os.path.abspath(backup_dir):
+                                print("警告: 备份路径越界，未生成备份，中止执行。")
+                                sys.exit(1)
+                            backup_path.write_text(f"-- 备份时间: 执行前自动生成\n{row[1]};\n", encoding='utf-8')
                             print(f"已导出表结构备份: {backup_path}")
                         else:
                             print("警告: 无法读取 SHOW CREATE TABLE 结果，未生成备份，中止执行。")
