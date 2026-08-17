@@ -41,6 +41,19 @@ from src.core.paths import (
 logger = logging.getLogger(__name__)
 
 
+# 预检网络盘可达性用的真实共享子目录（\\dabadoc 无共享名，os.path.exists 恒 False）
+_PROBE_ROOTS = [RAW_ROOT, ART_ROOT, VIDEO_ROOT, CENTER_ROOT]
+
+
+def _probe_share_ok() -> bool:
+    """探测网络盘是否可达：任一真实共享子目录可访问即判定盘正常。
+
+    VOLUMES = \\\\dabadoc 是服务器名而非共享名，os.path.exists / listdir
+    对无共享名的根永远失败（"找不到网络名"），必须用真实共享子目录探测。
+    """
+    return any(os.path.exists(p) for p in _PROBE_ROOTS)
+
+
 def _check_with_timeout(func, timeout: float = 8.0):
     """在守护线程中执行检查函数，超过 timeout 秒返回 None。
 
@@ -167,6 +180,11 @@ def _check_write(path: str) -> bool:
 def check_path_permission(path: str, need_write: bool) -> tuple:
     """检查单个路径权限，返回 (exists, readable, writable, status)"""
     try:
+        # 共享根（\\\\dabadoc）无共享名，exists/listdir 恒失败，用真实子共享探测
+        if path == VOLUMES:
+            if not _probe_share_ok():
+                return False, False, False, "不存在"
+            return True, True, True, "正常"
         if not os.path.exists(path):
             return False, False, False, "不存在"
         readable = _check_read(path)
@@ -374,9 +392,12 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
         dialog.setCursor(Qt.CursorShape.WaitCursor)
         refresh_btn.setEnabled(False)
         counts.update(ok=0, warn=0, fail=0)
-        # 预检网络盘根可达性：不可达/挂起时快速失败，避免逐项等待超时
-        reachable = _check_with_timeout(lambda: os.path.exists(VOLUMES), timeout=3)
-        if reachable is not True:
+        # 预检网络盘可达性：\\\\dabadoc 无共享名 exists 恒 False，用真实共享子目录探测
+        reachable = any(
+            _check_with_timeout(lambda r=p: os.path.exists(r), timeout=3) is True
+            for p in _PROBE_ROOTS
+        )
+        if not reachable:
             table.setRowCount(len(checks))
             for row, (label, path, _need_write) in enumerate(checks):
                 for col, text in ((0, label), (1, path), (2, "网络盘不可达")):
