@@ -31,13 +31,25 @@ from src.core.database import db_manager
 logger = logging.getLogger(__name__)
 
 
+# 钉钉/企业微信机器人官方域名（管理员配置的 webhook 应为官方地址；官方域名直连放行，
+# 不依赖 DNS 解析——代理软件 fake-ip 会把域名解析到 198.18.0.0/15 段，按 IP 判断会误伤）
+_WEBHOOK_OFFICIAL_HOSTS = ('oapi.dingtalk.com', 'qyapi.weixin.qq.com')
+
+
 def _is_private_ip(ip) -> bool:
-    """判断 IP 是否为私网/回环/链路本地/保留/组播地址。"""
+    """判断 IP 是否为私网/回环/链路本地/保留/组播地址。
+
+    198.18.0.0/15 为 IANA 基准测试段，常被代理软件用作 fake-ip（域名解析到该段，
+    实际流量由代理转发到公网），按私网拒绝会误杀代理网络下的合法公网域名。
+    """
+    if ip.version == 4 and ip in ipaddress.ip_network('198.18.0.0/15'):
+        return False
     return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
 
 
 def _check_webhook_url(url: str) -> bool:
-    """校验 webhook 地址：仅允许 http/https 公网地址（解析后 IP 非私网/回环等），防 SSRF。"""
+    """校验 webhook 地址：官方机器人域名直连放行；其他域名仅允许 http/https 公网地址
+    （解析后 IP 非私网/回环等），防 SSRF。"""
     try:
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in ('http', 'https'):
@@ -47,6 +59,8 @@ def _check_webhook_url(url: str) -> bool:
             return False
         if host.lower() == 'localhost':
             return False
+        if _is_official_webhook_host(host):
+            return True
         resolved = False
         for addr in socket.getaddrinfo(host, None):
             ip = ipaddress.ip_address(addr[4][0])
@@ -56,6 +70,12 @@ def _check_webhook_url(url: str) -> bool:
         return resolved
     except Exception:
         return False
+
+
+def _is_official_webhook_host(host: str) -> bool:
+    """是否钉钉/企业微信官方机器人域名（含子域）。"""
+    h = host.lower()
+    return h in _WEBHOOK_OFFICIAL_HOSTS or any(h.endswith('.' + d) for d in _WEBHOOK_OFFICIAL_HOSTS)
 
 
 def _post_webhook(url: str, data: dict, desc: str) -> None:
