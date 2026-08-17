@@ -90,11 +90,15 @@ ROLE_PATHS = {
         ("美工待领取-领取源", os.path.join(RAW_ROOT, '02美工待领取'), False),
         ("美工部-领取存放", ART_ROOT, True),
         ("美工部-待审批", os.path.join(ART_ROOT, '{dept}', '01待审批'), True),
+        ("分发-运营部", os.path.join(CENTER_ROOT, '01运营部'), True),
+        ("分发-销售部", os.path.join(CENTER_ROOT, '02销售部'), True),
     ],
     "剪辑": [
         ("美工待领取-视频源", os.path.join(RAW_ROOT, '02美工待领取', '02视频'), False),
         ("视频部-领取存放", VIDEO_ROOT, True),
         ("视频部-待审核", os.path.join(VIDEO_ROOT, '{dept}', '01待审核'), True),
+        ("分发-运营部", os.path.join(CENTER_ROOT, '01运营部'), True),
+        ("分发-销售部", os.path.join(CENTER_ROOT, '02销售部'), True),
     ],
     "视频审核": [
         ("原始素材-审核源", RAW_ROOT, False),
