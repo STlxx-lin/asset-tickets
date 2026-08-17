@@ -38,6 +38,8 @@ from src.core.paths import (
     ART_GET_IMG_DEST,
     ART_GET_IMG_SRC,
     ART_POST_REVIEW_TRANSIT,
+    ART_ROOT,
+    CENTER_ROOT,
     EDIT_DIST_OPS,
     EDIT_DIST_SALES,
     EDIT_GET_VIDEO_DEST,
@@ -46,7 +48,9 @@ from src.core.paths import (
     OPS_GET_SRC,
     PHOTOGRAPHERS,
     PHOTOGRAPHY_UPLOAD,
+    RAW_ROOT,
     SALES_GET_SRC,
+    VIDEO_ROOT,
     VOLUMES,
     to_local_path,
 )
@@ -510,9 +514,12 @@ def show_path_check_dialog(parent, order_data: dict):
         missing_rows.clear()
         checks.clear()
         checks.extend(build_path_checks(order_data))
-        # 预检网络盘根可达性：不可达/挂起时快速失败，避免逐项等待超时
-        reachable = _check_with_timeout(lambda: os.path.exists(VOLUMES), timeout=3)
-        if reachable is not True:
+        # 预检网络盘可达性：\\\\dabadoc 无共享名 exists 恒 False，用真实共享子目录探测
+        reachable = any(
+            _check_with_timeout(lambda r=p: os.path.exists(r), timeout=3) is True
+            for p in (RAW_ROOT, ART_ROOT, VIDEO_ROOT, CENTER_ROOT)
+        )
+        if not reachable:
             table.setRowCount(len(checks))
             for row, (label, path, _note) in enumerate(checks):
                 for col, text in ((0, label), (1, path), (2, "网络盘不可达")):
