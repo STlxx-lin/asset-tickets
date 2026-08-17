@@ -1511,6 +1511,31 @@ class MainWindow(QMainWindow):
         workflow_group_layout.addWidget(apr_desc)
         features_layout.addWidget(workflow_group)
 
+        # ── 后期成品目录管控（禁止目录关键字，美工/剪辑选成品路径时拦截）──
+        product_dir_group = QGroupBox("后期成品目录管控")
+        product_dir_group_layout = QVBoxLayout(product_dir_group)
+        product_dir_group_layout.setSpacing(10)
+
+        pd_tip = QLabel(
+            "美工/剪辑选择「成品路径」时，命中以下关键字的目录将被拒绝选择（防止把源文件等目录当成品分发）。\n"
+            "多个关键字用英文逗号分隔，例如：01原始素材,源文件"
+        )
+        pd_tip.setStyleSheet("font-size: 12px; color: #9ba3b0;")
+        pd_tip.setWordWrap(True)
+        product_dir_group_layout.addWidget(pd_tip)
+
+        pd_row = QHBoxLayout()
+        pd_label = QLabel("禁止目录关键字:")
+        pd_label.setStyleSheet("font-size: 13px; color: #e8eaed;")
+        self.blocked_keywords_edit = QLineEdit()
+        self.blocked_keywords_edit.setPlaceholderText("如：01原始素材,源文件（留空表示不限制）")
+        self.blocked_keywords_edit.setText(db_manager.get_system_setting('product_dir_blocked_keywords', default=''))
+        self.blocked_keywords_edit.setMinimumWidth(360)
+        pd_row.addWidget(pd_label)
+        pd_row.addWidget(self.blocked_keywords_edit, 1)
+        product_dir_group_layout.addLayout(pd_row)
+        features_layout.addWidget(product_dir_group)
+
         # ── 外部系统 API 配置（Token 存数据库，管理员可在线更新，无需重启）──
         api_group = QGroupBox("外部系统 API 配置")
         api_group_layout = QVBoxLayout(api_group)
@@ -1585,7 +1610,9 @@ class MainWindow(QMainWindow):
 
             success = db_manager.set_system_setting('video_review_enabled', val) and \
                       db_manager.set_system_setting('video_post_review_enabled', val_post) and \
-                      db_manager.set_system_setting('art_post_review_enabled', val_art)
+                      db_manager.set_system_setting('art_post_review_enabled', val_art) and \
+                      db_manager.set_system_setting('product_dir_blocked_keywords',
+                                                    self.blocked_keywords_edit.text().strip())
                       
             if success:
                 clear_feature_cache()
