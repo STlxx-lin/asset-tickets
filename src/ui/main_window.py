@@ -755,8 +755,8 @@ class MainWindow(QMainWindow):
                 self.stacked_widget.setCurrentWidget(page)
                 for b in self._nav_buttons:
                     b.setChecked(b is btn)
-                # 切到日志中心时刷新历史列表
-                if page is self.logs_page:
+                # 「实时操作记录」面板位于仪表盘页，切到仪表盘时刷新
+                if page is self.dashboard_page:
                     self.update_history_list()
             return action
 
@@ -2624,8 +2624,8 @@ class MainWindow(QMainWindow):
             self.stats_layout.addWidget(QLabel(f"<b>状态 '{status}':</b> {count}"))
         self.stats_layout.addStretch()
     def update_history_list(self):
-        # 仅当日志中心页面可见时刷新，避免每次操作都拉取 100 条日志
-        if self.stacked_widget.currentWidget() is not self.logs_page:
+        # 「实时操作记录」面板位于仪表盘页，仅当该页可见时刷新，避免每次操作都拉取 100 条日志
+        if self.stacked_widget.currentWidget() is not self.dashboard_page:
             return
         self.history_list.clear()
         logs = db_manager.get_logs(limit=100)
