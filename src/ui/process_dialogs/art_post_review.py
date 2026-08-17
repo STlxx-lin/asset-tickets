@@ -475,105 +475,59 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
     cancel_btn.clicked.connect(dialog.reject)
 
+    # 已确认通过的侧（运营/销售），跨两次按钮点击共享，用于判断两侧是否都完成
+    approved_sides = set()
+
+    def _side_has_content(side):
+        """该侧是否有成品内容（待审批目录有成品，或目标目录已有成品）。"""
+        if scan_files(sub_dirs[side]):
+            return True
+        target = targets[side]
+        if os.path.exists(target):
+            for _root, _dirs, files in os.walk(target):
+                for f in files:
+                    if os.path.splitext(f)[1].lower() in IMG_EXTS or os.path.splitext(f)[1].lower() in VID_EXTS:
+                        return True
+        return False
+
     def on_approve(side):
         """单侧审批通过：仅处理 01运营(0) / 02销售(1) 对应子目录。
 
-        移动该侧待审批成品到对应运营/销售目录；移动全部成功后，
-        若另一侧已无待审批成品（含已通过/未分发），则整体置为「美工已完成」并发通知；
-        否则保持「美工后期审核中」，仅推进该侧并单独通知。
-        每次点击重新扫描目录（不依赖打开时的快照），避免部分文件移动失败后重试死循环。
+        该侧成品移动/确认通过后，若另一侧也已确认通过，或另一侧完全没有成品内容
+        （未分发），则整体置为「美工已完成」并发通知并关闭对话框；否则保持
+        「美工后期审核中」，继续审批另一侧。每次点击重新扫描目录（不依赖快照）。
         """
         sub_dir = sub_dirs[side]
         target_dir = targets[side]
         target_label = _SIDE_LABELS[side]
 
-        def _target_has_files():
-            """目标目录（运营/销售）是否已有成品文件（历史审批已分发但状态未推进时存在）。"""
-            if not os.path.exists(target_dir):
-                return False
-            for _root, _dirs, files in os.walk(target_dir):
-                for f in files:
-                    if os.path.splitext(f)[1].lower() in IMG_EXTS or os.path.splitext(f)[1].lower() in VID_EXTS:
-                        return True
-            return False
-
         files_found = scan_files(sub_dir)
         if not files_found or not os.path.exists(sub_dir):
-            # 兜底：待审批目录无成品文件，但目标目录已有成品（如历史 bug：文件已分发但
-            # 状态未推进）→ 由审批员确认后直接通过，无需重新移动文件
-            if _target_has_files():
-                confirm = QMessageBox.question(
-                    dialog, "确认通过",
-                    f"{target_label}侧待审批目录没有待审批文件，但目标目录已存在成品：\n{target_dir}\n\n"
-                    f"这可能是审批已分发但状态未推进。\n确认直接通过本侧审批？",
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
-                )
-                if confirm != QMessageBox.Yes:
-                    return
-                other_side = 1 - side
-                other_files = scan_files(sub_dirs[other_side]) if os.path.exists(sub_dirs[other_side]) else []
-                all_done = not other_files
-                if all_done:
-                    ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工已完成'})
-                    if not ok:
-                        try:
-                            if dialog.isVisible():
-                                QMessageBox.warning(dialog, "提示", error_msg)
-                        except RuntimeError:
-                            pass
-                        return  # 状态未写入，中止后续通知与成功提示
-                    order_data['art_status'] = '美工已完成'
-                    parent.refresh_work_orders()
-                _log_action(
-                    "美工后期审批通过",
-                    f"工单ID={order_data['id']}, 角色=美工后期审批, 分发侧={target_label}, "
-                    f"待审批目录无成品(目标目录已有文件), 直接确认通过"
-                )
-                send_notification(
-                    f"工单美工后期审批通过通知-{target_label}",
-                    f"### 工单号：{order_data['id']}\n- 角色：美工后期审批\n- 操作：审批通过（{target_label}侧，目录已存在成品）\n- 提示：{target_label}侧成品已确认通过，请{target_label}同事登录系统领取素材！",
-                    order_data.get('department')
-                )
-                try:
-                    if dialog.isVisible():
-                        if all_done:
-                            dialog.accept()
-                            QMessageBox.information(parent, "成功", f"{target_label}侧审批已确认通过。")
-                        else:
-                            # 单侧通过不关闭对话框，便于继续审批另一侧
-                            QMessageBox.information(parent, "成功",
-                                                    f"{target_label}侧审批已确认通过，请继续审批另一侧。")
-                except RuntimeError:
-                    pass
+            # 兜底：待审批目录无成品文件，但该侧目标目录已有成品（历史审批已分发但
+            # 状态未推进）→ 审批员确认后直接通过，无需重新移动文件
+            if not _side_has_content(side):
+                QMessageBox.warning(dialog, "提示", f"{target_label}侧没有待审批的成品文件")
                 return
-            QMessageBox.warning(dialog, "提示", f"{target_label}侧没有待审批的成品文件")
+            confirm = QMessageBox.question(
+                dialog, "确认通过",
+                f"{target_label}侧待审批目录没有待审批文件，但目标目录已存在成品：\n{target_dir}\n\n"
+                f"这可能是审批已分发但状态未推进。\n确认直接通过本侧审批？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if confirm != QMessageBox.Yes:
+                return
+            approved_sides.add(side)
+            _complete_side(side, via_fallback=True)
             return
 
         failed = {'count': 0}
         completed = {'count': 0}
         total = 1  # 单侧单任务
 
-        def update_status(task_ok=True, task_errors=None):
-            if task_ok:
-                completed['count'] += 1
-            else:
-                failed['count'] += 1
-            if failed['count'] > 0 or completed['count'] < total:
-                if failed['count'] > 0:
-                    try:
-                        if dialog.isVisible():
-                            QMessageBox.warning(
-                                dialog, "审批未完成",
-                                f"{target_label}侧文件分发失败，审批未通过，请重试：\n"
-                                + "\n".join((task_errors or [])[:5])
-                            )
-                    except RuntimeError:
-                        pass
-                return
-            # 该侧文件全部分发成功：另一侧若无待审批成品（已通过或未分发）则整体完成
+        def _complete_side(side, via_fallback):
+            """该侧通过的统一收尾：判定两侧是否都完成；是则置「美工已完成」并关闭对话框。"""
             other_side = 1 - side
-            other_files = scan_files(sub_dirs[other_side]) if os.path.exists(sub_dirs[other_side]) else []
-            all_done = not other_files
+            all_done = (other_side in approved_sides) or not _side_has_content(other_side)
             if all_done:
                 # 美工链专属状态：审批通过（只写 art_status，不覆盖剪辑链全局状态）；本地字段无 API 同步
                 ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工已完成'})
@@ -586,9 +540,11 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                     return  # 状态未写入，中止后续通知与成功提示
                 order_data['art_status'] = '美工已完成'
                 parent.refresh_work_orders()
-
-            _log_action("美工后期审批通过",
-                        f"工单ID={order_data['id']}, 角色=美工后期审批, 分发侧={target_label}, 待审批路径={transit_root}")
+            fallback_note = "，待审批目录无成品(目标目录已有文件), 直接确认通过" if via_fallback else ""
+            _log_action(
+                "美工后期审批通过",
+                f"工单ID={order_data['id']}, 角色=美工后期审批, 分发侧={target_label}{fallback_note}"
+            )
             if all_done:
                 send_notification(
                     "工单美工后期审批通过通知",
@@ -609,9 +565,30 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                     else:
                         # 单侧通过不关闭对话框，便于继续审批另一侧
                         QMessageBox.information(parent, "成功",
-                                                f"{target_label}侧审批已通过，成品已分发。请继续审批另一侧。")
+                                                f"{target_label}侧审批已通过，请继续审批另一侧。")
             except RuntimeError:
                 pass
+
+        def update_status(task_ok=True, task_errors=None):
+            if task_ok:
+                completed['count'] += 1
+            else:
+                failed['count'] += 1
+            if failed['count'] > 0 or completed['count'] < total:
+                if failed['count'] > 0:
+                    try:
+                        if dialog.isVisible():
+                            QMessageBox.warning(
+                                dialog, "审批未完成",
+                                f"{target_label}侧文件分发失败，审批未通过，请重试：\n"
+                                + "\n".join((task_errors or [])[:5])
+                            )
+                    except RuntimeError:
+                        pass
+                return
+            # 该侧文件全部分发成功：标记该侧已通过并统一收尾
+            approved_sides.add(side)
+            _complete_side(side, via_fallback=False)
 
         try:
             os.makedirs(target_dir, exist_ok=True)
