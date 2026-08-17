@@ -9,6 +9,7 @@ path_permission_check.py — 路径权限检查对话框
 import logging
 import os
 import tempfile
+import threading
 import time
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -38,6 +39,31 @@ from src.core.paths import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _check_with_timeout(func, timeout: float = 8.0):
+    """在守护线程中执行检查函数，超过 timeout 秒返回 None。
+
+    网络盘阻塞（\\dabadoc 不可达或响应慢）时，os.path.exists / os.listdir /
+    mkstemp 会长时间挂起。用线程 + join 限时，超时则放弃等待并返回 None，
+    界面得以继续；阻塞线程留在后台（daemon）自然结束，不阻塞程序退出。
+    """
+    box = {}
+
+    def _run():
+        try:
+            box['result'] = func()
+        except Exception as e:
+            box['error'] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        return None
+    if 'error' in box:
+        raise box['error']
+    return box.get('result')
 
 # 各角色需要检查的路径（用途, 路径, 需要可写）
 # 注意：实际目录结构为 02图像部/01美工部/{产线}/01待审批/{工单}，
@@ -162,6 +188,7 @@ def check_path_permission(path: str, need_write: bool) -> tuple:
 _STATUS_COLOR = {
     "正常": QColor(40, 167, 69),       # 绿色
     "只读": QColor(255, 140, 0),       # 橙色
+    "超时": QColor(220, 53, 69),       # 红色（网络盘响应慢）
     "不可访问": QColor(220, 53, 69),   # 红色
     "不存在": QColor(220, 53, 69),     # 红色
 }
@@ -182,7 +209,10 @@ class _PermissionScanWorker(QThread):
             # 对话框关闭或用户取消时提前退出，避免线程泄漏与访问已销毁控件
             if self.isInterruptionRequested():
                 return
-            result = check_path_permission(path, need_write)
+            # 每项带超时：网络盘阻塞时最多等待 8 秒，超时标记"超时"后继续下一项
+            result = _check_with_timeout(lambda: check_path_permission(path, need_write))
+            if result is None:
+                result = (False, False, False, "超时")
             self.item_done.emit(row, result)
         self.all_done.emit()
 
@@ -344,6 +374,20 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
         dialog.setCursor(Qt.CursorShape.WaitCursor)
         refresh_btn.setEnabled(False)
         counts.update(ok=0, warn=0, fail=0)
+        # 预检网络盘根可达性：不可达/挂起时快速失败，避免逐项等待超时
+        reachable = _check_with_timeout(lambda: os.path.exists(VOLUMES), timeout=3)
+        if reachable is not True:
+            table.setRowCount(len(checks))
+            for row, (label, path, _need_write) in enumerate(checks):
+                for col, text in ((0, label), (1, path), (2, "网络盘不可达")):
+                    item = QTableWidgetItem(text)
+                    item.setForeground(QColor(220, 53, 69))
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    table.setItem(row, col, item)
+            dialog.unsetCursor()
+            refresh_btn.setEnabled(True)
+            summary_label.setText(f"共 {len(checks)} 项：网络共享盘不可达，未执行检查。请检查网络/共享盘连接后重试。")
+            return
         table.setRowCount(len(checks))
         # 先立即填充 用途/路径/状态(检查中)
         for row, (label, path, _need_write) in enumerate(checks):
