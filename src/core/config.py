@@ -151,3 +151,18 @@ def get_feature_enabled(key: str, default: str = '1') -> bool:
 def clear_feature_cache() -> None:
     """清空功能开关缓存（设置保存后调用，使修改即时生效）。"""
     _FEATURE_CACHE.clear()
+
+
+# 禁止作为成品路径的目录关键字（app_system_settings.product_dir_blocked_keywords，逗号分隔）
+_BLOCKED_KEYWORDS_KEY = 'product_dir_blocked_keywords'
+
+
+def get_blocked_dir_keywords() -> list:
+    """读取禁止目录关键字列表，用于美工/剪辑选择成品文件夹时校验（防止误选源文件等目录）。
+
+    实时读取数据库，管理员保存配置后立即生效，无需清缓存。
+    格式：app_system_settings 中逗号分隔的字符串，如 "01原始素材,源文件"。
+    """
+    from src.core.database import db_manager
+    raw = db_manager.get_system_setting(_BLOCKED_KEYWORDS_KEY, default='')
+    return [k.strip() for k in raw.split(',') if k.strip()]
