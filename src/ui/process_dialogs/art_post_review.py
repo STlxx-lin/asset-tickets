@@ -485,10 +485,62 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         """
         sub_dir = sub_dirs[side]
         target_dir = targets[side]
-        target_label = SIDE_LABELS[side]
+        target_label = _SIDE_LABELS[side]
+
+        def _target_has_files():
+            """目标目录（运营/销售）是否已有成品文件（历史审批已分发但状态未推进时存在）。"""
+            if not os.path.exists(target_dir):
+                return False
+            for _root, _dirs, files in os.walk(target_dir):
+                for f in files:
+                    if os.path.splitext(f)[1].lower() in IMG_EXTS or os.path.splitext(f)[1].lower() in VID_EXTS:
+                        return True
+            return False
 
         files_found = scan_files(sub_dir)
         if not files_found or not os.path.exists(sub_dir):
+            # 兜底：待审批目录无成品文件，但目标目录已有成品（如历史 bug：文件已分发但
+            # 状态未推进）→ 由审批员确认后直接通过，无需重新移动文件
+            if _target_has_files():
+                confirm = QMessageBox.question(
+                    dialog, "确认通过",
+                    f"{target_label}侧待审批目录没有待审批文件，但目标目录已存在成品：\n{target_dir}\n\n"
+                    f"这可能是审批已分发但状态未推进。\n确认直接通过本侧审批？",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if confirm != QMessageBox.Yes:
+                    return
+                other_side = 1 - side
+                other_files = scan_files(sub_dirs[other_side]) if os.path.exists(sub_dirs[other_side]) else []
+                all_done = not other_files
+                if all_done:
+                    ok, error_msg = update_local_status_only(order_data['id'], {'art_status': '美工已完成'})
+                    if not ok:
+                        try:
+                            if dialog.isVisible():
+                                QMessageBox.warning(dialog, "提示", error_msg)
+                        except RuntimeError:
+                            pass
+                        return  # 状态未写入，中止后续通知与成功提示
+                    order_data['art_status'] = '美工已完成'
+                    parent.refresh_work_orders()
+                _log_action(
+                    "美工后期审批通过",
+                    f"工单ID={order_data['id']}, 角色=美工后期审批, 分发侧={target_label}, "
+                    f"待审批目录无成品(目标目录已有文件), 直接确认通过"
+                )
+                send_notification(
+                    f"工单美工后期审批通过通知-{target_label}",
+                    f"### 工单号：{order_data['id']}\n- 角色：美工后期审批\n- 操作：审批通过（{target_label}侧，目录已存在成品）\n- 提示：{target_label}侧成品已确认通过，请{target_label}同事登录系统领取素材！",
+                    order_data.get('department')
+                )
+                try:
+                    if dialog.isVisible():
+                        dialog.accept()
+                        QMessageBox.information(parent, "成功", f"{target_label}侧审批已确认通过。")
+                except RuntimeError:
+                    pass
+                return
             QMessageBox.warning(dialog, "提示", f"{target_label}侧没有待审批的成品文件")
             return
 
