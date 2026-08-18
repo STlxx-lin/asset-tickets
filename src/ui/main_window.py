@@ -1120,6 +1120,12 @@ class MainWindow(QMainWindow):
                 self.refresh_work_orders()
             delete_button.clicked.connect(on_delete_order)
             controls_layout.addWidget(delete_button)
+
+            # 管理员：扫描清理 02视频部 源文件（跳过不删除.drp工程）
+            clean_video_src_btn = QPushButton("清理视频源")
+            clean_video_src_btn.setToolTip("扫描并一键清理 02视频部 各工单源文件（跳过不删除.drp工程文件）")
+            clean_video_src_btn.clicked.connect(self.handle_clean_video_source)
+            controls_layout.addWidget(clean_video_src_btn)
         controls_layout.addStretch()
         refresh_button = QPushButton("刷新工单")
         refresh_button.clicked.connect(self.refresh_work_orders)
@@ -3189,6 +3195,18 @@ class MainWindow(QMainWindow):
         order_data = item.data(Qt.ItemDataRole.UserRole)
         from src.ui.path_check import show_path_check_dialog
         show_path_check_dialog(self, order_data)
+    def handle_clean_video_source(self):
+        """扫描并清理 02视频部 工单源文件（保留.drp项目工程文件）"""
+        from src.ui.clean_video_source_dialog import show_clean_video_source_dialog
+        selected_order_id = ""
+        index = self.table_view.currentIndex()
+        if index.isValid():
+            item = self.model.item(index.row(), 0)
+            if item:
+                order_data = item.data(Qt.ItemDataRole.UserRole)
+                if order_data:
+                    selected_order_id = order_data.get('id', '')
+        show_clean_video_source_dialog(self, preselect_order_id=selected_order_id)
     def handle_path_permission_check(self):
         """路径权限检查（所有角色可见）：按角色检查对应路径，管理员检查全部"""
         from src.ui.path_permission_check import show_path_permission_dialog

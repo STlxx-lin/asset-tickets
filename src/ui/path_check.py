@@ -45,11 +45,9 @@ from src.core.paths import (
     EDIT_GET_VIDEO_DEST,
     EDIT_GET_VIDEO_SRC,
     EDIT_POST_REVIEW_TRANSIT,
-    OPS_GET_SRC,
     PHOTOGRAPHERS,
     PHOTOGRAPHY_UPLOAD,
     RAW_ROOT,
-    SALES_GET_SRC,
     VIDEO_ROOT,
     VOLUMES,
     to_local_path,
@@ -166,34 +164,48 @@ def build_path_checks(order_data: dict) -> list:
     except Exception:
         pass
 
-    checks = []
+    raw_checks = []
     # 摄影上传（按摄影师）
     for pg in PHOTOGRAPHERS:
-        checks.append((f"摄影上传-{pg}", PHOTOGRAPHY_UPLOAD(pg, dept, oid, model, name), ""))
+        raw_checks.append((f"摄影上传-{pg}", PHOTOGRAPHY_UPLOAD(pg, dept, oid, model, name), ""))
     # 美工链
-    checks.append(("美工领取源", ART_GET_IMG_SRC(dept, oid, model, name), ""))
-    checks.append(("美工领取存放", ART_GET_IMG_DEST(dept, oid, model, name), ""))
+    raw_checks.append(("美工领取源", ART_GET_IMG_SRC(dept, oid, model, name), ""))
+    raw_checks.append(("美工领取存放", ART_GET_IMG_DEST(dept, oid, model, name), ""))
     transit = ART_POST_REVIEW_TRANSIT(dept, oid, model, name)
-    checks.append(("美工待审批", transit, ""))
-    checks.append(("美工待审批-01运营", os.path.join(transit, '01运营'), ""))
-    checks.append(("美工待审批-02销售", os.path.join(transit, '02销售'), ""))
-    checks.append(("美工待审批-01运营-不通过", os.path.join(transit, '01运营', '不通过'), ""))
-    checks.append(("美工待审批-02销售-不通过", os.path.join(transit, '02销售', '不通过'), ""))
-    checks.append(("美工分发运营", ART_DIST_OPS(dept, oid, model, name), "运营已领取" if art_ops_collected else ""))
-    checks.append(("美工分发销售", ART_DIST_SALES(dept, oid, model, name), "销售已领取" if art_sales_collected else ""))
+    raw_checks.append(("美工待审批-01运营", os.path.join(transit, '01运营'), ""))
+    raw_checks.append(("美工待审批-02销售", os.path.join(transit, '02销售'), ""))
+    raw_checks.append(("美工待审批-01运营-不通过", os.path.join(transit, '01运营', '不通过'), ""))
+    raw_checks.append(("美工待审批-02销售-不通过", os.path.join(transit, '02销售', '不通过'), ""))
+    raw_checks.append(("美工分发运营", ART_DIST_OPS(dept, oid, model, name), "运营已领取" if art_ops_collected else ""))
+    raw_checks.append(("美工分发销售", ART_DIST_SALES(dept, oid, model, name), "销售已领取" if art_sales_collected else ""))
     # 剪辑链
-    checks.append(("剪辑领取源", EDIT_GET_VIDEO_SRC(dept, oid, model, name), ""))
-    checks.append(("剪辑领取存放", EDIT_GET_VIDEO_DEST(dept, oid, model, name), ""))
+    raw_checks.append(("剪辑领取源", EDIT_GET_VIDEO_SRC(dept, oid, model, name), ""))
+    raw_checks.append(("剪辑领取存放", EDIT_GET_VIDEO_DEST(dept, oid, model, name), ""))
+    # 剪辑源文件（02视频部/{dept}/{id} {model} {name}/源文件 及 00待处理 下的源文件）
+    raw_checks.append(("剪辑源文件", os.path.join(VOLUMES, '02图像部', '02视频部', dept, f"{oid} {model} {name}", '源文件'), ""))
+    raw_checks.append(("剪辑源文件(待处理)", os.path.join(VOLUMES, '02图像部', '02视频部', dept, '00待处理', f"{oid} {model} {name}", '源文件'), ""))
     edit_transit = EDIT_POST_REVIEW_TRANSIT(dept, oid, model, name)
-    checks.append(("剪辑待审核", edit_transit, ""))
-    checks.append(("剪辑待审核-不通过", os.path.join(edit_transit, '不通过'), ""))
-    checks.append(("剪辑分发运营", EDIT_DIST_OPS(dept, oid, model, name), "运营已领取" if edit_ops_collected else ""))
-    checks.append(("剪辑分发销售", EDIT_DIST_SALES(dept, oid, model, name), "销售已领取" if edit_sales_collected else ""))
-    # 运营/销售领取
-    checks.append(("运营领取源", OPS_GET_SRC(dept, oid, model, name), "已领取" if (art_ops_collected or edit_ops_collected) else ""))
-    checks.append(("销售领取源", SALES_GET_SRC(dept, oid, model, name), "已领取" if (art_sales_collected or edit_sales_collected) else ""))
-    # DB 成品路径
-    checks.append(("成品路径(DB)", order_data.get('edit_product_path') or '', ""))
+    raw_checks.append(("剪辑待审核", edit_transit, ""))
+    raw_checks.append(("剪辑待审核-不通过", os.path.join(edit_transit, '不通过'), ""))
+    raw_checks.append(("剪辑分发运营", EDIT_DIST_OPS(dept, oid, model, name), "运营已领取" if edit_ops_collected else ""))
+    raw_checks.append(("剪辑分发销售", EDIT_DIST_SALES(dept, oid, model, name), "销售已领取" if edit_sales_collected else ""))
+    # DB 成品路径（如有配置）
+    edit_product_path = order_data.get('edit_product_path') or ''
+    if edit_product_path:
+        raw_checks.append(("成品路径(DB)", edit_product_path, ""))
+
+    # 路径去重（统一转换为规范化本地路径判断，避免重复扫描和多行展示）
+    seen_paths = set()
+    checks = []
+    for label, p, note in raw_checks:
+        if not p:
+            continue
+        norm = os.path.normpath(to_local_path(p)).lower()
+        if norm in seen_paths:
+            continue
+        seen_paths.add(norm)
+        checks.append((label, p, note))
+
     return checks
 
 
@@ -350,6 +362,15 @@ def show_path_check_dialog(parent, order_data: dict):
     button_layout.addWidget(show_missing_cb)
 
     button_layout.addStretch()
+
+    clean_video_src_btn = QPushButton("🧹 清理视频源文件 (保留.drp)")
+    clean_video_src_btn.setStyleSheet(
+        "background-color: #d9534f; color: white; border: none; border-radius: 6px;"
+        " padding: 10px 20px; font-size: 14px; font-weight: bold;"
+    )
+    clean_video_src_btn.setToolTip("一键删除 02视频部 该工单「源文件」目录下的所有素材，保留 .drp 工程文件")
+    button_layout.addWidget(clean_video_src_btn)
+
     refresh_btn = QPushButton("🔄 刷新")
     refresh_btn.setStyleSheet(
         "background-color: #4f8ef7; color: white; border: none; border-radius: 6px;"
@@ -451,10 +472,14 @@ def show_path_check_dialog(parent, order_data: dict):
         # 整行状态着色
         if status not in ("正常", "已领取"):
             for col in range(7):
-                table.item(row, col).setBackground(QColor(60, 30, 35) if status != "空" else QColor(58, 46, 28))
+                it = table.item(row, col)
+                if it:
+                    it.setBackground(QColor(60, 30, 35) if status != "空" else QColor(58, 46, 28))
         elif has_useless or recommend_del:
             for col in range(7):
-                table.item(row, col).setBackground(QColor(58, 46, 28))
+                it = table.item(row, col)
+                if it:
+                    it.setBackground(QColor(58, 46, 28))
 
         # 打开 / 删除 按钮（最右侧两列）
         exists = result['exists']
@@ -478,14 +503,14 @@ def show_path_check_dialog(parent, order_data: dict):
         open_widget = QWidget()
         open_layout = QHBoxLayout(open_widget)
         open_layout.setContentsMargins(4, 2, 4, 2)
-        open_layout.setAlignment(Qt.AlignCenter)
+        open_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         open_layout.addWidget(make_open_btn(path))
         table.setCellWidget(row, 7, open_widget)
 
         del_widget = QWidget()
         del_layout = QHBoxLayout(del_widget)
         del_layout.setContentsMargins(4, 2, 4, 2)
-        del_layout.setAlignment(Qt.AlignCenter)
+        del_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         del_layout.addWidget(make_del_btn(row, label, path))
         table.setCellWidget(row, 8, del_widget)
 
@@ -586,6 +611,127 @@ def show_path_check_dialog(parent, order_data: dict):
                     QDesktopServices.openUrl(QUrl.fromLocalFile(p))
     table.cellDoubleClicked.connect(on_cell_double_clicked)
 
+    def on_clean_video_source_files():
+        """一键删除 02视频部\\产线\\xxxx\\源文件 下除 .drp 之外的所有文件与空目录"""
+        dept = order_data.get('department', '')
+        oid = order_data.get('id', '')
+        model = order_data.get('model', '')
+        name = order_data.get('name', '')
+
+        candidate_dirs = [
+            os.path.join(VOLUMES, '02图像部', '02视频部', dept, f"{oid} {model} {name}", '源文件'),
+            os.path.join(VOLUMES, '02图像部', '02视频部', dept, '00待处理', f"{oid} {model} {name}", '源文件'),
+        ]
+        local_targets = []
+        for cd in candidate_dirs:
+            loc = to_local_path(cd)
+            if loc and os.path.exists(loc) and os.path.isdir(loc):
+                local_targets.append((cd, loc))
+
+        if not local_targets:
+            QMessageBox.information(
+                dialog,
+                "提示",
+                f"未找到该工单的视频源文件目录：\n\n已检查：\n" + "\n".join(candidate_dirs)
+            )
+            return
+
+        # 统计要删除的文件和保留的 .drp
+        files_to_delete = []
+        drp_files = []
+        total_size = 0
+
+        for cd, loc in local_targets:
+            for root, dirs, files in os.walk(loc):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if f.lower().endswith('.drp'):
+                        drp_files.append(fp)
+                    else:
+                        files_to_delete.append(fp)
+                        try:
+                            total_size += os.path.getsize(fp)
+                        except OSError:
+                            pass
+
+        if not files_to_delete:
+            QMessageBox.information(
+                dialog,
+                "提示",
+                f"源文件目录中没有需要清理的非 .drp 文件。\n（共保留 {len(drp_files)} 个 .drp 项目工程文件）"
+            )
+            return
+
+        # 格式化文件大小
+        if total_size >= 1024 * 1024 * 1024:
+            size_str = f"{total_size / (1024**3):.2f} GB"
+        elif total_size >= 1024 * 1024:
+            size_str = f"{total_size / (1024**2):.2f} MB"
+        else:
+            size_str = f"{total_size / 1024:.1f} KB"
+
+        target_paths_str = "\n".join(t[0] for t in local_targets)
+        ret = QMessageBox.warning(
+            dialog,
+            "确认清理视频源文件",
+            f"确定要清理该工单的视频「源文件」吗？\n\n"
+            f"目标路径：\n{target_paths_str}\n\n"
+            f"• 将删除：{len(files_to_delete)} 个文件（共 {size_str}）\n"
+            f"• 将保留：{len(drp_files)} 个 .drp 工程文件（跳过不删除）\n\n"
+            f"⚠️ 删除后不可恢复，是否继续？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+
+        # 执行删除
+        deleted_cnt = 0
+        del_errors = []
+        for fp in files_to_delete:
+            try:
+                os.remove(fp)
+                deleted_cnt += 1
+            except Exception as e:
+                del_errors.append(f"{os.path.basename(fp)}: {e}")
+
+        # 清理变空的子目录（自底向上）
+        for cd, loc in local_targets:
+            for root, dirs, files in os.walk(loc, topdown=False):
+                if root != loc:
+                    try:
+                        if not os.listdir(root):
+                            os.rmdir(root)
+                    except OSError:
+                        pass
+
+        # 记录操作日志
+        try:
+            db_manager.add_log(
+                user='管理员',
+                action_type="清理视频源文件",
+                details=f"工单ID={oid}, 清理了 {deleted_cnt} 个非.drp文件({size_str}), 保留了 {len(drp_files)} 个.drp文件, 目标={target_paths_str}"
+            )
+        except Exception:
+            pass
+
+        if del_errors:
+            QMessageBox.warning(
+                dialog,
+                "部分清理失败",
+                f"已删除 {deleted_cnt} 个文件（释放 {size_str}），保留 {len(drp_files)} 个 .drp 文件。\n"
+                f"以下文件删除失败：\n" + "\n".join(del_errors[:5])
+            )
+        else:
+            QMessageBox.information(
+                dialog,
+                "清理成功",
+                f"清理完成！\n\n• 已成功删除：{deleted_cnt} 个文件（释放约 {size_str}）\n• 已完整保留：{len(drp_files)} 个 .drp 工程文件"
+            )
+
+        run_check()  # 刷新检查结果
+
+    clean_video_src_btn.clicked.connect(on_clean_video_source_files)
     refresh_btn.clicked.connect(run_check)
     close_btn.clicked.connect(dialog.reject)
     show_missing_cb.toggled.connect(lambda _checked: apply_fold())
