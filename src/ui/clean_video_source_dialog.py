@@ -14,6 +14,7 @@ import os
 import shutil
 import threading
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices
@@ -809,9 +810,11 @@ def show_clean_video_source_dialog(parent, preselect_order_id: str = ""):
             return
 
         try:
-            is_csv = file_path.lower().endswith('.csv')
+            # 导出文件：保存对话框返回的用户选定路径，规范化后写入（resolve 解析相对/.. 成分）
+            out_path = Path(file_path).resolve()
+            is_csv = out_path.name.lower().endswith('.csv')
             if is_csv:
-                with open(file_path, 'w', newline='', encoding='utf-8-sig') as f:
+                with out_path.open('w', newline='', encoding='utf-8-sig') as f:
                     writer = csv.writer(f)
                     # 写入表头
                     writer.writerow([
@@ -828,14 +831,14 @@ def show_clean_video_source_dialog(parent, preselect_order_id: str = ""):
                             it['path'],
                         ])
             else:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(f"# 02视频部 无原始素材备份工单列表\n")
-                    f.write(f"# 导出时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    f.write(f"# 共计: {len(no_backup_items)} 条记录\n\n")
-                    for idx, it in enumerate(no_backup_items, 1):
-                        f.write(f"{idx}. [{it['dept']}] {it['order_folder']}\n")
-                        f.write(f"   路径: {it['path']}\n")
-                        f.write(f"   待清理文件: {it['non_drp_count']} 个 ({it['size_str']}), 保留.drp: {it['drp_count']} 个\n\n")
+                lines = [f"# 02视频部 无原始素材备份工单列表\n"]
+                lines.append(f"# 导出时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                lines.append(f"# 共计: {len(no_backup_items)} 条记录\n\n")
+                for idx, it in enumerate(no_backup_items, 1):
+                    lines.append(f"{idx}. [{it['dept']}] {it['order_folder']}\n")
+                    lines.append(f"   路径: {it['path']}\n")
+                    lines.append(f"   待清理文件: {it['non_drp_count']} 个 ({it['size_str']}), 保留.drp: {it['drp_count']} 个\n\n")
+                out_path.write_text(''.join(lines), encoding='utf-8')
 
             ret = QMessageBox.information(
                 dialog,

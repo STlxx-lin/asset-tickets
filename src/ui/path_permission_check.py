@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from src.core.paths import (
     ART_ROOT,
     CENTER_ROOT,
+    PHOTOGRAPHERS,
     RAW_ROOT,
     VIDEO_ROOT,
     VOLUMES,
@@ -83,8 +84,9 @@ def _check_with_timeout(func, timeout: float = 8.0):
 #       产线级环节目录用 {dept} 占位符，检查时按用户所属产线展开
 ROLE_PATHS = {
     "摄影": [
-        ("原始素材-上传根", os.path.join(RAW_ROOT, '01原始素材'), True),
-        ("美工待领取-分发", os.path.join(RAW_ROOT, '02美工待领取'), True),
+        ("原始素材-上传({photographer})", os.path.join(RAW_ROOT, '01原始素材', '{photographer}', '{dept}'), True),
+        ("美工待领取-图片", os.path.join(RAW_ROOT, '02美工待领取', '{dept}', '01图片'), True),
+        ("美工待领取-视频", os.path.join(RAW_ROOT, '02美工待领取', '{dept}', '02视频'), True),
     ],
     "美工": [
         ("美工待领取-领取源", os.path.join(RAW_ROOT, '02美工待领取'), False),
@@ -133,13 +135,23 @@ for _paths in ROLE_PATHS.values():
 
 
 def _expand_checks(paths: list, departments: list) -> list:
-    """将含 {dept} 占位符的路径按用户所属产线展开。
+    """将含占位符的路径按摄影师/产线展开。
 
-    返回 [(label, path, need_write)]，产线级路径标签附带产线名便于区分。
+    {photographer} 按摄影师列表展开，{dept} 按用户所属产线展开；
+    返回 [(label, path, need_write)]，标签附带展开值便于区分。
     """
     expanded = []
     for label, path, need_write in paths:
-        if '{dept}' in path:
+        if '{photographer}' in path:
+            for pg in PHOTOGRAPHERS:
+                pg_label = label.replace('{photographer}', pg)
+                pg_path = path.replace('{photographer}', pg)
+                if '{dept}' in pg_path:
+                    for dept in departments:
+                        expanded.append((f"{pg_label}-{dept}", pg_path.replace('{dept}', dept), need_write))
+                else:
+                    expanded.append((pg_label, pg_path, need_write))
+        elif '{dept}' in path:
             for dept in departments:
                 expanded.append((f"{label}-{dept}", path.replace('{dept}', dept), need_write))
         else:
