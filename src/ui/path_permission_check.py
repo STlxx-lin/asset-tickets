@@ -222,7 +222,7 @@ def check_path_permission(path: str, need_write: bool) -> tuple:
 _STATUS_COLOR = {
     "正常": QColor(40, 167, 69),       # 绿色
     "只读": QColor(255, 140, 0),       # 橙色
-    "超时": QColor(220, 53, 69),       # 红色（网络盘响应慢）
+    "无权限": QColor(220, 53, 69),     # 红色（响应超时或不可访问）
     "不可访问": QColor(220, 53, 69),   # 红色
     "不存在": QColor(220, 53, 69),     # 红色
 }
@@ -243,10 +243,10 @@ class _PermissionScanWorker(QThread):
             # 对话框关闭或用户取消时提前退出，避免线程泄漏与访问已销毁控件
             if self.isInterruptionRequested():
                 return
-            # 每项带超时：网络盘阻塞时最多等待 8 秒，超时标记"超时"后继续下一项
-            result = _check_with_timeout(lambda: check_path_permission(path, need_write))
+            # 每项带超时：网络盘阻塞时最多等待 2 秒，超时按"无权限"处理（响应超时视为不可用）
+            result = _check_with_timeout(lambda: check_path_permission(path, need_write), timeout=2)
             if result is None:
-                result = (False, False, False, "超时")
+                result = (False, False, False, "无权限")
             self.item_done.emit(row, result)
         self.all_done.emit()
 
