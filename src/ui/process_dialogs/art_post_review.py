@@ -550,9 +550,10 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                         dialog.accept()
                         QMessageBox.information(parent, "成功", "美工后期审批已通过，成品已分发至运营/销售目录，已通知领取！")
                     else:
-                        # 单侧通过不关闭对话框，便于继续审批另一侧
+                        # 单侧通过不关闭对话框，便于继续审批另一侧；刷新按钮状态（本侧置灰）
                         QMessageBox.information(parent, "成功",
                                                 f"{target_label}侧审批已通过，请继续审批另一侧。")
+                        _refresh_buttons()
             except RuntimeError:
                 pass
 
@@ -677,3 +678,20 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     pass_ops_btn.clicked.connect(lambda: on_approve(0))
     pass_sales_btn.clicked.connect(lambda: on_approve(1))
     reject_btn.clicked.connect(on_reject)
+
+    # 审批按钮状态刷新：已通过的侧置灰禁用（不可重复审批）；
+    # 仅一侧有内容（待审批/目标已有成品）时只显示该侧按钮，另一侧不显示
+    def _refresh_buttons():
+        for _side, _btn in ((0, pass_ops_btn), (1, pass_sales_btn)):
+            if _side in approved_sides:
+                _btn.setEnabled(False)
+                _btn.setStyleSheet("background-color: #4a4f57; color: #9aa0a8;")
+                _btn.setVisible(True)
+            elif _side_has_content(_side):
+                _btn.setEnabled(True)
+                _btn.setStyleSheet("background-color: #28a745; color: white;")
+                _btn.setVisible(True)
+            else:
+                _btn.setVisible(False)
+
+    _refresh_buttons()
