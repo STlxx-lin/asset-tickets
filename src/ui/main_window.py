@@ -62,7 +62,7 @@ from src.core.config import APP_VERSION, DEFAULT_NOTIFICATION_TYPE, clear_featur
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.database import db_manager
 
-from .task_manager import Task, TaskManagerDialog
+from .task_manager import EmbeddedTaskManagerWidget, Task, TaskManagerDialog
 from .work_order_detail import WorkOrderDetailDialog
 
 # 状态筛选下拉选项（单一来源）：原始值 = 全局 status（摄影/剪辑/运营链） + 美工链 art_status。
@@ -1133,10 +1133,21 @@ class MainWindow(QMainWindow):
         center_layout.addLayout(controls_layout)
         center_layout.addWidget(self.table_view)
         splitter.addWidget(center_widget)
+        # 右侧分栏容器：工单统计 (上) + 任务进度 (下)
+        right_panel = QWidget()
+        right_panel_layout = QVBoxLayout(right_panel)
+        right_panel_layout.setContentsMargins(0, 0, 0, 0)
+        right_panel_layout.setSpacing(10)
+
         stats_group = QGroupBox("工单统计")
         self.stats_layout = QVBoxLayout(stats_group)
-        splitter.addWidget(stats_group)
-        splitter.setSizes([250, 1150, 200])
+        right_panel_layout.addWidget(stats_group, 0)
+
+        self.embedded_task_manager = EmbeddedTaskManagerWidget()
+        right_panel_layout.addWidget(self.embedded_task_manager, 1)
+
+        splitter.addWidget(right_panel)
+        splitter.setSizes([240, 1100, 260])
         # 初始化发起人下拉框
         self.update_creator_filter()
         
@@ -3519,7 +3530,7 @@ class MainWindow(QMainWindow):
         super().showMaximized()
         splitter = self.centralWidget().findChild(QSplitter)
         if splitter:
-            splitter.setSizes([250, int(self.width() * 0.6), 200]) 
+            splitter.setSizes([240, int(self.width() * 0.65), 260]) 
     def logout(self):
         # 注销，回到角色选择窗口
         self.log_action("注销", "用户注销")
@@ -3596,7 +3607,7 @@ class MainWindow(QMainWindow):
         self.refresh_work_orders()
 
     def add_file_task(self, name, files, src_dir, dest_dir, file_filter=None, op_type="copy", update_status_func=None):
-        """添加文件操作任务到任务管理器
+        """添加文件操作任务到右侧内嵌任务面板与任务管理器
         Args:
             name: 任务名称
             files: 文件列表
@@ -3607,8 +3618,9 @@ class MainWindow(QMainWindow):
             update_status_func: 更新状态的回调函数
         """
         task = Task(name, files, src_dir, dest_dir, file_filter, op_type, update_status_func)
+        if hasattr(self, 'embedded_task_manager'):
+            self.embedded_task_manager.add_task(task)
         self.task_manager.add_task(task)
-        self.show_task_manager()
     def refresh_work_orders(self):
         # 保留当前搜索与筛选条件，重新拉取数据并重新应用筛选（全量数据供筛选复用）
         self.all_orders_data = db_manager.get_work_orders(self.departments)

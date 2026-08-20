@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -63,6 +65,7 @@ class Task(QThread):
         self.op_type = op_type
         self._is_paused = False
         self._is_canceled = False
+        self._started_by_manager = False
         self.errors = []  # 记录错误信息
         
         # 创建状态更新器
@@ -226,10 +229,267 @@ class Task(QThread):
         self._is_paused = False
         self.paused.emit(False)
 
-    def cancel(self):
-        """取消任务"""
-        self._is_canceled = True
-        self.canceled.emit()
+
+class TaskCardWidget(QWidget):
+    """单个文件操作任务卡片控件（嵌入式及列表复用）"""
+    def __init__(self, task_name, parent=None):
+        super().__init__(parent)
+        self.task_name = task_name
+        self.is_finished = False
+        self.has_errors = False
+        
+        # 提取工单ID
+        self.work_order_id = "未知工单"
+        if "工单" in task_name:
+            try:
+                start_idx = task_name.find("工单") + 2
+                end_idx = task_name.find(" ", start_idx)
+                if end_idx == -1:
+                    end_idx = len(task_name)
+                self.work_order_id = task_name[start_idx:end_idx]
+            except (IndexError, ValueError):
+                pass
+
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setObjectName("TaskCard")
+        self.setStyleSheet("""
+            QWidget#TaskCard {
+                background-color: #22262f;
+                border: 1px solid #323846;
+                border-radius: 6px;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(5)
+
+        # 头部：工单号与状态胶囊
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.id_label = QLabel(f"工单: {self.work_order_id}")
+        self.id_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+        header_layout.addWidget(self.id_label)
+        
+        header_layout.addStretch()
+        
+        self.status_badge = QLabel("传输中")
+        self.status_badge.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #38bdf8; "
+            "background-color: #0c4a6e; border-radius: 4px; padding: 2px 6px;"
+        )
+        header_layout.addWidget(self.status_badge)
+        layout.addLayout(header_layout)
+
+        # 任务描述标签
+        self.desc_label = QLabel(self.task_name)
+        self.desc_label.setStyleSheet("font-size: 11px; color: #9ba3b0; background: transparent;")
+        self.desc_label.setWordWrap(True)
+        self.desc_label.setToolTip(self.task_name)
+        layout.addWidget(self.desc_label)
+
+        # 进度条
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(18)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #353b48;
+                border-radius: 4px;
+                background-color: #1a1d23;
+                text-align: center;
+                color: #e8eaed;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #3b82f6, stop:1 #06b6d4);
+                border-radius: 3px;
+            }
+        """)
+        self.progress_bar.setValue(0)
+        layout.addWidget(self.progress_bar)
+
+    def set_progress(self, val):
+        self.progress_bar.setValue(val)
+
+    def set_finished(self, errors=None):
+        self.is_finished = True
+        self.progress_bar.setValue(100)
+        if errors:
+            self.has_errors = True
+            self.status_badge.setText("异常")
+            self.status_badge.setStyleSheet(
+                "font-size: 11px; font-weight: bold; color: #f87171; "
+                "background-color: #450a0a; border-radius: 4px; padding: 2px 6px;"
+            )
+            self.progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #5c2020;
+                    border-radius: 4px;
+                    background-color: #1a1d23;
+                    text-align: center;
+                    color: #e8eaed;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QProgressBar::chunk {
+                    background: #dc2626;
+                    border-radius: 3px;
+                }
+            """)
+        else:
+            self.status_badge.setText("已完成")
+            self.status_badge.setStyleSheet(
+                "font-size: 11px; font-weight: bold; color: #4ade80; "
+                "background-color: #052e16; border-radius: 4px; padding: 2px 6px;"
+            )
+            self.progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #1e3a29;
+                    border-radius: 4px;
+                    background-color: #1a1d23;
+                    text-align: center;
+                    color: #e8eaed;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QProgressBar::chunk {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #10b981, stop:1 #34d399);
+                    border-radius: 3px;
+                }
+            """)
+
+    def set_canceled(self):
+        self.is_finished = True
+        self.status_badge.setText("已取消")
+        self.status_badge.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #facc15; "
+            "background-color: #422006; border-radius: 4px; padding: 2px 6px;"
+        )
+
+
+class EmbeddedTaskManagerWidget(QGroupBox):
+    """嵌入主窗口右侧栏的任务进度监控面板"""
+    def __init__(self, parent=None):
+        super().__init__("任务进度", parent)
+        self.cards = []
+        self.tasks = []
+        self._init_ui()
+
+    def _init_ui(self):
+        self.setObjectName("EmbeddedTaskManager")
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 14, 10, 10)
+        main_layout.setSpacing(6)
+
+        # 顶部工具栏：标题与清空按钮
+        top_bar = QHBoxLayout()
+        top_bar.addStretch()
+        self.clear_btn = QPushButton("清空完成项")
+        self.clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #252830;
+                color: #9ba3b0;
+                border: 1px solid #353840;
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 11px;
+                font-weight: normal;
+            }
+            QPushButton:hover {
+                background-color: #323846;
+                color: #e8eaed;
+            }
+            QPushButton:disabled {
+                background-color: transparent;
+                color: #4b5563;
+                border-color: #2e3340;
+            }
+        """)
+        self.clear_btn.setEnabled(False)
+        self.clear_btn.clicked.connect(self.clear_finished)
+        top_bar.addWidget(self.clear_btn)
+        main_layout.addLayout(top_bar)
+
+        # 滚动区域
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+        """)
+
+        self.container_widget = QWidget()
+        self.container_layout = QVBoxLayout(self.container_widget)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
+        self.container_layout.setSpacing(8)
+        self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # 空状态占位标签
+        self.placeholder_label = QLabel("暂无进行中的传输任务")
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.setStyleSheet("color: #6b7280; font-size: 12px; padding: 25px 0;")
+        self.container_layout.addWidget(self.placeholder_label)
+
+        self.scroll_area.setWidget(self.container_widget)
+        main_layout.addWidget(self.scroll_area)
+
+    def add_task(self, task: Task):
+        self.tasks.append(task)
+        self.placeholder_label.hide()
+
+        card = TaskCardWidget(task.name, self.container_widget)
+        self.cards.insert(0, card)  # 最新任务排在最上方
+        self.container_layout.insertWidget(0, card)
+
+        def on_progress(val):
+            card.set_progress(val)
+
+        def on_finished():
+            card.set_finished(task.errors)
+            self._update_clear_button_state()
+
+        def on_canceled():
+            card.set_canceled()
+            self._update_clear_button_state()
+
+        task.progress_changed.connect(on_progress)
+        task.task_finished.connect(on_finished)
+        task.canceled.connect(on_canceled)
+
+        self._update_clear_button_state()
+
+        # 启动任务（若尚未启动）
+        if not task.isRunning() and not getattr(task, '_started_by_manager', False):
+            task._started_by_manager = True
+            task.start()
+
+    def clear_finished(self):
+        to_remove = []
+        for card in self.cards:
+            if card.is_finished:
+                to_remove.append(card)
+
+        for card in to_remove:
+            self.cards.remove(card)
+            self.container_layout.removeWidget(card)
+            card.deleteLater()
+
+        if not self.cards:
+            self.placeholder_label.show()
+
+        self._update_clear_button_state()
+
+    def _update_clear_button_state(self):
+        has_finished = any(card.is_finished for card in self.cards)
+        self.clear_btn.setEnabled(has_finished)
+
 
 class TaskManagerDialog(QDialog):
     def __init__(self, parent=None, auto_show=False):
@@ -237,8 +497,8 @@ class TaskManagerDialog(QDialog):
         self.setWindowTitle("任务列表")
         self.resize(600, 400)
         # 任务进度窗口置顶显示（文件移动进度需随时可见，不被主窗口/其他弹窗遮挡）
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
-        self.layout = QVBoxLayout(self)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        self.main_layout = QVBoxLayout(self)
         self.auto_show = auto_show  # 控制是否自动显示窗口
         # 恢复主标题为"任务列表"
         self.title_label = QLabel("任务列表")
@@ -253,8 +513,8 @@ class TaskManagerDialog(QDialog):
                 margin-bottom: 10px;
             }
         """)
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.layout.addWidget(self.title_label)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.addWidget(self.title_label)
         self.list_widget = QListWidget()
         self.list_widget.setSpacing(8)
         self.list_widget.setStyleSheet("""
@@ -272,7 +532,7 @@ class TaskManagerDialog(QDialog):
                 border-radius: 5px;
             }
         """)
-        self.layout.addWidget(self.list_widget)
+        self.main_layout.addWidget(self.list_widget)
 
         # 添加关闭按钮
         btn_layout = QHBoxLayout()
@@ -296,7 +556,7 @@ class TaskManagerDialog(QDialog):
         """)
         self.close_btn.clicked.connect(self.close)
         btn_layout.addWidget(self.close_btn)
-        self.layout.addLayout(btn_layout)
+        self.main_layout.addLayout(btn_layout)
 
         self.tasks = []
         self.auto_close_timer = QTimer(self)
@@ -422,12 +682,12 @@ class TaskManagerDialog(QDialog):
                 
                 # 显示错误提示（带复制完整错误信息按钮）
                 msg_box = QMessageBox(self)
-                msg_box.setIcon(QMessageBox.Warning)
+                msg_box.setIcon(QMessageBox.Icon.Warning)
                 msg_box.setWindowTitle("任务执行出错")
                 msg_box.setText(f"任务 {task.name} 执行过程中出现错误：\n{error_msg}")
                 
-                copy_button = msg_box.addButton("复制完整错误", QMessageBox.ActionRole)
-                msg_box.addButton("确定", QMessageBox.AcceptRole)
+                copy_button = msg_box.addButton("复制完整错误", QMessageBox.ButtonRole.ActionRole)
+                msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
                 
                 full_error = f"任务 {task.name} 执行过程中出现错误：\n" + "\n".join(task.errors)
                 
@@ -458,7 +718,9 @@ class TaskManagerDialog(QDialog):
         task.canceled.connect(on_canceled)
         self.tasks.append(task)
         task._finished = False
-        task.start()
+        if not task.isRunning() and not getattr(task, '_started_by_manager', False):
+            task._started_by_manager = True
+            task.start()
         
         # 只有在auto_show为True时才自动显示窗口
         if self.auto_show:
