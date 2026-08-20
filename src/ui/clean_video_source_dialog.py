@@ -35,6 +35,16 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qfluentwidgets import (
+    CardWidget,
+    CheckBox as FluentCheckBox,
+    ComboBox as FluentComboBox,
+    FluentIcon as FIF,
+    PrimaryPushButton,
+    ProgressBar as FluentProgressBar,
+    PushButton,
+    SearchLineEdit,
+)
 
 from src.core.database import db_manager
 from src.core.paths import PHOTOGRAPHERS, RAW_ROOT, VIDEO_ROOT, to_local_path
@@ -333,39 +343,40 @@ def show_clean_video_source_dialog(parent, preselect_order_id: str = ""):
 
     main_layout = QVBoxLayout(dialog)
     main_layout.setContentsMargins(20, 20, 20, 20)
-    main_layout.setSpacing(12)
+    main_layout.setSpacing(14)
 
-    # 顶部标题与说明
-    top_layout = QHBoxLayout()
+    # 顶部卡片：标题与搜索筛选
+    top_card = CardWidget(dialog)
+    top_layout = QHBoxLayout(top_card)
+    top_layout.setContentsMargins(16, 14, 16, 14)
     top_layout.setSpacing(15)
+    
     title_box = QVBoxLayout()
     title_label = QLabel("02视频部 — 源文件扫描与一键清理")
-    title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #ffffff;")
+    title_label.setStyleSheet("font-size: 17px; font-weight: bold; color: #ffffff; background: transparent;")
     desc_label = QLabel(
         "安全策略：自动核对「01原始素材」对应摄影师目录；跳过并保留全部 .drp 达芬奇工程文件；无原始备份的目录自动高亮标记并防误删。"
     )
-    desc_label.setStyleSheet("color: #9ba3b0; font-size: 12px;")
+    desc_label.setStyleSheet("color: #9ba3b0; font-size: 12px; background: transparent;")
     title_box.addWidget(title_label)
     title_box.addWidget(desc_label)
     top_layout.addLayout(title_box)
     top_layout.addStretch()
 
     # 搜索框
-    search_input = QLineEdit()
-    search_input.setPlaceholderText("🔍 输入工单名称 / ID 搜索...")
+    search_input = SearchLineEdit()
+    search_input.setPlaceholderText("搜索工单名称 / ID...")
     search_input.setClearButtonEnabled(True)
-    search_input.setMinimumWidth(260)
+    search_input.setMinimumWidth(240)
     top_layout.addWidget(search_input)
 
     # 产线筛选
-    dept_label = QLabel("产线：")
-    dept_combo = QComboBox()
+    dept_combo = FluentComboBox()
     dept_combo.addItem("全部产线")
-    dept_combo.setMinimumWidth(110)
-    top_layout.addWidget(dept_label)
+    dept_combo.setMinimumWidth(120)
     top_layout.addWidget(dept_combo)
 
-    main_layout.addLayout(top_layout)
+    main_layout.addWidget(top_card)
 
     # 表格 (9列)
     table = QTableWidget()
@@ -389,69 +400,72 @@ def show_clean_video_source_dialog(parent, preselect_order_id: str = ""):
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-    main_layout.addWidget(table, 1)
-
-    # 进度条
-    progress_bar = QProgressBar()
-    progress_bar.setStyleSheet("""
-        QProgressBar {
-            background-color: #2a2e37;
-            border: 1px solid #3a3f4b;
-            border-radius: 4px;
-            text-align: center;
-            color: #ffffff;
-            height: 16px;
+    table.setStyleSheet("""
+        QTableWidget {
+            background-color: #1a1d24;
+            border: 1px solid #282c37;
+            border-radius: 8px;
+            gridline-color: #282c37;
+            color: #e8eaed;
         }
-        QProgressBar::chunk {
-            background-color: #4f8ef7;
-            border-radius: 3px;
+        QHeaderView::section {
+            background-color: #232732;
+            color: #9ba3b0;
+            padding: 8px;
+            border: none;
+            border-bottom: 1px solid #282c37;
+            font-weight: bold;
         }
     """)
+    main_layout.addWidget(table, 1)
+
+    # Fluent 进度条
+    progress_bar = FluentProgressBar()
+    progress_bar.setUseAni(True)
+    progress_bar.setFixedHeight(8)
     progress_bar.setVisible(False)
     main_layout.addWidget(progress_bar)
 
-    # 底部控制栏
-    bottom_layout = QHBoxLayout()
+    # 底部控制栏卡片
+    bottom_card = CardWidget(dialog)
+    bottom_layout = QHBoxLayout(bottom_card)
+    bottom_layout.setContentsMargins(16, 12, 16, 12)
 
-    select_all_cb = QCheckBox("全选(仅已备份)")
-    select_all_cb.setStyleSheet("color: #e8eaed; font-size: 13px;")
+    select_all_cb = FluentCheckBox("全选(已备份)")
     bottom_layout.addWidget(select_all_cb)
 
-    only_dirty_cb = QCheckBox("仅显示有待清理文件的目录")
-    only_dirty_cb.setStyleSheet("color: #9ba3b0; font-size: 13px;")
+    only_dirty_cb = FluentCheckBox("仅显示待清理")
     only_dirty_cb.setChecked(True)
     bottom_layout.addWidget(only_dirty_cb)
 
-    only_no_backup_cb = QCheckBox("仅显示无原始备份")
-    only_no_backup_cb.setStyleSheet("color: #ff9800; font-size: 13px;")
+    only_no_backup_cb = FluentCheckBox("仅显示无备份")
     only_no_backup_cb.setChecked(False)
     bottom_layout.addWidget(only_no_backup_cb)
 
     summary_label = QLabel("正在准备扫描…")
-    summary_label.setStyleSheet("color: #9ba3b0; font-size: 13px;")
+    summary_label.setStyleSheet("color: #4f8ef7; font-size: 13px; font-weight: bold; background: transparent;")
     bottom_layout.addWidget(summary_label)
 
     bottom_layout.addStretch()
 
-    export_no_backup_btn = QPushButton("📄 导出无备份列表")
-    export_no_backup_btn.setStyleSheet("background-color: #e67e22; color: white; border: none; border-radius: 6px; padding: 9px 18px; font-weight: bold;")
+    export_no_backup_btn = PushButton(FIF.DOCUMENT, "导出无备份")
+    export_no_backup_btn.setFixedHeight(34)
     export_no_backup_btn.setToolTip("将所有在 01原始素材 中缺少备份文件夹的工单信息导出为 CSV/Excel 表格")
 
-    rescan_btn = QPushButton("🔄 重新扫描")
-    rescan_btn.setStyleSheet("background-color: #3a3f4b; color: white; border: none; border-radius: 6px; padding: 9px 20px; font-weight: bold;")
+    rescan_btn = PushButton(FIF.SYNC, "重新扫描")
+    rescan_btn.setFixedHeight(34)
     
-    clean_batch_btn = QPushButton("🧹 一键清理选中项目 (保留.drp)")
-    clean_batch_btn.setStyleSheet("background-color: #d9534f; color: white; border: none; border-radius: 6px; padding: 9px 22px; font-size: 14px; font-weight: bold;")
+    clean_batch_btn = PrimaryPushButton(FIF.DELETE, "一键清理选中 (保留.drp)")
+    clean_batch_btn.setFixedHeight(34)
 
-    close_btn = QPushButton("关闭")
-    close_btn.setProperty("type", "cancel")
-    close_btn.setStyleSheet("background-color: #3a3f4b; color: white; border: none; border-radius: 6px; padding: 9px 20px; font-weight: bold;")
+    close_btn = PushButton(FIF.CLOSE, "关闭")
+    close_btn.setFixedHeight(34)
 
     bottom_layout.addWidget(export_no_backup_btn)
     bottom_layout.addWidget(rescan_btn)
     bottom_layout.addWidget(clean_batch_btn)
     bottom_layout.addWidget(close_btn)
-    main_layout.addLayout(bottom_layout)
+    main_layout.addWidget(bottom_card)
 
     # 数据管理
     all_scan_items = []

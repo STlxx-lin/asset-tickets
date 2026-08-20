@@ -123,74 +123,89 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     # 设置弹窗样式
     dialog.setStyleSheet("""
         QDialog {
-            background-color: #2E2E2E;
-            color: #FFFFFF;
+            background-color: #121418;
+            color: #e8eaed;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+        QLabel {
+            color: #e8eaed;
+            background: transparent;
+            font-size: 13px;
         }
         QGroupBox {
-            border: 1px solid #555555;
-            border-radius: 5px;
-            margin-top: 1ex;
-            font-size: 14px;
+            background-color: #1a1d24;
+            border: 1px solid #282c37;
+            border-radius: 10px;
+            margin-top: 14px;
+            font-size: 13px;
             font-weight: bold;
-            color: #FFFFFF;
+            color: #8b949e;
+            padding: 16px;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             subcontrol-position: top left;
-            padding: 0 10px;
-            color: #FFFFFF;
+            padding: 0 8px;
+            left: 12px;
+            color: #8b949e;
+            background: transparent;
         }
-        QLineEdit, QTextEdit, QLabel {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
+        QLineEdit, QTextEdit {
+            background-color: #232732;
+            border: 1px solid #303646;
+            border-radius: 6px;
             padding: 8px 12px;
-            color: #FFFFFF;
-            font-size: 14px;
+            color: #e8eaed;
+            font-size: 13px;
         }
-        QLabel {
-            color: #FFFFFF;
-            font-size: 14px;
+        QLineEdit:focus, QTextEdit:focus {
+            border-color: #4f8ef7;
+            background-color: #282c3a;
         }
         QPushButton {
-            background-color: #0078d4;
+            background-color: #4f8ef7;
             color: #FFFFFF;
             border: none;
-            border-radius: 4px;
-            padding: 10px 24px;
-            font-size: 14px;
+            border-radius: 6px;
+            padding: 9px 22px;
+            font-size: 13px;
             font-weight: bold;
             min-width: 80px;
         }
         QPushButton:hover {
-            background-color: #106ebe;
+            background-color: #6ba3ff;
+        }
+        QPushButton:pressed {
+            background-color: #3a72d6;
         }
         QPushButton[type="cancel"] {
-            background-color: #555555;
+            background-color: #282c37;
+            color: #9ba3b0;
         }
         QPushButton[type="cancel"]:hover {
-            background-color: #666666;
+            background-color: #353b49;
+            color: #ffffff;
         }
         QTabWidget::pane {
-            border: 1px solid #555555;
-            border-radius: 4px;
+            background-color: #1a1d24;
+            border: 1px solid #282c37;
+            border-radius: 8px;
         }
         QTabBar::tab {
-            background-color: #3c3c3c;
-            color: #FFFFFF;
+            background-color: #232732;
+            color: #9ba3b0;
             padding: 8px 20px;
-            border: 1px solid #555555;
+            border: 1px solid #282c37;
             border-bottom: none;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
-            font-size: 14px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            font-size: 13px;
             font-weight: bold;
         }
         QTabBar::tab:selected {
-            background-color: #0078d4;
-        }
-        QTabBar::tab:hover:!selected {
-            background-color: #505050;
+            background-color: #1a1d24;
+            color: #4f8ef7;
+            border-color: #4f8ef7;
         }
     """)
     main_layout = QVBoxLayout(container)
@@ -198,8 +213,8 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     main_layout.setContentsMargins(25, 25, 25, 25)
 
     title_label = QLabel(f"美工后期审批 - {order_data['id']}")
-    title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #FFFFFF; padding-bottom: 5px;")
-    title_label.setAlignment(Qt.AlignCenter)
+    title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #FFFFFF; padding-bottom: 5px; background: transparent;")
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     main_layout.addWidget(title_label)
 
     # 左右分栏布局
@@ -299,7 +314,7 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
     # 预览控件（两个页签共用）
     preview_widget = VideoPreviewWidget(dialog)
     preview_filename_label = QLabel("")
-    preview_filename_label.setAlignment(Qt.AlignCenter)
+    preview_filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     preview_filename_label.setStyleSheet(
         "background-color: transparent; border: none; color: #cccccc; font-size: 12px; padding: 2px;"
     )
@@ -340,7 +355,7 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
             chk_widget = QWidget()
             chk_layout = QHBoxLayout(chk_widget)
             chk_layout.setContentsMargins(0, 0, 0, 0)
-            chk_layout.setAlignment(Qt.AlignCenter)
+            chk_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             chk = QCheckBox()
             chk.setStyleSheet("""
                 QCheckBox::indicator {

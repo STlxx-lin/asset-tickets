@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import ClassVar
 
@@ -15,6 +16,8 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.paths import IMG_EXTS, VID_EXTS
+
+logger = logging.getLogger(__name__)
 
 
 class VideoPreviewWidget(QWidget):
@@ -48,14 +51,14 @@ class VideoPreviewWidget(QWidget):
         
         # 1. 图片与默认提示文本展示标签 (QLabel)
         self.preview_label = QLabel("选择文件后在此预览")
-        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(320)
         self.preview_label.setStyleSheet("""
             QLabel {
-                background-color: #1a1a1a;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: #888888;
+                background-color: #14161c;
+                border: 1px solid #282c37;
+                border-radius: 6px;
+                color: #6b7280;
                 font-size: 13px;
                 padding: 8px;
             }
@@ -68,15 +71,15 @@ class VideoPreviewWidget(QWidget):
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumHeight(320)
         self.video_widget.setStyleSheet("background-color: #000000; border-radius: 4px;")
-        self.player.setVideoOutput(self.video_widget)
         self.main_layout.addWidget(self.video_widget, 1)
-        self.video_widget.hide() # 默认隐藏
+        self.player.setVideoOutput(self.video_widget)
+        self.video_widget.hide() # 默认隐藏视频视窗
         
-        # 3. 播放控制栏容器 (QWidget)
+        # 3. 底部播放控制条容器 (播放/暂停、进度滑块、时间、音量)
         self.control_container = QWidget()
         control_layout = QHBoxLayout(self.control_container)
-        control_layout.setContentsMargins(0, 0, 0, 0)
-        control_layout.setSpacing(6)
+        control_layout.setContentsMargins(4, 2, 4, 2)
+        control_layout.setSpacing(8)
         
         # 播放/暂停按钮
         self.play_btn = QPushButton("▶")
@@ -84,9 +87,9 @@ class VideoPreviewWidget(QWidget):
         self.play_btn.setStyleSheet("""
             QPushButton {
                 background-color: #3c3c3c;
+                color: #FFFFFF;
                 border: 1px solid #555555;
                 border-radius: 4px;
-                color: white;
                 font-size: 12px;
                 min-width: 35px;
                 padding: 4px;
@@ -96,7 +99,7 @@ class VideoPreviewWidget(QWidget):
         control_layout.addWidget(self.play_btn)
         
         # 进度滑块
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 0)
         self.slider.setStyleSheet("""
             QSlider::groove:horizontal {
@@ -157,13 +160,13 @@ class VideoPreviewWidget(QWidget):
     # ── 内部槽函数与逻辑实现 ──
     
     def _toggle_play(self):
-        if self.player.playbackState() == QMediaPlayer.PlayingState:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
         else:
             self.player.play()
 
     def _on_state_changed(self, state):
-        if state == QMediaPlayer.PlayingState:
+        if state == QMediaPlayer.PlaybackState.PlayingState:
             self.play_btn.setText("⏸")
         else:
             self.play_btn.setText("▶")
@@ -217,7 +220,7 @@ class VideoPreviewWidget(QWidget):
         """按当前预览区尺寸缩放图片（保持宽高比）。"""
         w = max(self.preview_label.width() - 8, 260)
         h = max(self.preview_label.height() - 8, 300)
-        scaled = pix.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        scaled = pix.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.preview_label.setPixmap(scaled)
 
     def resizeEvent(self, event):
