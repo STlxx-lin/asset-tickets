@@ -424,13 +424,26 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
             return all_files[idx]
         return []
 
+    def _sync_table_selection(idx):
+        """预览切换时联动左侧表格：选中并滚动到对应行。"""
+        tab_idx = tab_widget.currentIndex()
+        if 0 <= tab_idx < len(tables_and_checks):
+            file_table, _checkboxes = tables_and_checks[tab_idx]
+            if 0 <= idx < file_table.rowCount():
+                file_table.selectRow(idx)
+                file_table.scrollToItem(file_table.item(idx, 1))
+
     def on_prev_file():
         files_found = current_tab_files()
-        load_preview(files_found, preview_state['index'] - 1)
+        new_idx = preview_state['index'] - 1
+        load_preview(files_found, new_idx)
+        _sync_table_selection(new_idx)
 
     def on_next_file():
         files_found = current_tab_files()
-        load_preview(files_found, preview_state['index'] + 1)
+        new_idx = preview_state['index'] + 1
+        load_preview(files_found, new_idx)
+        _sync_table_selection(new_idx)
 
     prev_file_btn.clicked.connect(on_prev_file)
     next_file_btn.clicked.connect(on_next_file)
