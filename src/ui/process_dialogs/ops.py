@@ -179,11 +179,11 @@ def show_ops_dialog(parent, order_data, callbacks):
     # 创建可双击的路径标签
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
         label.setStyleSheet("""
             QLabel {
                 color: #4f8ef7;
                 text-decoration: underline;
-                cursor: pointer;
                 padding: 4px 8px;
                 border-radius: 3px;
             }
@@ -439,9 +439,8 @@ def show_ops_dialog(parent, order_data, callbacks):
                 border: 1px solid #555555;
             }
             QLabel:hover {
-                background-color: #4a4a4a;
-                border: 1px solid #0078d4;
-                cursor: pointer;
+                background-color: #232732;
+                border: 1px solid #4f8ef7;
             }
         """)
         info_label.setWordWrap(True)

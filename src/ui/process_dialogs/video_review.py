@@ -198,10 +198,10 @@ def show_video_review_dialog(parent, order_data, callbacks):
     # 优化列宽占比，选择列固定 50px，摄影师固定 90px，文件名自适应拉伸
     file_table.setColumnWidth(0, 50)
     file_table.setColumnWidth(2, 90)
-    file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
-    file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-    file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-    file_table.setEditTriggers(QTableWidget.NoEditTriggers)
+    file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+    file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+    file_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+    file_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
     files_found = []
     # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）

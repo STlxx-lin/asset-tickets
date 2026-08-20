@@ -181,7 +181,7 @@ def show_art_dialog(parent, order_data, callbacks):
     basic_group = QGroupBox("工单基本信息")
     basic_layout = QFormLayout(basic_group)
     basic_layout.setSpacing(12)
-    basic_layout.setLabelAlignment(Qt.AlignRight)
+    basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     # 创建字段
     id_label = QLabel(order_data['id'])
     dept_label = QLabel(order_data['department'])
@@ -199,25 +199,27 @@ def show_art_dialog(parent, order_data, callbacks):
     path_group = QGroupBox("路径信息")
     path_layout = QFormLayout(path_group)
     path_layout.setSpacing(12)
-    path_layout.setLabelAlignment(Qt.AlignRight)
+    path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     # 创建可双击的路径标签
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
         label.setStyleSheet("""
             QLabel {
-                color: #0078d4;
+                color: #4f8ef7;
                 text-decoration: underline;
-                cursor: pointer;
                 padding: 4px 8px;
                 border-radius: 3px;
             }
             QLabel:hover {
-                background-color: #3c3c3c;
-                color: #106ebe;
+                background-color: #232732;
+                color: #6ba3ff;
             }
         """)
-        label.setToolTip(f"双击打开：{tooltip_text}")
-        label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        label.setToolTip(f"点击打开：{tooltip_text}")
+        def on_press(event):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        label.mousePressEvent = on_press
         return label
     # 获取路径信息
     get_src = get_art_get_img_src()
@@ -251,31 +253,33 @@ def show_art_dialog(parent, order_data, callbacks):
             label = QLabel(f"✅ {status['user']}已领取 ({status['time']})")
             label.setStyleSheet("""
                 QLabel {
-                    color: #00ff00;
+                    color: #10b981;
                     font-weight: bold;
                     padding: 4px 8px;
                     border-radius: 3px;
-                    background-color: #1a3d1a;
+                    background-color: #1a3d24;
                 }
             """)
             label.setToolTip(f"已领取 - {tooltip_text}")
         else:
             label = QLabel(path)
+            label.setCursor(Qt.CursorShape.PointingHandCursor)
             label.setStyleSheet("""
                 QLabel {
-                    color: #0078d4;
+                    color: #4f8ef7;
                     text-decoration: underline;
-                    cursor: pointer;
                     padding: 4px 8px;
                     border-radius: 3px;
                 }
                 QLabel:hover {
-                    background-color: #3c3c3c;
-                    color: #106ebe;
+                    background-color: #232732;
+                    color: #6ba3ff;
                 }
             """)
-            label.setToolTip(f"双击打开：{tooltip_text}")
-            label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            label.setToolTip(f"点击打开：{tooltip_text}")
+            def on_press(event):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            label.mousePressEvent = on_press
         return label
 
     # 创建路径标签
@@ -341,8 +345,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 background-color: #1a3d1a;
             }
         """)
-        product_label.setToolTip("双击打开路径")
-        product_label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(product_path))
+        product_label.setToolTip("点击打开路径")
+        product_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        def on_press_product(event):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(product_path))
+        product_label.mousePressEvent = on_press_product
     else:
         # 未设置过，显示为空
         product_label = QLabel("")
@@ -484,8 +491,11 @@ def show_art_dialog(parent, order_data, callbacks):
                 background-color: #1a3d1a;
             }
         """)
-        product_label.setToolTip("双击打开路径")
-        product_label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
+        product_label.setToolTip("点击打开路径")
+        product_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        def on_press_dir(event):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
+        product_label.mousePressEvent = on_press_dir
         show_path_result(dialog, "已选择", f"成品路径：\n{dir_path}", dir_path)
     def on_distribute(target_kind):
         """美工分发成品到运营/销售（共用逻辑，避免两份 150 行重复代码漂移）。
@@ -512,9 +522,9 @@ def show_art_dialog(parent, order_data, callbacks):
         confirm = QMessageBox.question(
             dialog, "确认分发",
             f"成品源目录：\n{src}\n\n分发目标目录：\n{dest}\n\n确认将成品分发到该目标目录？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
-        if confirm != QMessageBox.Yes:
+        if confirm != QMessageBox.StandardButton.Yes:
             return
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制

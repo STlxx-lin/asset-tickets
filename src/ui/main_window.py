@@ -11,7 +11,7 @@ import re
 import shutil
 from typing import ClassVar
 
-from PySide6.QtCore import QDate, QPoint, QRect, Qt, QTimer, QUrl
+from PySide6.QtCore import QDate, QPoint, QRect, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -61,6 +61,7 @@ from src.core.config import APP_VERSION, DEFAULT_NOTIFICATION_TYPE, clear_featur
 # 添加项目根目录到Python搜索路径
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from qfluentwidgets import (
+    Action,
     CardWidget,
     ComboBox as FluentComboBox,
     EditableComboBox,
@@ -73,6 +74,7 @@ from qfluentwidgets import (
     Pivot,
     PrimaryPushButton,
     PushButton,
+    RoundMenu,
     SearchLineEdit,
     TableView as FluentTableView,
     TextEdit,
@@ -928,6 +930,11 @@ class MainWindow(QMainWindow):
         self.table_view = FluentTableView()
         self.table_view.setBorderVisible(True)
         self.table_view.setBorderRadius(8)
+        self.table_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table_view.customContextMenuRequested.connect(self.on_table_custom_context_menu)
+        self._progress_delegate = StatusProgressDelegate(self.table_view)
+        self.table_view.setItemDelegateForColumn(6, self._progress_delegate)
+        self.table_view.setItemDelegateForColumn(7, self._progress_delegate)
         self.model = QStandardItemModel()
         controls_layout = QHBoxLayout()
         controls_layout.setSpacing(6)
@@ -1013,110 +1020,7 @@ class MainWindow(QMainWindow):
             
             delete_button = PushButton(FIF.DELETE, "删除工单")
             delete_button.setFixedHeight(32)
-            def on_delete_order():
-                selected = self.table_view.selectionModel().selectedRows()
-                if not selected:
-                    self.show_warning_tip("提示", "请先选中要删除的工单")
-                    return
-                row = selected[0].row()
-                order_item = self.model.item(row, 0)
-                if not order_item:
-                    return
-                order_data = order_item.data(Qt.ItemDataRole.UserRole)
-                order_id = order_data['id']
-                id_ = order_data['id']
-                dept = order_data['department']
-                model = order_data['model']
-                name = order_data['name']
-                # 生成所有相关路径
-                all_paths = []
-                # 摄影上传
-                for photographer in PHOTOGRAPHERS:
-                    path = PHOTOGRAPHY_UPLOAD(photographer, dept, id_, model, name)
-                    all_paths.append((path, os.path.exists(path)))
-                # 美工/剪辑/运营/销售所有流转路径
-                paths = [
-                    PHOTOGRAPHY_DIST_IMG(dept, id_, model, name),
-                    PHOTOGRAPHY_DIST_VIDEO(dept, id_, model, name),
-                    ART_GET_IMG_SRC(dept, id_, model, name),
-                    ART_GET_IMG_DEST(dept, id_, model, name),
-                    ART_DIST_OPS(dept, id_, model, name),
-                    ART_DIST_SALES(dept, id_, model, name),
-                    EDIT_GET_VIDEO_SRC(dept, id_, model, name),
-                    EDIT_GET_VIDEO_DEST(dept, id_, model, name),
-                    EDIT_DIST_OPS(dept, id_, model, name),
-                    EDIT_DIST_SALES(dept, id_, model, name),
-                    OPS_GET_SRC(dept, id_, model, name),
-                    SALES_GET_SRC(dept, id_, model, name)
-                ]
-                for path in paths:
-                    all_paths.append((path, os.path.exists(path)))
-                # 构建路径及存在性信息
-                rows = []
-                for p, exists in all_paths:
-                    status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
-                    rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='60' align='center'>{status_html}</td></tr>")
-                
-                msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(rows)}</table>"
-                
-                # 使用自定义对话框显示
-                dialog = FileOperationDialog(msg, self)
-                if dialog.exec() != QDialog.DialogCode.Accepted:
-                    return
-                
-                # 先删除文件，再删除数据库工单：文件删除失败时保留 DB 记录，避免产生无法定位的孤儿文件
-                delete_results = []
-                delete_failures = 0
-                for path, exists in all_paths:
-                    if exists:
-                        try:
-                            if os.path.isdir(path):
-                                shutil.rmtree(path)
-                            else:
-                                os.remove(path)
-                            delete_results.append((path, "已删除", "#4caf50"))
-                        except Exception as e:
-                            delete_failures += 1
-                            delete_results.append((path, f"删除失败: {e}", "#ff4d4f"))
-                            self.log_action("删除工单文件失败", f"{path} 删除失败：{e}")
-                    else:
-                        delete_results.append((path, "不存在", "#ff4d4f"))
-
-                if delete_failures > 0:
-                    # 有文件删除失败：不删除数据库记录，提示用户重试，防止文件成为无法定位的孤儿数据
-                    self.show_error_dialog(
-                        f"有 {delete_failures} 个路径删除失败，工单记录已保留（未删除），请处理后重试"
-                    )
-                    self.refresh_work_orders()
-                    return
-
-                if not db_manager.delete_work_order(order_id):
-                    self.show_error_dialog("失败: 文件已删除但数据库工单删除失败，请重试或联系管理员")
-                    return
-
-                # 构建结果HTML
-                res_rows = []
-                for p, status, color in delete_results:
-                    res_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
-
-                result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(res_rows)}</table>"
-
-                # 显示结果对话框
-                res_dialog = FileOperationDialog(
-                    result_msg, 
-                    self, 
-                    title="删除结果", 
-                    header_text=f"工单 {order_id} 及相关文件删除结果：", 
-                    footer_text=None, 
-                    is_confirmation=False
-                )
-                res_dialog.exec()
-                
-                self.log_action("删除工单", f"ID={order_id}")
-                self.show_success_tip("删除成功", f"工单 {order_id} 及其关联文件已清除")
-                self.refresh_work_orders()
-
-            delete_button.clicked.connect(on_delete_order)
+            delete_button.clicked.connect(self.handle_delete_order)
             controls_layout.addWidget(delete_button)
 
             # 管理员：扫描清理 02视频部 源文件（跳过不删除.drp工程）
@@ -1528,103 +1432,119 @@ class MainWindow(QMainWindow):
         # ── 功能设置 Tab ──
         features_tab = QWidget()
         features_layout = QVBoxLayout(features_tab)
-        features_layout.setContentsMargins(20, 20, 20, 20)
-        features_layout.setSpacing(16)
+        features_layout.setContentsMargins(16, 16, 16, 16)
+        features_layout.setSpacing(14)
 
-        workflow_group = QGroupBox("工单流程功能")
-        workflow_group_layout = QVBoxLayout(workflow_group)
-        workflow_group_layout.setSpacing(12)
+        # 1. 工单流程功能卡片
+        workflow_card = CardWidget()
+        workflow_layout = QVBoxLayout(workflow_card)
+        workflow_layout.setContentsMargins(18, 16, 18, 16)
+        workflow_layout.setSpacing(12)
+
+        wf_title = QLabel("⚙️ 工单流程功能")
+        wf_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #4f8ef7; background: transparent;")
+        workflow_layout.addWidget(wf_title)
 
         # 读取当前开关状态
         _vr_enabled = get_feature_enabled('video_review_enabled')
         self.video_review_checkbox = QCheckBox("启用视频审核功能")
         self.video_review_checkbox.setChecked(_vr_enabled)
-        self.video_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
+        self.video_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed; background: transparent;")
 
         vr_desc = QLabel(
             "开启时：摄影师上传素材后，工单状态变为【视频审核中】，需视频审核员审核后方可分发。\n"
             "关闭时：摄影师上传素材后，工单状态直接变为【审核通过】，跳过视频审核环节；\n"
             "        视频审核角色点击'办理'时将提示功能已关闭。"
         )
-        vr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
+        vr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px; background: transparent;")
         vr_desc.setWordWrap(True)
 
         # 读取后期视频审核开关状态
         _vpr_enabled = get_feature_enabled('video_post_review_enabled')
         self.video_post_review_checkbox = QCheckBox("启用视频后期审核功能")
         self.video_post_review_checkbox.setChecked(_vpr_enabled)
-        self.video_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
+        self.video_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed; background: transparent;")
 
         vpr_desc = QLabel(
             "开启时：剪辑师剪辑完视频后，需视频后期审核员审核通过后方可分发。\n"
             "关闭时：剪辑师处理完直接可分发，跳过视频后期审核环节。"
         )
-        vpr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
+        vpr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px; background: transparent;")
         vpr_desc.setWordWrap(True)
 
         # 读取美工后期审批开关状态
         _apr_enabled = get_feature_enabled('art_post_review_enabled')
         self.art_post_review_checkbox = QCheckBox("启用美工后期审批功能")
         self.art_post_review_checkbox.setChecked(_apr_enabled)
-        self.art_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed;")
+        self.art_post_review_checkbox.setStyleSheet("font-size: 14px; color: #e8eaed; background: transparent;")
 
         apr_desc = QLabel(
             "开启时：美工分发成品后先进入【美工待审批】目录，需美工后期审批员审批通过后才到运营/销售。\n"
             "关闭时：美工分发直达运营/销售，跳过美工后期审批环节。"
         )
-        apr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px;")
+        apr_desc.setStyleSheet("font-size: 12px; color: #9ba3b0; padding-left: 24px; background: transparent;")
         apr_desc.setWordWrap(True)
 
-        workflow_group_layout.addWidget(self.video_review_checkbox)
-        workflow_group_layout.addWidget(vr_desc)
-        workflow_group_layout.addWidget(self.video_post_review_checkbox)
-        workflow_group_layout.addWidget(vpr_desc)
-        workflow_group_layout.addWidget(self.art_post_review_checkbox)
-        workflow_group_layout.addWidget(apr_desc)
-        features_layout.addWidget(workflow_group)
+        workflow_layout.addWidget(self.video_review_checkbox)
+        workflow_layout.addWidget(vr_desc)
+        workflow_layout.addWidget(self.video_post_review_checkbox)
+        workflow_layout.addWidget(vpr_desc)
+        workflow_layout.addWidget(self.art_post_review_checkbox)
+        workflow_layout.addWidget(apr_desc)
+        features_layout.addWidget(workflow_card)
 
-        # ── 后期成品目录管控（禁止目录关键字，美工/剪辑选成品路径时拦截）──
-        product_dir_group = QGroupBox("后期成品目录管控")
-        product_dir_group_layout = QVBoxLayout(product_dir_group)
-        product_dir_group_layout.setSpacing(10)
+        # 2. 后期成品目录管控卡片
+        product_dir_card = CardWidget()
+        product_dir_layout = QVBoxLayout(product_dir_card)
+        product_dir_layout.setContentsMargins(18, 16, 18, 16)
+        product_dir_layout.setSpacing(10)
+
+        pd_title = QLabel("🛡️ 后期成品目录管控")
+        pd_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #4f8ef7; background: transparent;")
+        product_dir_layout.addWidget(pd_title)
 
         pd_tip = QLabel(
             "美工/剪辑选择「成品路径」时，命中以下关键字的目录将被拒绝选择（防止把源文件等目录当成品分发）。\n"
             "多个关键字用英文逗号分隔，例如：01原始素材,源文件"
         )
-        pd_tip.setStyleSheet("font-size: 12px; color: #9ba3b0;")
+        pd_tip.setStyleSheet("font-size: 12px; color: #9ba3b0; background: transparent;")
         pd_tip.setWordWrap(True)
-        product_dir_group_layout.addWidget(pd_tip)
+        product_dir_layout.addWidget(pd_tip)
 
         pd_row = QHBoxLayout()
         pd_label = QLabel("禁止目录关键字:")
-        pd_label.setStyleSheet("font-size: 13px; color: #e8eaed;")
+        pd_label.setStyleSheet("font-size: 13px; color: #e8eaed; background: transparent;")
         self.blocked_keywords_edit = LineEdit()
         self.blocked_keywords_edit.setPlaceholderText("如：01原始素材,源文件（留空表示不限制）")
         self.blocked_keywords_edit.setText(db_manager.get_system_setting('product_dir_blocked_keywords', default=''))
         self.blocked_keywords_edit.setMinimumWidth(360)
         pd_row.addWidget(pd_label)
         pd_row.addWidget(self.blocked_keywords_edit, 1)
-        product_dir_group_layout.addLayout(pd_row)
-        features_layout.addWidget(product_dir_group)
+        product_dir_layout.addLayout(pd_row)
+        features_layout.addWidget(product_dir_card)
 
-        # ── 外部系统 API 配置（Token 存数据库，管理员可在线更新，无需重启）──
-        api_group = QGroupBox("外部系统 API 配置")
-        api_group_layout = QVBoxLayout(api_group)
-        api_group_layout.setSpacing(10)
+        # 3. 外部系统 API 配置卡片
+        api_card = CardWidget()
+        api_layout = QVBoxLayout(api_card)
+        api_layout.setContentsMargins(18, 16, 18, 16)
+        api_layout.setSpacing(10)
+
+        api_title = QLabel("🔗 外部系统 API 配置")
+        api_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #4f8ef7; background: transparent;")
+        api_layout.addWidget(api_title)
 
         api_tip = QLabel(
             "外部工单系统 API Token（Bearer 后的完整 JWT 字符串）。\n"
             "Token 过期后所有状态同步会失败并回滚，请在此处及时更新。"
         )
-        api_tip.setStyleSheet("font-size: 12px; color: #9ba3b0;")
+        api_tip.setStyleSheet("font-size: 12px; color: #9ba3b0; background: transparent;")
         api_tip.setWordWrap(True)
-        api_group_layout.addWidget(api_tip)
+        api_layout.addWidget(api_tip)
 
         token_row = QHBoxLayout()
         token_row.setSpacing(8)
         token_label = QLabel("API Token:")
-        token_label.setStyleSheet("font-size: 13px; color: #e8eaed;")
+        token_label.setStyleSheet("font-size: 13px; color: #e8eaed; background: transparent;")
         self.api_token_edit = LineEdit()
         self.api_token_edit.setPlaceholderText("粘贴新的 API Token")
         self.api_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -1650,22 +1570,22 @@ class MainWindow(QMainWindow):
         def on_save_token():
             token = self.api_token_edit.text().strip()
             if not token:
-                QMessageBox.warning(self, "提示", "请输入 API Token 后再保存")
+                self.show_warning_tip("提示", "请输入 API Token 后再保存")
                 return
             if db_manager.set_system_setting('api_token', token):
                 from src.core.api_manager import refresh_api_token_cache
                 refresh_api_token_cache()  # 立即生效，无需重启
                 self.api_token_edit.clear()
                 self.api_token_edit.setPlaceholderText(f"已保存（{token[:12]}…）")
-                QMessageBox.information(self, "保存成功", "API Token 已更新并即时生效。")
+                self.show_success_tip("保存成功", "API Token 已更新并即时生效。")
             else:
-                QMessageBox.critical(self, "保存失败", "写入数据库失败，请检查数据库连接。")
+                self.show_warning_tip("保存失败", "写入数据库失败，请检查数据库连接。")
         save_token_btn.clicked.connect(on_save_token)
         token_row.addWidget(save_token_btn)
-        api_group_layout.addLayout(token_row)
-        features_layout.addWidget(api_group)
+        api_layout.addLayout(token_row)
+        features_layout.addWidget(api_card)
 
-        # 保存按钮
+        # 保存设置按钮
         save_features_btn = PrimaryPushButton(FIF.SAVE, "保存功能设置")
         save_features_btn.setFixedHeight(36)
         save_features_btn.setFixedWidth(160)
@@ -1685,9 +1605,9 @@ class MainWindow(QMainWindow):
                       
             if success:
                 clear_feature_cache()
-                QMessageBox.information(self, "保存成功", "功能设置已保存并即时生效。")
+                self.show_success_tip("保存成功", "功能设置已保存并即时生效。")
             else:
-                QMessageBox.critical(self, "保存失败", "写入数据库失败，请检查数据库连接。")
+                self.show_warning_tip("保存失败", "写入数据库失败，请检查数据库连接。")
 
         save_features_btn.clicked.connect(on_save_features)
         tab_widget.addTab(features_tab, "功能设置")
@@ -2656,15 +2576,21 @@ class MainWindow(QMainWindow):
             if new_item and add_func(new_item):
                 list_widget.addItem(new_item)
                 input_field.clear()
+                self.show_success_tip("添加成功", f"已成功添加{title}：{new_item}")
             else:
-                QMessageBox.warning(self, "错误", f"添加{title}失败。可能是重复或无效输入。")
+                self.show_warning_tip("添加失败", f"添加{title}失败。可能是重复或无效输入。")
                 
         def remove_item():
             selected = list_widget.currentItem()
-            if selected and remove_func(selected.text()):
-                list_widget.takeItem(list_widget.row(selected))
+            if selected:
+                item_text = selected.text()
+                if remove_func(item_text):
+                    list_widget.takeItem(list_widget.row(selected))
+                    self.show_success_tip("删除成功", f"已成功删除{title}：{item_text}")
+                else:
+                    self.show_warning_tip("删除失败", f"删除{title}失败。")
             else:
-                QMessageBox.warning(self, "错误", f"删除{title}失败。")
+                self.show_warning_tip("提示", f"请先在列表中选中要删除的{title}。")
                 
         add_button = PrimaryPushButton(FIF.ADD, f"添加{title}")
         add_button.setFixedHeight(32)
@@ -3731,9 +3657,6 @@ class MainWindow(QMainWindow):
         self.table_view.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        # 设置状态列自定义委托
-        self.table_view.setItemDelegateForColumn(6, StatusProgressDelegate(self.table_view))
-        self.table_view.setItemDelegateForColumn(7, StatusProgressDelegate(self.table_view))
         self.expanded_row = None
     def on_work_order_row_double_clicked(self, index):
         row = index.row()
@@ -3751,6 +3674,185 @@ class MainWindow(QMainWindow):
         # 使用新的详情窗口
         dialog = WorkOrderDetailDialog(order_data, logs, is_admin=self.is_admin, parent=self)
         dialog.exec()
+
+    def handle_delete_order(self):
+        """删除当前选中工单及其网络盘关联文件"""
+        selected = self.table_view.selectionModel().selectedRows()
+        if not selected:
+            self.show_warning_tip("提示", "请先选中要删除的工单")
+            return
+        row = selected[0].row()
+        order_item = self.model.item(row, 0)
+        if not order_item:
+            return
+        order_data = order_item.data(Qt.ItemDataRole.UserRole)
+        order_id = order_data['id']
+        id_ = order_data['id']
+        dept = order_data['department']
+        model = order_data['model']
+        name = order_data['name']
+        
+        # 生成所有相关路径
+        all_paths = []
+        for photographer in PHOTOGRAPHERS:
+            path = PHOTOGRAPHY_UPLOAD(photographer, dept, id_, model, name)
+            all_paths.append((path, os.path.exists(path)))
+        
+        paths = [
+            PHOTOGRAPHY_DIST_IMG(dept, id_, model, name),
+            PHOTOGRAPHY_DIST_VIDEO(dept, id_, model, name),
+            ART_GET_IMG_SRC(dept, id_, model, name),
+            ART_GET_IMG_DEST(dept, id_, model, name),
+            ART_DIST_OPS(dept, id_, model, name),
+            ART_DIST_SALES(dept, id_, model, name),
+            EDIT_GET_VIDEO_SRC(dept, id_, model, name),
+            EDIT_GET_VIDEO_DEST(dept, id_, model, name),
+            EDIT_DIST_OPS(dept, id_, model, name),
+            EDIT_DIST_SALES(dept, id_, model, name),
+            OPS_GET_SRC(dept, id_, model, name),
+            SALES_GET_SRC(dept, id_, model, name)
+        ]
+        for path in paths:
+            all_paths.append((path, os.path.exists(path)))
+            
+        rows = []
+        for p, exists in all_paths:
+            status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
+            rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='60' align='center'>{status_html}</td></tr>")
+        
+        msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(rows)}</table>"
+        dialog = FileOperationDialog(msg, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        delete_results = []
+        delete_failures = 0
+        for path, exists in all_paths:
+            if exists:
+                try:
+                    if os.path.isdir(path):
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
+                    delete_results.append((path, "已删除", "#4caf50"))
+                except Exception as e:
+                    delete_failures += 1
+                    delete_results.append((path, f"删除失败: {e}", "#ff4d4f"))
+                    self.log_action("删除工单文件失败", f"{path} 删除失败：{e}")
+            else:
+                delete_results.append((path, "不存在", "#ff4d4f"))
+
+        if delete_failures > 0:
+            self.show_error_dialog(
+                f"有 {delete_failures} 个路径删除失败，工单记录已保留（未删除），请处理后重试"
+            )
+            self.refresh_work_orders()
+            return
+
+        if not db_manager.delete_work_order(order_id):
+            self.show_error_dialog("失败: 文件已删除但数据库工单删除失败，请重试或联系管理员")
+            return
+
+        res_rows = []
+        for p, status, color in delete_results:
+            res_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
+
+        result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(res_rows)}</table>"
+        res_dialog = FileOperationDialog(
+            result_msg, 
+            self, 
+            title="删除结果", 
+            header_text=f"工单 {order_id} 及相关文件删除结果：", 
+            footer_text=None, 
+            is_confirmation=False
+        )
+        res_dialog.exec()
+        
+        self.log_action("删除工单", f"ID={order_id}")
+        self.show_success_tip("删除成功", f"工单 {order_id} 及其关联文件已清除")
+        self.refresh_work_orders()
+
+    def on_table_custom_context_menu(self, pos):
+        """表格右键弹出 Fluent RoundMenu 快捷上下文菜单"""
+        index = self.table_view.indexAt(pos)
+        if not index.isValid():
+            return
+        row = index.row()
+        order_item = self.model.item(row, 0)
+        if not order_item:
+            return
+        order_data = order_item.data(Qt.ItemDataRole.UserRole)
+        if not order_data:
+            return
+        
+        menu = RoundMenu(parent=self)
+        
+        # 1. 查看详情
+        detail_action = Action(FIF.INFO, "查看工单详情", self)
+        detail_action.triggered.connect(lambda: self.on_work_order_row_double_clicked(index))
+        menu.addAction(detail_action)
+
+        # 2. 办理工单
+        if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批", "后期审批"]:
+            process_action = Action(FIF.EDIT, "办理此工单", self)
+            def on_process():
+                self.table_view.selectRow(row)
+                self.handle_process_selected_order()
+            process_action.triggered.connect(on_process)
+            menu.addAction(process_action)
+
+        menu.addSeparator()
+
+        # 3. 复制快捷指令
+        copy_id_action = Action(FIF.COPY, "复制工单ID", self)
+        def on_copy_id():
+            oid = str(order_data.get('id', ''))
+            QApplication.clipboard().setText(oid)
+            self.show_success_tip("已复制", f"工单ID: {oid}")
+        copy_id_action.triggered.connect(on_copy_id)
+        menu.addAction(copy_id_action)
+
+        copy_name_action = Action(FIF.DOCUMENT, "复制产品全称", self)
+        def on_copy_name():
+            text = f"{order_data.get('model', '')} {order_data.get('name', '')}".strip()
+            QApplication.clipboard().setText(text)
+            self.show_success_tip("已复制", f"产品全称: {text}")
+        copy_name_action.triggered.connect(on_copy_name)
+        menu.addAction(copy_name_action)
+
+        # 4. 打开素材根目录
+        open_dir_action = Action(FIF.FOLDER, "打开素材根目录", self)
+        def on_open_dir():
+            from src.core.paths import RAW_ROOT, to_local_path
+            dept = order_data.get('department', '')
+            dept_path = to_local_path(os.path.join(RAW_ROOT, dept)) if dept else to_local_path(RAW_ROOT)
+            if dept_path and os.path.exists(dept_path):
+                os.startfile(dept_path)
+            elif to_local_path(RAW_ROOT) and os.path.exists(to_local_path(RAW_ROOT)):
+                os.startfile(to_local_path(RAW_ROOT))
+            else:
+                self.show_warning_tip("提示", f"素材根目录不存在: {dept_path}")
+        open_dir_action.triggered.connect(on_open_dir)
+        menu.addAction(open_dir_action)
+
+        # 5. 管理员工具
+        if self.is_admin:
+            menu.addSeparator()
+            check_path_action = Action(FIF.SEARCH, "路径与文件检查", self)
+            def on_check_path():
+                from .path_check import show_path_check_dialog
+                show_path_check_dialog(self, order_data)
+            check_path_action.triggered.connect(on_check_path)
+            menu.addAction(check_path_action)
+
+            delete_action = Action(FIF.DELETE, "删除工单", self)
+            def on_delete():
+                self.table_view.selectRow(row)
+                self.handle_delete_order()
+            delete_action.triggered.connect(on_delete)
+            menu.addAction(delete_action)
+
+        menu.exec(self.table_view.viewport().mapToGlobal(pos))
 
     def check_path_collected_status(self, order_data, path_type):
         """检查路径是否已被领取
@@ -3836,20 +3938,20 @@ class MainWindow(QMainWindow):
         else:
             # 未领取状态
             label = QLabel(path)
+            label.setCursor(Qt.CursorShape.PointingHandCursor)
             label.setStyleSheet("""
                 QLabel {
-                    color: #0078d4;
+                    color: #4f8ef7;
                     text-decoration: underline;
-                    cursor: pointer;
                     padding: 4px 8px;
                     border-radius: 3px;
                 }
                 QLabel:hover {
-                    background-color: #3c3c3c;
-                    color: #106ebe;
+                    background-color: #232732;
+                    color: #6ba3ff;
                 }
             """)
-            label.setToolTip(f"双击打开：{tooltip_text}")
+            label.setToolTip(f"点击打开：{tooltip_text}")
             def on_label_press(event):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(path))
             label.mousePressEvent = on_label_press
@@ -3927,7 +4029,13 @@ class StatusProgressDelegate(QStyledItemDelegate):
     }
 
     def paint(self, painter, option, index):
+        if not painter or not painter.isActive() or not option.rect.isValid():
+            return
+            
         status = index.data()
+        if not status:
+            return
+            
         percent = self.STATUS_PROGRESS_MAP.get(status, 0)
         rgb = self.COLOR_MAP.get(status, (200, 200, 200))
         
@@ -3980,3 +4088,6 @@ class StatusProgressDelegate(QStyledItemDelegate):
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, display_text)
         
         painter.restore()
+
+    def sizeHint(self, option, index):
+        return QSize(180, 36)
