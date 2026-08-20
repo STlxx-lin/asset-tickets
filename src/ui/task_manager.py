@@ -236,8 +236,8 @@ class TaskManagerDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("任务列表")
         self.resize(600, 400)
-        # 移除窗口置顶标志，避免遮挡其他弹窗
-        # self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        # 任务进度窗口置顶显示（文件移动进度需随时可见，不被主窗口/其他弹窗遮挡）
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.layout = QVBoxLayout(self)
         self.auto_show = auto_show  # 控制是否自动显示窗口
         # 恢复主标题为"任务列表"
@@ -318,8 +318,6 @@ class TaskManagerDialog(QDialog):
             # 如果任务列表为空，隐藏窗口
             if not self.delay_close_timer.isActive():
                 self.delay_close_timer.start()
-            # 确保窗口不再置顶
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
             if self.isVisible():
                 self.hide()  # 隐藏窗口
             return
