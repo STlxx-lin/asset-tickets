@@ -177,7 +177,7 @@ def show_editing_dialog(parent, order_data, callbacks):
     basic_group = QGroupBox("工单基本信息")
     basic_layout = QFormLayout(basic_group)
     basic_layout.setSpacing(12)
-    basic_layout.setLabelAlignment(Qt.AlignRight)
+    basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     # 创建字段
     id_label = QLabel(order_data['id'])
     dept_label = QLabel(order_data['department'])
@@ -195,25 +195,27 @@ def show_editing_dialog(parent, order_data, callbacks):
     path_group = QGroupBox("路径信息")
     path_layout = QFormLayout(path_group)
     path_layout.setSpacing(12)
-    path_layout.setLabelAlignment(Qt.AlignRight)
+    path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     # 创建可双击的路径标签
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
         label.setStyleSheet("""
             QLabel {
-                color: #0078d4;
+                color: #4f8ef7;
                 text-decoration: underline;
-                cursor: pointer;
                 padding: 4px 8px;
                 border-radius: 3px;
             }
             QLabel:hover {
-                background-color: #3c3c3c;
-                color: #106ebe;
+                background-color: #232732;
+                color: #6ba3ff;
             }
         """)
-        label.setToolTip(f"双击打开：{tooltip_text}")
-        label.mousePressEvent = lambda event: QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        label.setToolTip(f"点击打开：{tooltip_text}")
+        def on_press(event):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        label.mousePressEvent = on_press
         return label
     # 获取路径信息
     get_src = get_edit_get_video_src()
@@ -516,9 +518,9 @@ def show_editing_dialog(parent, order_data, callbacks):
         confirm = QMessageBox.question(
             dialog, "确认分发",
             f"成品源目录：\n{src}\n\n分发目标目录：\n{dest}\n\n确认将成品分发到该目标目录？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
-        if confirm != QMessageBox.Yes:
+        if confirm != QMessageBox.StandardButton.Yes:
             return
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制
@@ -593,9 +595,9 @@ def show_editing_dialog(parent, order_data, callbacks):
         confirm = QMessageBox.question(
             dialog, "确认分发",
             f"成品源目录：\n{src}\n\n分发目标目录：\n{dest}\n\n确认将成品分发到该目标目录？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
         )
-        if confirm != QMessageBox.Yes:
+        if confirm != QMessageBox.StandardButton.Yes:
             return
         os.makedirs(dest, exist_ok=True)
         # 使用任务管理器处理文件复制

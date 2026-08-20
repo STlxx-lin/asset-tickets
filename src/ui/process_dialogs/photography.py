@@ -286,20 +286,20 @@ def show_photography_dialog(parent, order_data, callbacks):
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
         label.setStyleSheet("""
             QLabel {
-                color: #0078d4;
+                color: #4f8ef7;
                 text-decoration: underline;
-                cursor: pointer;
                 padding: 4px 8px;
                 border-radius: 3px;
             }
             QLabel:hover {
-                background-color: #3c3c3c;
-                color: #106ebe;
+                background-color: #232732;
+                color: #6ba3ff;
             }
         """)
-        label.setToolTip(f"双击打开：{tooltip_text}")
+        label.setToolTip(f"点击打开：{tooltip_text}")
         def on_mouse_press(event):
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
         label.mousePressEvent = on_mouse_press

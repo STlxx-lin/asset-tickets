@@ -163,11 +163,11 @@ def show_sales_dialog(parent, order_data, callbacks):
     # 创建可双击的路径标签
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
+        label.setCursor(Qt.CursorShape.PointingHandCursor)
         label.setStyleSheet("""
             QLabel {
                 color: #4f8ef7;
                 text-decoration: underline;
-                cursor: pointer;
                 padding: 4px 8px;
                 border-radius: 3px;
             }

@@ -182,13 +182,16 @@ class WorkOrderDetailDialog(QDialog):
             self.scroll_layout.addWidget(feedback_card)
 
     def setup_header_section(self):
-        """核心信息概览"""
+        """核心信息概览卡片"""
         header_card = CardWidget()
-        layout = QGridLayout(header_card)
+        layout = QVBoxLayout(header_card)
         layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(14)
+        layout.setSpacing(10)
 
-        # 状态胶囊
+        # 顶部行：状态徽章 + 标题 + 复制ID按钮
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+
         status = self.order_data.get('status', '未知')
         art_status = self.order_data.get('art_status')
         if art_status:
@@ -209,12 +212,58 @@ class WorkOrderDetailDialog(QDialog):
             font-weight: bold;
             font-size: 12px;
             border-radius: 6px;
-            padding: 4px 10px;
+            padding: 4px 12px;
         """)
         status_label.setFixedHeight(28)
-        header_layout = QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.addWidget(status_label)
+        top_row.addWidget(status_label)
+
+        title_text = f"{self.order_data.get('model', '')} {self.order_data.get('name', '')}".strip() or "工单详情"
+        title_label = QLabel(title_text)
+        title_label.setStyleSheet("font-size: 17px; font-weight: bold; color: #FFFFFF; background: transparent;")
+        title_label.setWordWrap(True)
+        top_row.addWidget(title_label, 1)
+
+        copy_id_btn = PushButton(FIF.COPY, "复制ID")
+        copy_id_btn.setFixedHeight(28)
+        def on_copy_id():
+            oid = str(self.order_data.get('id', ''))
+            QApplication.clipboard().setText(oid)
+            InfoBar.success(
+                title="已复制",
+                content=f"工单ID {oid} 已存入剪贴板",
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP_RIGHT,
+                duration=2000,
+                parent=self
+            )
+        copy_id_btn.clicked.connect(on_copy_id)
+        top_row.addWidget(copy_id_btn)
+
+        layout.addLayout(top_row)
+
+        # 底部元信息行
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(16)
+
+        id_lbl = QLabel(f"工单ID: <span style='color: #4f8ef7; font-weight: bold;'>{self.order_data.get('id', '')}</span>")
+        id_lbl.setStyleSheet("color: #9ba3b0; font-size: 12px; background: transparent;")
+        id_lbl.setTextFormat(Qt.TextFormat.RichText)
+        meta_row.addWidget(id_lbl)
+
+        created_at = str(self.order_data.get('created_at', '') or '--')
+        created_lbl = QLabel(f"创建时间: {created_at}")
+        created_lbl.setStyleSheet("color: #9ba3b0; font-size: 12px; background: transparent;")
+        meta_row.addWidget(created_lbl)
+
+        dept_name = str(self.order_data.get('department', '') or '--')
+        dept_lbl = QLabel(f"所属产线: <span style='color: #e8eaed;'>{dept_name}</span>")
+        dept_lbl.setStyleSheet("color: #9ba3b0; font-size: 12px; background: transparent;")
+        dept_lbl.setTextFormat(Qt.TextFormat.RichText)
+        meta_row.addWidget(dept_lbl)
+
+        meta_row.addStretch()
+        layout.addLayout(meta_row)
 
         self.scroll_layout.addWidget(header_card)
 

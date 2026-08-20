@@ -345,9 +345,9 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
         file_table.setColumnCount(2)
         file_table.setHorizontalHeaderLabels(["选择", "文件名"])
         file_table.setColumnWidth(0, 50)
-        file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
-        file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        file_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        file_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        file_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        file_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
 
         checkboxes = []
         file_table.setRowCount(len(files_found))
@@ -596,9 +596,9 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
                 dialog, "确认通过",
                 f"{target_label}侧待审批目录没有待审批文件，但目标目录已存在成品：\n{target_dir}\n\n"
                 f"这可能是审批已分发但状态未推进。\n确认直接通过本侧审批？",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No
             )
-            if confirm != QMessageBox.Yes:
+            if confirm != QMessageBox.StandardButton.Yes:
                 return
             approved_sides.add(side)
             _complete_side(side, via_fallback=True)
