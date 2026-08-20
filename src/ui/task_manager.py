@@ -18,6 +18,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qfluentwidgets import (
+    CardWidget,
+    FluentIcon as FIF,
+    ProgressBar as FluentProgressBar,
+    PushButton as FluentPushButton,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -230,8 +236,8 @@ class Task(QThread):
         self.paused.emit(False)
 
 
-class TaskCardWidget(QWidget):
-    """单个文件操作任务卡片控件（嵌入式及列表复用）"""
+class TaskCardWidget(CardWidget):
+    """单个文件操作任务卡片控件（基于 Fluent CardWidget）"""
     def __init__(self, task_name, parent=None):
         super().__init__(parent)
         self.task_name = task_name
@@ -254,16 +260,9 @@ class TaskCardWidget(QWidget):
 
     def _init_ui(self):
         self.setObjectName("TaskCard")
-        self.setStyleSheet("""
-            QWidget#TaskCard {
-                background-color: #22262f;
-                border: 1px solid #323846;
-                border-radius: 6px;
-            }
-        """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(5)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
 
         # 头部：工单号与状态胶囊
         header_layout = QHBoxLayout()
@@ -278,37 +277,22 @@ class TaskCardWidget(QWidget):
         self.status_badge = QLabel("传输中")
         self.status_badge.setStyleSheet(
             "font-size: 11px; font-weight: bold; color: #38bdf8; "
-            "background-color: #0c4a6e; border-radius: 4px; padding: 2px 6px;"
+            "background-color: #0c4a6e; border-radius: 4px; padding: 2px 8px;"
         )
         header_layout.addWidget(self.status_badge)
         layout.addLayout(header_layout)
 
         # 任务描述标签
         self.desc_label = QLabel(self.task_name)
-        self.desc_label.setStyleSheet("font-size: 11px; color: #9ba3b0; background: transparent;")
+        self.desc_label.setStyleSheet("font-size: 12px; color: #9ba3b0; background: transparent;")
         self.desc_label.setWordWrap(True)
         self.desc_label.setToolTip(self.task_name)
         layout.addWidget(self.desc_label)
 
-        # 进度条
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setFixedHeight(18)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #353b48;
-                border-radius: 4px;
-                background-color: #1a1d23;
-                text-align: center;
-                color: #e8eaed;
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #3b82f6, stop:1 #06b6d4);
-                border-radius: 3px;
-            }
-        """)
+        # Fluent 进度条（带动画）
+        self.progress_bar = FluentProgressBar()
+        self.progress_bar.setUseAni(True)
+        self.progress_bar.setFixedHeight(8)
         self.progress_bar.setValue(0)
         layout.addWidget(self.progress_bar)
 
@@ -323,57 +307,28 @@ class TaskCardWidget(QWidget):
             self.status_badge.setText("异常")
             self.status_badge.setStyleSheet(
                 "font-size: 11px; font-weight: bold; color: #f87171; "
-                "background-color: #450a0a; border-radius: 4px; padding: 2px 6px;"
+                "background-color: #450a0a; border-radius: 4px; padding: 2px 8px;"
             )
-            self.progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #5c2020;
-                    border-radius: 4px;
-                    background-color: #1a1d23;
-                    text-align: center;
-                    color: #e8eaed;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QProgressBar::chunk {
-                    background: #dc2626;
-                    border-radius: 3px;
-                }
-            """)
+            if hasattr(self.progress_bar, 'setError'):
+                self.progress_bar.setError(True)
         else:
             self.status_badge.setText("已完成")
             self.status_badge.setStyleSheet(
                 "font-size: 11px; font-weight: bold; color: #4ade80; "
-                "background-color: #052e16; border-radius: 4px; padding: 2px 6px;"
+                "background-color: #052e16; border-radius: 4px; padding: 2px 8px;"
             )
-            self.progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #1e3a29;
-                    border-radius: 4px;
-                    background-color: #1a1d23;
-                    text-align: center;
-                    color: #e8eaed;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QProgressBar::chunk {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #10b981, stop:1 #34d399);
-                    border-radius: 3px;
-                }
-            """)
 
     def set_canceled(self):
         self.is_finished = True
         self.status_badge.setText("已取消")
         self.status_badge.setStyleSheet(
             "font-size: 11px; font-weight: bold; color: #facc15; "
-            "background-color: #422006; border-radius: 4px; padding: 2px 6px;"
+            "background-color: #422006; border-radius: 4px; padding: 2px 8px;"
         )
 
 
 class EmbeddedTaskManagerWidget(QGroupBox):
-    """嵌入主窗口右侧栏的任务进度监控面板"""
+    """嵌入主窗口右侧栏的任务进度监控面板（Fluent 风格）"""
     def __init__(self, parent=None):
         super().__init__("任务进度", parent)
         self.cards = []
@@ -386,30 +341,11 @@ class EmbeddedTaskManagerWidget(QGroupBox):
         main_layout.setContentsMargins(10, 14, 10, 10)
         main_layout.setSpacing(6)
 
-        # 顶部工具栏：标题与清空按钮
+        # 顶部工具栏：清空按钮
         top_bar = QHBoxLayout()
         top_bar.addStretch()
-        self.clear_btn = QPushButton("清空完成项")
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #252830;
-                color: #9ba3b0;
-                border: 1px solid #353840;
-                border-radius: 4px;
-                padding: 3px 8px;
-                font-size: 11px;
-                font-weight: normal;
-            }
-            QPushButton:hover {
-                background-color: #323846;
-                color: #e8eaed;
-            }
-            QPushButton:disabled {
-                background-color: transparent;
-                color: #4b5563;
-                border-color: #2e3340;
-            }
-        """)
+        self.clear_btn = FluentPushButton(FIF.DELETE, "清空完成项")
+        self.clear_btn.setFixedHeight(28)
         self.clear_btn.setEnabled(False)
         self.clear_btn.clicked.connect(self.clear_finished)
         top_bar.addWidget(self.clear_btn)

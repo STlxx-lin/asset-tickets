@@ -15,6 +15,17 @@ from PySide6.QtWidgets import (
 )
 import hmac
 
+from qfluentwidgets import (
+    CardWidget,
+    FluentIcon as FIF,
+    LineEdit as FluentLineEdit,
+    PrimaryPushButton,
+    PushButton,
+    Theme,
+    setTheme,
+    setThemeColor,
+)
+
 # 从配置文件导入版本号
 from src.core.config import APP_VERSION
 from src.core.database import db_manager
@@ -23,11 +34,14 @@ from src.core.database import db_manager
 class CharacterSelection(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("角色选择")
+        setTheme(Theme.DARK)
+        setThemeColor('#4f8ef7')
+        self.setWindowTitle("角色选择 - 工单管理系统")
         self.roles = db_manager.get_roles()
         self.departments = db_manager.get_departments()
-        self.setGeometry(100, 100, 600, 400)
+        self.setGeometry(100, 100, 640, 480)
         self.main_window = None
+        self.outer_layout = QVBoxLayout(self)
         self.setup_ui()
         self.apply_styles()
 
@@ -35,30 +49,22 @@ class CharacterSelection(QWidget):
         return db_manager.get_local_ip()
 
     def setup_ui(self):
-        # 重建UI时重置角色按钮列表，避免残留已销毁的控件引用
+        # 重建UI时重置角色按钮列表与布局，避免残留已销毁的控件引用
         self.role_buttons = []
-        # 外层居中布局
-        if self.layout() is not None:
-            self.clear_layout(self.layout())
-            outer_layout = self.layout()
-            # 清理 layout 中遗留的 stretch
-            while outer_layout.count() > 0:
-                outer_layout.takeAt(0)
-        else:
-            outer_layout = QVBoxLayout(self)
+        self.clear_layout(self.outer_layout)
             
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.setSpacing(0)
-        outer_layout.addStretch()
+        self.outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.outer_layout.setSpacing(0)
+        self.outer_layout.addStretch()
 
         # 居中容器
         center_h = QHBoxLayout()
         center_h.addStretch()
 
-        # 卡片容器
-        card = QWidget()
+        # Fluent 卡片容器
+        card = CardWidget()
         card.setObjectName("card")
-        card.setMinimumWidth(480)
+        card.setMinimumWidth(500)
         card.setMaximumWidth(640)
         self.main_layout = QVBoxLayout(card)
         self.main_layout.setContentsMargins(36, 32, 36, 32)
@@ -66,14 +72,14 @@ class CharacterSelection(QWidget):
 
         # 品牌标题
         brand_label = QLabel("工单管理系统")
-        brand_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #e8eaed; letter-spacing: 1px;")
-        brand_label.setAlignment(Qt.AlignCenter)
+        brand_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #ffffff; letter-spacing: 1px; background: transparent;")
+        brand_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_layout.addWidget(brand_label)
 
         # 分割线
         divider = QFrame()
-        divider.setFrameShape(QFrame.HLine)
-        divider.setStyleSheet("color: #353840; background-color: #353840; max-height: 1px; margin: 4px 0;")
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet("background-color: #282c37; max-height: 1px; margin: 4px 0;")
         self.main_layout.addWidget(divider)
 
         # 自动获取本机IP
@@ -99,19 +105,22 @@ class CharacterSelection(QWidget):
 
             # 用户信息区
             name_label = QLabel(user_info['name'])
-            name_label.setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff;")
-            name_label.setAlignment(Qt.AlignCenter)
+            name_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #ffffff; background: transparent; padding: 2px 0;")
+            name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.main_layout.addWidget(name_label)
 
             # IP + 部门 行
             meta_layout = QHBoxLayout()
-            meta_layout.setSpacing(12)
-            ip_chip = QLabel(f"  {user_info['ip']}  ")
-            ip_chip.setStyleSheet("background:#2e3340; color:#9ba3b0; border-radius:4px; font-size:12px; padding:3px 0;")
-            ip_chip.setAlignment(Qt.AlignCenter)
-            dept_chip = QLabel(f"  {', '.join(depts)}  ")
-            dept_chip.setStyleSheet("background:#2e3340; color:#9ba3b0; border-radius:4px; font-size:12px; padding:3px 0;")
-            dept_chip.setAlignment(Qt.AlignCenter)
+            meta_layout.setSpacing(10)
+            ip_chip = QLabel(f"IP: {user_info['ip']}")
+            ip_chip.setStyleSheet("background: #232732; color: #4f8ef7; border-radius: 6px; font-size: 12px; font-weight: bold; padding: 5px 12px; border: 1px solid #303646;")
+            ip_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            dept_text = "、".join(depts) if depts else "未分配部门"
+            dept_chip = QLabel(f"部门: {dept_text}")
+            dept_chip.setStyleSheet("background: #232732; color: #cbd5e1; border-radius: 6px; font-size: 12px; padding: 5px 12px; border: 1px solid #303646;")
+            dept_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
             meta_layout.addStretch()
             meta_layout.addWidget(ip_chip)
             meta_layout.addWidget(dept_chip)
@@ -120,9 +129,11 @@ class CharacterSelection(QWidget):
 
             # 角色选择（多角色时显示）
             if len(display_roles) > 1:
-                role_group = QGroupBox("请选择角色")
+                role_group = QGroupBox("请选择当前登录角色")
                 role_layout = QGridLayout()
-                role_layout.setSpacing(16)
+                role_layout.setContentsMargins(14, 16, 14, 14)
+                role_layout.setHorizontalSpacing(18)
+                role_layout.setVerticalSpacing(12)
                 for i, role in enumerate(display_roles):
                     btn = QRadioButton(role)
                     if role == selected_role:
@@ -133,20 +144,19 @@ class CharacterSelection(QWidget):
                 self.main_layout.addWidget(role_group)
 
             # 提示
-            tip_label = QLabel("请确认以上信息。如有误，请核查内网IP或联系管理员。")
-            tip_label.setStyleSheet("color: #f59e0b; font-size: 12px; background:transparent;")
+            tip_label = QLabel("💡 请确认以上身份信息。如有误，请核查内网 IP 或联系管理员。")
+            tip_label.setStyleSheet("color: #eab308; font-size: 12px; background: transparent; padding: 4px 0;")
             tip_label.setWordWrap(True)
-            tip_label.setAlignment(Qt.AlignCenter)
+            tip_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.main_layout.addWidget(tip_label)
 
             # 按钮区
             btn_layout = QHBoxLayout()
             btn_layout.setSpacing(12)
-            confirm_btn = QPushButton("确认进入")
+            confirm_btn = PrimaryPushButton(FIF.ACCEPT, "确认进入")
             confirm_btn.setFixedHeight(40)
             confirm_btn.clicked.connect(lambda: self.enter_main(user_info))
-            admin_btn = QPushButton("管理员登录")
-            admin_btn.setObjectName("secondary")
+            admin_btn = PushButton(FIF.SETTING, "管理员登录")
             admin_btn.setFixedHeight(40)
             admin_btn.clicked.connect(self.admin_login)
             btn_layout.addWidget(confirm_btn)
@@ -154,17 +164,17 @@ class CharacterSelection(QWidget):
             self.main_layout.addLayout(btn_layout)
         else:
             err_icon = QLabel("⚠")
-            err_icon.setStyleSheet("font-size: 36px; color: #ef4444; background:transparent;")
-            err_icon.setAlignment(Qt.AlignCenter)
+            err_icon.setStyleSheet("font-size: 36px; color: #ef4444; background: transparent;")
+            err_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.main_layout.addWidget(err_icon)
 
             info_label = QLabel(f"未识别到本机用户\n\nIP：{local_ip}\n\n请确认设备已连接内网，或联系管理员添加此 IP。")
-            info_label.setStyleSheet("color: #ef4444; font-size: 14px; background:transparent; line-height: 1.6;")
+            info_label.setStyleSheet("color: #ef4444; font-size: 14px; background: transparent; line-height: 1.6;")
             info_label.setWordWrap(True)
-            info_label.setAlignment(Qt.AlignCenter)
+            info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.main_layout.addWidget(info_label)
 
-            admin_btn = QPushButton("管理员登录")
+            admin_btn = PrimaryPushButton(FIF.SETTING, "管理员登录")
             admin_btn.setFixedHeight(40)
             admin_btn.clicked.connect(self.admin_login)
             btn_layout = QHBoxLayout()
@@ -174,18 +184,18 @@ class CharacterSelection(QWidget):
             self.main_layout.addLayout(btn_layout)
 
         # 底部信息区（卡片内）
-        self.main_layout.addSpacing(8)
+        self.main_layout.addSpacing(4)
         footer_divider = QFrame()
-        footer_divider.setFrameShape(QFrame.HLine)
-        footer_divider.setStyleSheet("color: #353840; background-color: #353840; max-height: 1px;")
+        footer_divider.setFrameShape(QFrame.Shape.HLine)
+        footer_divider.setStyleSheet("background-color: #282c37; max-height: 1px;")
         self.main_layout.addWidget(footer_divider)
 
         footer_layout = QHBoxLayout()
         footer_layout.setSpacing(16)
         db_label = QLabel(f"DB: {db_manager.config['database']}@{db_manager.config['host']}")
-        db_label.setStyleSheet("color: #ef4444; font-size: 11px; background:transparent;")
+        db_label.setStyleSheet("color: #ef4444; font-size: 11px; background: transparent;")
         ver_label = QLabel(f"v{APP_VERSION}")
-        ver_label.setStyleSheet("color: #6b7280; font-size: 11px; background:transparent;")
+        ver_label.setStyleSheet("color: #6b7280; font-size: 11px; background: transparent;")
         footer_layout.addWidget(db_label)
         footer_layout.addStretch()
         footer_layout.addWidget(ver_label)
@@ -193,74 +203,58 @@ class CharacterSelection(QWidget):
 
         center_h.addWidget(card)
         center_h.addStretch()
-        outer_layout.addLayout(center_h)
-        outer_layout.addStretch()
+        self.outer_layout.addLayout(center_h)
+        self.outer_layout.addStretch()
 
     def admin_login(self):
         """管理员登录"""
         dialog = QDialog(self)
         dialog.setWindowTitle("管理员登录")
-        dialog.setFixedSize(300, 150)
+        dialog.setFixedSize(340, 180)
         dialog.setModal(True)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #1a1d24;
+                color: #e8eaed;
+            }
+            QLabel {
+                color: #e8eaed;
+                font-size: 13px;
+                background: transparent;
+            }
+        """)
         
         layout = QVBoxLayout(dialog)
-        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
         
         # 密码输入框
         password_label = QLabel("请输入管理员密码：")
-        password_edit = QLineEdit()
-        password_edit.setEchoMode(QLineEdit.Password)
+        password_edit = FluentLineEdit()
+        password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         password_edit.setPlaceholderText("请输入密码")
+        password_edit.setFixedHeight(32)
+        password_edit.setFocus()
         
         # 按钮布局
         button_layout = QHBoxLayout()
-        ok_button = QPushButton("确定")
-        cancel_button = QPushButton("取消")
+        button_layout.setSpacing(10)
+        cancel_button = PushButton("取消")
+        cancel_button.setFixedHeight(32)
+        ok_button = PrimaryPushButton(FIF.ACCEPT, "确定")
+        ok_button.setFixedHeight(32)
         
         ok_button.clicked.connect(lambda: self.verify_admin_password(dialog, password_edit.text()))
+        password_edit.returnPressed.connect(lambda: self.verify_admin_password(dialog, password_edit.text()))
         cancel_button.clicked.connect(dialog.reject)
         
         button_layout.addStretch()
-        button_layout.addWidget(ok_button)
         button_layout.addWidget(cancel_button)
+        button_layout.addWidget(ok_button)
         
         layout.addWidget(password_label)
         layout.addWidget(password_edit)
         layout.addLayout(button_layout)
-        
-        # 设置样式
-        dialog.setStyleSheet("""
-            QDialog {
-                background-color: #2E2E2E;
-                color: #FFFFFF;
-            }
-            QLabel {
-                color: #FFFFFF;
-                font-size: 14px;
-            }
-            QLineEdit {
-                background-color: #444;
-                border: 1px solid #555;
-                padding: 8px;
-                border-radius: 4px;
-                color: #FFFFFF;
-                font-size: 14px;
-            }
-            QPushButton {
-                background-color: #555555;
-                color: #FFFFFF;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #777777;
-            }
-            QPushButton:pressed {
-                background-color: #444444;
-            }
-        """)
         
         dialog.exec()
     
@@ -269,15 +263,21 @@ class CharacterSelection(QWidget):
         from src.core.config import ADMIN_PASSWORD
         # 安全：未配置 ADMIN_PASSWORD 或输入为空时一律拒绝，避免空密码绕过管理员认证
         if not ADMIN_PASSWORD or not password:
-            QMessageBox.warning(dialog, "错误", "密码错误！")
+            QMessageBox.warning(dialog, "错误", "请输入密码！" if not password else "未配置管理员密码！")
             return
-        if hmac.compare_digest(password.encode('utf-8'), ADMIN_PASSWORD.encode('utf-8')):  # 管理员密码
+        if hmac.compare_digest(password.encode('utf-8'), ADMIN_PASSWORD.encode('utf-8')):
             dialog.accept()
-            # 以管理员身份进入主窗口
-            from src.ui.main_window import MainWindow
-            self.main_window = MainWindow("管理员", self.departments, is_admin=True, logout_callback=self.show)
-            self.main_window.show()
-            self.hide()  # 隐藏而不是关闭
+            try:
+                # 以管理员身份进入主窗口
+                from src.ui.main_window import MainWindow
+                depts = getattr(self, 'departments', None) or db_manager.get_departments()
+                self.main_window = MainWindow("管理员", depts, is_admin=True, logout_callback=self.show, user_name="管理员", roles=["管理员"])
+                self.main_window.show()
+                self.hide()
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                QMessageBox.critical(self, "启动失败", f"进入管理员主窗口失败：{e}")
         else:
             QMessageBox.warning(dialog, "错误", "密码错误！")
         
@@ -293,107 +293,61 @@ class CharacterSelection(QWidget):
 
     def apply_styles(self):
         self.setStyleSheet("""
-            QWidget {
-                background-color: #1a1d23;
-                color: #e8eaed;
-                font-size: 14px;
-                font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            CharacterSelection {
+                background-color: #121418;
             }
-            QWidget#card {
-                background-color: #252830;
-                border: 1px solid #353840;
-                border-radius: 12px;
+            QLabel {
+                background: transparent;
+                color: #e8eaed;
+                font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+            }
+            CardWidget#card {
+                background-color: #1a1d24;
+                border: 1px solid #282c37;
+                border-radius: 14px;
             }
             QGroupBox {
-                border: 1px solid #353840;
+                background-color: #14161c;
+                border: 1px solid #282c37;
                 border-radius: 8px;
-                margin-top: 12px;
+                margin-top: 14px;
                 font-weight: bold;
-                color: #9ba3b0;
+                color: #8b949e;
                 font-size: 12px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 8px;
                 left: 12px;
+                color: #8b949e;
+                background: transparent;
             }
-            QRadioButton, QCheckBox {
-                spacing: 10px;
-                color: #c8cdd5;
-                font-size: 14px;
+            QRadioButton {
+                background: transparent;
+                spacing: 8px;
+                color: #d1d5db;
+                font-size: 13px;
+                font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
             }
-            QRadioButton:hover, QCheckBox:hover {
-                color: #ffffff;
+            QRadioButton:hover {
+                color: #4f8ef7;
             }
-            QRadioButton::indicator, QCheckBox::indicator {
+            QRadioButton::indicator {
                 width: 18px;
                 height: 18px;
+                border-radius: 9px;
             }
             QRadioButton::indicator:unchecked {
-                border: 2px solid #454a55;
-                border-radius: 9px;
-                background-color: #1a1d23;
+                border: 2px solid #374151;
+                background-color: #14161c;
+            }
+            QRadioButton::indicator:unchecked:hover {
+                border-color: #4f8ef7;
             }
             QRadioButton::indicator:checked {
                 border: 2px solid #4f8ef7;
-                border-radius: 9px;
                 background-color: #4f8ef7;
-            }
-            QCheckBox::indicator:unchecked {
-                border: 2px solid #454a55;
-                border-radius: 4px;
-                background-color: #1a1d23;
-            }
-            QCheckBox::indicator:checked {
-                border: 2px solid #4f8ef7;
-                border-radius: 4px;
-                background-color: #4f8ef7;
-            }
-            QPushButton {
-                background-color: #4f8ef7;
-                color: #FFFFFF;
-                border: none;
-                padding: 10px 24px;
-                border-radius: 8px;
-                font-weight: bold;
-                font-size: 14px;
-                min-width: 90px;
-            }
-            QPushButton:hover {
-                background-color: #6ba3ff;
-            }
-            QPushButton:pressed {
-                background-color: #3a72d6;
-            }
-            QPushButton#secondary {
-                background-color: transparent;
-                color: #9ba3b0;
-                border: 1px solid #454a55;
-            }
-            QPushButton#secondary:hover {
-                background-color: #2e3340;
-                color: #e8eaed;
-                border-color: #6b7280;
-            }
-            QLineEdit {
-                background-color: #2e3340;
-                border: 1px solid #454a55;
-                padding: 10px 12px;
-                border-radius: 8px;
-                color: #e8eaed;
-                font-size: 14px;
-            }
-            QLineEdit:focus {
-                border-color: #4f8ef7;
-                background-color: #333845;
-            }
-            QListWidget {
-                background-color: #2e3340;
-                border: 1px solid #454a55;
-                border-radius: 6px;
             }
         """)
 

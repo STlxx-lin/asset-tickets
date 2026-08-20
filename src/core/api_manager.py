@@ -1,3 +1,4 @@
+from datetime import date, datetime
 import ipaddress
 import logging
 import os
@@ -107,20 +108,25 @@ class APIManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def _convert_time_to_timestamp(self, time_str):
-        """将时间字符串转换为时间戳
+    def _convert_time_to_timestamp(self, time_val):
+        """将时间对象或字符串转换为时间戳
 
         Args:
-            time_str: 时间字符串，格式如'YYYY-MM-DD HH:MM:SS'
+            time_val: 时间值，支持 datetime, date, 时间戳, 或时间字符串 'YYYY-MM-DD HH:MM:SS'
 
         Returns:
             int: 时间戳
         """
-        if not time_str:
+        if not time_val:
             return 0
+        if isinstance(time_val, (int, float)):
+            return int(time_val)
+        if isinstance(time_val, datetime):
+            return int(time_val.timestamp())
+        if isinstance(time_val, date):
+            return int(datetime.combine(time_val, datetime.min.time()).timestamp())
         try:
-            # 将时间字符串转换为时间戳
-            timestamp = int(time.mktime(time.strptime(time_str, '%Y-%m-%d %H:%M:%S')))
+            timestamp = int(time.mktime(time.strptime(str(time_val), '%Y-%m-%d %H:%M:%S')))
             return timestamp
         except Exception as e:
             logger.error(f"时间转换失败: {e}")

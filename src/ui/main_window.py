@@ -60,6 +60,26 @@ from src.core.config import APP_VERSION, DEFAULT_NOTIFICATION_TYPE, clear_featur
 
 # 添加项目根目录到Python搜索路径
 # sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from qfluentwidgets import (
+    CardWidget,
+    ComboBox as FluentComboBox,
+    EditableComboBox,
+    FluentIcon as FIF,
+    HeaderCardWidget,
+    IconWidget,
+    InfoBar,
+    InfoBarPosition,
+    LineEdit,
+    Pivot,
+    PrimaryPushButton,
+    PushButton,
+    SearchLineEdit,
+    TableView as FluentTableView,
+    TextEdit,
+    Theme,
+    setTheme,
+    setThemeColor,
+)
 from src.core.database import db_manager
 
 from .task_manager import EmbeddedTaskManagerWidget, Task, TaskManagerDialog
@@ -205,193 +225,88 @@ class CreateWorkOrderDialog(QDialog):
     def __init__(self, role, departments, user_name=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("创建新工单")
-        self.setMinimumWidth(600)
-        self.setMinimumHeight(500)
+        self.setMinimumWidth(620)
+        self.setMinimumHeight(520)
         self.role = role
         self.departments = departments
         self.user_name = user_name
-        # 设置弹窗样式，与主系统保持一致
         self.setStyleSheet("""
             QDialog {
-                background-color: #2E2E2E;
-                color: #FFFFFF;
-            }
-            QGroupBox {
-                border: 1px solid #555555;
-                border-radius: 5px;
-                margin-top: 1ex;
-                font-size: 14px;
-                font-weight: bold;
-                color: #FFFFFF;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 10px;
-                color: #FFFFFF;
-            }
-            QLineEdit, QComboBox, QTextEdit {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 8px 12px;
-                color: #FFFFFF;
-                font-size: 14px;
-                min-height: 20px;
-            }
-            QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
-                border-color: #0078d4;
-                background-color: #4c4c4c;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #FFFFFF;
-                margin-right: 5px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                color: #FFFFFF;
-                selection-background-color: #0078d4;
+                background-color: #1e222a;
+                color: #e8eaed;
             }
             QLabel {
-                color: #FFFFFF;
-                font-size: 14px;
-            }
-            QPushButton {
-                background-color: #0078d4;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 24px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #106ebe;
-            }
-            QPushButton:pressed {
-                background-color: #005a9e;
-            }
-            QPushButton[type="cancel"] {
-                background-color: #555555;
-            }
-            QPushButton[type="cancel"]:hover {
-                background-color: #666666;
-            }
-            QPushButton[type="cancel"]:pressed {
-                background-color: #444444;
+                color: #e8eaed;
+                font-size: 13px;
             }
         """)
         # 主布局
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        
         # 标题
         title_label = QLabel("创建新工单")
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #FFFFFF;
-                padding: 10px 0;
-            }
-        """)
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #e8eaed; padding-bottom: 2px;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
-        # 表单区域
-        form_widget = QWidget()
-        form_layout = QVBoxLayout(form_widget)
-        form_layout.setSpacing(15)
-        # 工单基本信息分组
-        basic_group = QGroupBox("工单基本信息")
-        basic_layout = QFormLayout(basic_group)
+        
+        # 表单卡片
+        form_card = CardWidget()
+        form_layout = QVBoxLayout(form_card)
+        form_layout.setContentsMargins(18, 18, 18, 18)
+        form_layout.setSpacing(14)
+        
+        basic_layout = QFormLayout()
         basic_layout.setSpacing(12)
         basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        
         # 创建字段
-        self.id_field = QLineEdit()
+        self.id_field = LineEdit()
         self.id_field.setText(datetime.datetime.now().strftime("%y%m%d%H%M"))
-        self.department_field = QComboBox()
+        
+        self.department_field = FluentComboBox()
         self.department_field.addItems(self.departments)
-        self.model_field = QLineEdit()
+        
+        self.model_field = LineEdit()
         self.model_field.setPlaceholderText("请输入产品型号")
-        self.name_field = QLineEdit()
+        
+        self.name_field = LineEdit()
         self.name_field.setPlaceholderText("请输入产品名称")
-        self.creator_field = QLineEdit()
-        self.creator_field.setStyleSheet("""
-            QLineEdit {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 8px 12px;
-                color: #FFFFFF;
-                font-size: 14px;
-                min-height: 20px;
-            }
-            QLineEdit:focus {
-                border-color: #0078d4;
-                background-color: #4c4c4c;
-            }
-        """)
-        # 如果提供了用户名，自动填充到发起人字段
+        
+        self.creator_field = LineEdit()
         if self.user_name:
             self.creator_field.setText(self.user_name)
-            # 允许用户修改发起人字段
             self.creator_field.setReadOnly(False)
         else:
             self.creator_field.setText("")
             self.creator_field.setPlaceholderText("请输入发起人")
-        # 添加项目类型选择
-        self.project_type_field = QComboBox()
+            
+        self.project_type_field = FluentComboBox()
         self.project_type_field.setPlaceholderText("请选择项目类型")
-        # 添加项目内容选择
-        self.project_content_field = QComboBox()
+        
+        self.project_content_field = FluentComboBox()
         self.project_content_field.setPlaceholderText("请选择项目内容")
-        # 添加需求人字段
-        self.requester_field = QLineEdit()
-        self.requester_field.setStyleSheet("""
-            QLineEdit {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 8px 12px;
-                color: #FFFFFF;
-                font-size: 14px;
-                min-height: 20px;
-            }
-            QLineEdit:focus {
-                border-color: #0078d4;
-                background-color: #4c4c4c;
-            }
-        """)
-        # 如果提供了用户名，自动填充到需求人字段
+        
+        self.requester_field = LineEdit()
         if self.user_name:
             self.requester_field.setText(self.user_name)
         else:
             self.requester_field.setText("")
             self.requester_field.setPlaceholderText("请输入需求人")
         
-        # 添加选择需求人的按钮
-        self.select_requester_btn = QPushButton("选择")
-        self.select_requester_btn.setMaximumWidth(60)
+        self.select_requester_btn = PushButton(FIF.PEOPLE, "选择")
+        self.select_requester_btn.setFixedHeight(32)
         self.select_requester_btn.clicked.connect(self.select_requester)
         
-        # 创建需求人布局，包含输入框和按钮
         self.requester_layout = QHBoxLayout()
+        self.requester_layout.setSpacing(6)
         self.requester_layout.addWidget(self.requester_field)
         self.requester_layout.addWidget(self.select_requester_btn)
         
-        # 添加备注字段
-        self.remarks_field = QLineEdit()
-        self.remarks_field.setPlaceholderText("请输入备注信息")
-        # 添加字段到布局
+        self.remarks_field = LineEdit()
+        self.remarks_field.setPlaceholderText("请输入备注信息（选填）")
+        
         basic_layout.addRow("工单 ID:", self.id_field)
         basic_layout.addRow("产线/部门:", self.department_field)
         basic_layout.addRow("型号:", self.model_field)
@@ -401,31 +316,36 @@ class CreateWorkOrderDialog(QDialog):
         basic_layout.addRow("项目类型:", self.project_type_field)
         basic_layout.addRow("项目内容:", self.project_content_field)
         basic_layout.addRow("备注:", self.remarks_field)
-        # 将基本信息分组添加到表单布局
-        form_layout.addWidget(basic_group)
+        
+        form_layout.addLayout(basic_layout)
+        main_layout.addWidget(form_card)
+        
         # 提示信息
-        info_label = QLabel("💡 提示：所有字段均为必填项，请仔细填写后点击确定创建工单")
+        info_label = QLabel("💡 提示：所有标注字段均为必填项，请仔细核对后创建")
         info_label.setStyleSheet("""
             QLabel {
-                font-size: 13px;
-                color: #cccccc;
-                background-color: #3c3c3c;
-                padding: 10px;
-                border-radius: 4px;
-                border-left: 4px solid #0078d4;
+                font-size: 12px;
+                color: #9ba3b0;
+                background-color: #16191f;
+                padding: 8px 12px;
+                border-radius: 6px;
+                border-left: 3px solid #4f8ef7;
             }
         """)
-        form_layout.addWidget(info_label)
-        # 将表单部件添加到主布局
-        main_layout.addWidget(form_widget)
+        main_layout.addWidget(info_label)
+        
         # 按钮区域
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
         button_layout.addStretch()
-        cancel_btn = QPushButton("取消")
-        cancel_btn.setProperty("type", "cancel")
+        cancel_btn = PushButton("取消")
+        cancel_btn.setFixedHeight(32)
         cancel_btn.clicked.connect(self.reject)
-        ok_btn = QPushButton("确定")
+        
+        ok_btn = PrimaryPushButton(FIF.ACCEPT, "确定创建")
+        ok_btn.setFixedHeight(32)
         ok_btn.clicked.connect(self.accept)
+        
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(ok_btn)
         main_layout.addLayout(button_layout)
@@ -446,19 +366,19 @@ class CreateWorkOrderDialog(QDialog):
         # 从数据库获取项目类型
         project_types = db_manager.get_project_types()
         self.project_type_field.clear()
-        self.project_type_field.addItem("请选择项目类型", None)
+        self.project_type_field.addItem("请选择项目类型", userData=None)
         for pt in project_types:
-            self.project_type_field.addItem(pt['name'], pt['id'])
+            self.project_type_field.addItem(pt['name'], userData=pt['id'])
             
     def on_project_type_changed(self):
         # 项目类型变化时加载对应的项目内容
         type_id = self.project_type_field.currentData()
         self.project_content_field.clear()
-        self.project_content_field.addItem("请选择项目内容", None)
+        self.project_content_field.addItem("请选择项目内容", userData=None)
         if type_id:
             project_contents = db_manager.get_project_contents_by_type(type_id)
             for pc in project_contents:
-                self.project_content_field.addItem(pc['name'], pc['id'])
+                self.project_content_field.addItem(pc['name'], userData=pc['id'])
                 
     def validate_form(self):
         # 验证工单ID格式 (yyMMddHHmm)
@@ -543,21 +463,29 @@ class CreateWorkOrderDialog(QDialog):
         # 创建用户选择对话框
         dialog = QDialog(self)
         dialog.setWindowTitle("选择需求人")
-        dialog.resize(300, 400)
+        dialog.resize(340, 440)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #1e222a;
+                color: #e8eaed;
+            }
+            QLabel {
+                color: #9ba3b0;
+                font-size: 13px;
+            }
+        """)
         layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         
         # 添加搜索框
-        search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("搜索:"))
-        search_edit = QLineEdit()
+        search_edit = SearchLineEdit()
         search_edit.setPlaceholderText("输入用户名或IP搜索")
-        search_layout.addWidget(search_edit)
-        layout.addLayout(search_layout)
+        search_edit.setClearButtonEnabled(True)
+        layout.addWidget(search_edit)
         
         # 创建用户列表
         user_list = QListWidget()
-        
-        # 存储原始用户列表用于搜索过滤
         all_users = users.copy()
         
         # 初始化用户列表
@@ -565,7 +493,6 @@ class CreateWorkOrderDialog(QDialog):
             user_list.clear()
             for user in all_users:
                 user_text = f"{user['name']} ({user['ip']})"
-                # 搜索过滤逻辑，不区分大小写
                 if not filter_text or \
                    filter_text.lower() in user['name'].lower() or \
                    filter_text.lower() in user['ip'].lower():
@@ -573,19 +500,18 @@ class CreateWorkOrderDialog(QDialog):
                     user_item.setData(Qt.ItemDataRole.UserRole, user['name'])
                     user_list.addItem(user_item)
         
-        # 初始填充用户列表
         populate_user_list()
-        
-        # 连接搜索信号
         search_edit.textChanged.connect(populate_user_list)
-        
         layout.addWidget(user_list)
         
         # 创建按钮
         button_layout = QHBoxLayout()
-        cancel_btn = QPushButton("取消")
+        cancel_btn = PushButton("取消")
+        cancel_btn.setFixedHeight(32)
         cancel_btn.clicked.connect(dialog.reject)
-        select_btn = QPushButton("确定")
+        
+        select_btn = PrimaryPushButton(FIF.ACCEPT, "确定选择")
+        select_btn.setFixedHeight(32)
         select_btn.clicked.connect(dialog.accept)
         
         button_layout.addWidget(cancel_btn)
@@ -603,11 +529,13 @@ from packaging import version
 class MainWindow(QMainWindow):
     def show_error_dialog(self, error_content):
         """
-        显示自定义错误弹窗
+        显示自定义错误弹窗并同步弹出浮动通知
         :param error_content: 错误内容
         """
-        # 创建自定义对话框
-        msg_box = QMessageBox()
+        if hasattr(self, 'show_error_tip'):
+            self.show_error_tip("操作失败", str(error_content))
+        # 创建自定义对话框并绑定 parent=self，确保始终在主窗口最上层居中展示
+        msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Critical)
         msg_box.setWindowTitle("错误")
         msg_box.setText(f"{error_content}\n\n点击复制按钮内容发送给管理员")
@@ -676,6 +604,10 @@ class MainWindow(QMainWindow):
             # 显示对话框
             msg_box.exec()
         super().__init__(parent)
+        # 初始化 Fluent 视觉系统（暗黑模式 + 科技蓝）
+        setTheme(Theme.DARK)
+        setThemeColor('#4f8ef7')
+
         self.role = role
         # 角色集合（多角色合并登录时传入，如 ['视频后期审核', '美工后期审批']），默认仅当前角色
         self.roles = roles if roles else ([role] if role else [])
@@ -716,78 +648,94 @@ class MainWindow(QMainWindow):
         self.update_history_list()
         # 只绑定一次双击信号，防止多次弹窗
         self.table_view.doubleClicked.connect(self.on_work_order_row_double_clicked)
+
+    def show_success_tip(self, title: str, content: str = ""):
+        """右上角弹出 Fluent 成功浮动通知（3秒后自动淡出）"""
+        InfoBar.success(
+            title=title,
+            content=content,
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=3000,
+            parent=self
+        )
+
+    def show_warning_tip(self, title: str, content: str = ""):
+        """右上角弹出 Fluent 警告浮动通知（4秒后自动淡出）"""
+        InfoBar.warning(
+            title=title,
+            content=content,
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=4000,
+            parent=self
+        )
+
+    def show_error_tip(self, title: str, content: str = ""):
+        """右上角弹出 Fluent 错误浮动通知（5秒后自动淡出）"""
+        InfoBar.error(
+            title=title,
+            content=content,
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP_RIGHT,
+            duration=5000,
+            parent=self
+        )
+
     def get_ip_address(self):
         ip = db_manager.get_local_ip()
         return "N/A" if ip == "无法获取IP" else ip
+
     def create_header(self):
         header_widget = QWidget()
         header_widget.setObjectName("Header")
         header_widget.setMinimumHeight(56)
         header_layout = QHBoxLayout(header_widget)
         header_layout.setContentsMargins(16, 8, 16, 8)
-        header_layout.setSpacing(4)
+        header_layout.setSpacing(12)
 
         # Logo
         logo_label = QLabel("⚡ 工单系统")
         logo_label.setStyleSheet(
             "font-size: 16px; font-weight: bold; color: #4f8ef7;"
-            " letter-spacing: 1px; background: transparent; padding-right: 20px;"
+            " letter-spacing: 1px; background: transparent; padding-right: 12px;"
         )
 
-        # 菜单按钮（可切换激活状态）
-        menu_items = [
-            ("仪表盘", lambda: self.dashboard_page),
-            ("报表中心", lambda: self.reports_page),
-        ]
+        # Fluent Pivot 导航栏
+        self.nav_pivot = Pivot(header_widget)
+        self.nav_pivot.addItem(
+            routeKey="dashboard",
+            text="仪表盘",
+            onClick=lambda: (self.stacked_widget.setCurrentWidget(self.dashboard_page), self.update_history_list())
+        )
+        self.nav_pivot.addItem(
+            routeKey="reports",
+            text="报表中心",
+            onClick=lambda: self.stacked_widget.setCurrentWidget(self.reports_page)
+        )
         if self.is_admin:
-            menu_items.extend([
-                ("日志中心", lambda: self.logs_page),
-                ("系统设置", lambda: self.settings_page),
-            ])
-
-        self._nav_buttons = []
-        menu_layout = QHBoxLayout()
-        menu_layout.setSpacing(2)
-
-        def make_nav_action(get_page, btn):
-            def action():
-                page = get_page()
-                self.stacked_widget.setCurrentWidget(page)
-                for b in self._nav_buttons:
-                    b.setChecked(b is btn)
-                # 「实时操作记录」面板位于仪表盘页，切到仪表盘时刷新
-                if page is self.dashboard_page:
-                    self.update_history_list()
-            return action
-
-        for name, get_page in menu_items:
-            button = QPushButton(name)
-            button.setCheckable(True)
-            self._nav_buttons.append(button)
-            button.clicked.connect(make_nav_action(get_page, button))
-            menu_layout.addWidget(button)
-
-        # 默认激活第一个
-        if self._nav_buttons:
-            self._nav_buttons[0].setChecked(True)
-
-        # 任务列表按钮（管理员）
-        if self.is_admin:
-            task_btn = QPushButton("📋 任务")
-            task_btn.setStyleSheet(
-                "background: transparent; color: #9ba3b0; border: 1px solid #2e3340;"
-                " border-radius: 7px; padding: 6px 14px; font-size: 13px;"
+            self.nav_pivot.addItem(
+                routeKey="logs",
+                text="日志中心",
+                onClick=lambda: self.stacked_widget.setCurrentWidget(self.logs_page)
             )
-            task_btn.clicked.connect(lambda: self.task_manager.show())
-            menu_layout.addWidget(task_btn)
+            self.nav_pivot.addItem(
+                routeKey="settings",
+                text="系统设置",
+                onClick=lambda: self.stacked_widget.setCurrentWidget(self.settings_page)
+            )
+        self.nav_pivot.setCurrentItem("dashboard")
 
         # 分割线
         sep = QLabel()
         sep.setFixedWidth(1)
         sep.setStyleSheet("background-color: #2e3340;")
-        sep.setFixedHeight(32)
+        sep.setFixedHeight(30)
 
-        # 右侧用户信息
+        # 右侧用户信息与功能区
         right_layout = QHBoxLayout()
         right_layout.setSpacing(8)
 
@@ -796,7 +744,6 @@ class MainWindow(QMainWindow):
             name_label.setStyleSheet(
                 "font-size: 14px; font-weight: bold; color: #e8eaed; background: transparent;"
             )
-            name_label.setSizePolicy(name_label.sizePolicy().horizontalPolicy(), name_label.sizePolicy().verticalPolicy())
             right_layout.addWidget(name_label)
 
         role_chip = QLabel(self.role)
@@ -807,15 +754,6 @@ class MainWindow(QMainWindow):
         role_chip.setToolTip(self.role)
         right_layout.addWidget(role_chip)
 
-        # 路径权限检查按钮（所有角色可见，按角色检查对应路径；管理员检查全部）
-        perm_btn = QPushButton("🔒 路径权限")
-        perm_btn.setStyleSheet(
-            "background: transparent; color: #9ba3b0; border: 1px solid #2e3340;"
-            " border-radius: 7px; padding: 6px 14px; font-size: 13px;"
-        )
-        perm_btn.clicked.connect(self.handle_path_permission_check)
-        right_layout.addWidget(perm_btn)
-
         dept_text = ', '.join(self.departments)
         dept_chip = QLabel(dept_text)
         dept_chip.setStyleSheet(
@@ -825,62 +763,96 @@ class MainWindow(QMainWindow):
         dept_chip.setToolTip(dept_text)
         right_layout.addWidget(dept_chip)
 
+        # 任务列表按钮（管理员）
+        if self.is_admin:
+            task_btn = PushButton(FIF.CHECKBOX, "任务")
+            task_btn.setFixedHeight(30)
+            task_btn.clicked.connect(lambda: self.task_manager.show())
+            right_layout.addWidget(task_btn)
+
+        # 路径权限检查按钮（所有角色可见）
+        perm_btn = PushButton(FIF.PIN, "路径权限")
+        perm_btn.setFixedHeight(30)
+        perm_btn.clicked.connect(self.handle_path_permission_check)
+        right_layout.addWidget(perm_btn)
+
         self.version_label.setStyleSheet(
             "font-size: 11px; color: #454a55; background: transparent;"
         )
         right_layout.addWidget(self.version_label)
 
         # 注销按钮
-        logout_btn = QPushButton("注销")
-        logout_btn.setStyleSheet(
-            "background-color: transparent; color: #ef4444; border: 1px solid #4a1a1a;"
-            " border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: bold;"
-        )
+        logout_btn = PushButton(FIF.POWER_BUTTON, "注销")
+        logout_btn.setFixedHeight(30)
+        logout_btn.setStyleSheet("""
+            PushButton {
+                color: #ef4444;
+                border: 1px solid #4a1a1a;
+                background-color: transparent;
+                padding: 5px 12px 6px 32px;
+            }
+            PushButton:hover {
+                background-color: #2a1515;
+                color: #f87171;
+            }
+        """)
         logout_btn.clicked.connect(self.logout)
         right_layout.addWidget(logout_btn)
 
         header_layout.addWidget(logo_label)
-        header_layout.addLayout(menu_layout, 0)   # 菜单不拉伸
-        header_layout.addStretch(1)               # 中间弹性空间
+        header_layout.addWidget(self.nav_pivot, 0)
+        header_layout.addStretch(1)
         header_layout.addWidget(sep)
-        header_layout.addLayout(right_layout, 0)  # 右侧不拉伸，自然尺寸
+        header_layout.addLayout(right_layout, 0)
         return header_widget
+
     def create_dashboard_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
         # 搜索与筛选区
         filter_layout = QHBoxLayout()
-        self.search_edit = QLineEdit()
+        filter_layout.setSpacing(8)
+
+        self.search_edit = SearchLineEdit()
         self.search_edit.setPlaceholderText("搜索工单（任意字段）")
-        # 移除实时搜索，改为点击搜索按钮才执行
-        # self.search_edit.textChanged.connect(self.apply_filters)
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.searchSignal.connect(self.apply_filters)
+        self.search_edit.setMinimumWidth(220)
+        self.search_edit.setFixedHeight(32)
         filter_layout.addWidget(QLabel("搜索:"))
         filter_layout.addWidget(self.search_edit)
+
         # 添加搜索按钮
-        search_btn = QPushButton("搜索")
+        search_btn = PrimaryPushButton(FIF.SEARCH, "搜索")
+        search_btn.setFixedHeight(32)
         search_btn.clicked.connect(self.apply_filters)
         filter_layout.addWidget(search_btn)
+
         # 产线筛选 - 只显示用户所属部门
-        self.dept_filter = QComboBox()
+        self.dept_filter = FluentComboBox()
+        self.dept_filter.setFixedHeight(32)
         self.dept_filter.addItem("全部产线")
         self.dept_filter.addItems(self.departments)  # 使用用户所属部门列表
         self.dept_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("产线:"))
         filter_layout.addWidget(self.dept_filter)
+
         # 状态筛选
-        self.status_filter = QComboBox()
+        self.status_filter = FluentComboBox()
+        self.status_filter.setFixedHeight(32)
         self.status_filter.addItem("全部状态")
-        # 选项来自单一常量 STATUS_FILTER_OPTIONS（全局状态 + 美工链 art_status 原始值；
-        # 筛选时同时匹配 status 与 art_status 列）
         self.status_filter.addItems(STATUS_FILTER_OPTIONS)
         self.status_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("状态:"))
         filter_layout.addWidget(self.status_filter)
         
         # 发起人筛选
-        self.creator_filter = QComboBox()
+        self.creator_filter = FluentComboBox()
+        self.creator_filter.setFixedHeight(32)
         self.creator_filter.addItem("全部发起人")
-        # 后续在初始化时或数据加载后会填充发起人列表
         self.creator_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(QLabel("发起人:"))
         filter_layout.addWidget(self.creator_filter)
@@ -890,10 +862,10 @@ class MainWindow(QMainWindow):
         self.date_end = QDateEdit()
         self.date_start.setCalendarPopup(True)
         self.date_end.setCalendarPopup(True)
-        # 设置日期显示格式为 yyyy-MM-dd
+        self.date_start.setFixedHeight(32)
+        self.date_end.setFixedHeight(32)
         self.date_start.setDisplayFormat("yyyy-MM-dd")
         self.date_end.setDisplayFormat("yyyy-MM-dd")
-        # 设置日历部件的最小尺寸
         self.date_start.calendarWidget().setMinimumSize(300, 250)
         self.date_end.calendarWidget().setMinimumSize(300, 250)
         today = QDate.currentDate()
@@ -906,11 +878,12 @@ class MainWindow(QMainWindow):
         filter_layout.addWidget(self.date_start)
         filter_layout.addWidget(QLabel("结束日期:"))
         filter_layout.addWidget(self.date_end)
+
         # 快捷日期按钮
-        btn_this_month = QPushButton("本月")
-        btn_31 = QPushButton("近31天")
-        btn_year = QPushButton("本年")
-        btn_week = QPushButton("本周")
+        btn_this_month = PushButton("本月")
+        btn_31 = PushButton("近31天")
+        btn_year = PushButton("本年")
+        btn_week = PushButton("本周")
         def set_this_month():
             today = QDate.currentDate()
             first = QDate(today.year(), today.month(), 1)
@@ -939,6 +912,7 @@ class MainWindow(QMainWindow):
             btn.setFixedHeight(32)
             btn.clicked.connect(self.apply_filters)
             filter_layout.addWidget(btn)
+
         layout.addLayout(filter_layout)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         layout.addWidget(splitter)
@@ -947,45 +921,66 @@ class MainWindow(QMainWindow):
         self.history_list = QListWidget()
         history_layout.addWidget(self.history_list)
         splitter.addWidget(history_group)
+
         center_widget = QWidget()
         center_layout = QVBoxLayout(center_widget)
-        self.table_view = QTableView()
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        self.table_view = FluentTableView()
+        self.table_view.setBorderVisible(True)
+        self.table_view.setBorderRadius(8)
         self.model = QStandardItemModel()
         controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(6)
+
         # 操作按钮逻辑修正
         # 创建新工单按钮
         if self.role in ["采购", "运营", "销售"]:
-            create_button = QPushButton("创建新工单")
+            create_button = PrimaryPushButton(FIF.ADD, "创建新工单")
+            create_button.setFixedHeight(32)
             create_button.clicked.connect(self.open_create_work_order_dialog)
             controls_layout.addWidget(create_button)
 
         # 办理按钮
         if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批", "后期审批"]:
-            op_button = QPushButton("办理")
+            op_button = PrimaryPushButton(FIF.EDIT, "办理")
+            op_button.setFixedHeight(32)
             op_button.clicked.connect(self.handle_process_selected_order)
             controls_layout.addWidget(op_button)
 
         # 管理员编辑/删除按钮
         if self.is_admin:
-            edit_button = QPushButton("编辑")
+            edit_button = PushButton(FIF.EDIT, "编辑")
+            edit_button.setFixedHeight(32)
             edit_button.clicked.connect(self.handle_edit_selected_order)
             controls_layout.addWidget(edit_button)
 
             # 管理员：路径文件检查按钮
-            check_path_button = QPushButton("检查路径")
+            check_path_button = PushButton(FIF.FOLDER, "检查路径")
+            check_path_button.setFixedHeight(32)
             check_path_button.clicked.connect(self.handle_path_check_selected_order)
             controls_layout.addWidget(check_path_button)
             
             # 红色区域显示按钮
-            red_area_button = QPushButton("创建工单反馈")
-            # 设置红色样式
-            red_area_button.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold;")
+            red_area_button = PushButton(FIF.FEEDBACK, "创建工单反馈")
+            red_area_button.setFixedHeight(32)
+            red_area_button.setStyleSheet("""
+                PushButton {
+                    background-color: #d32f2f;
+                    color: white;
+                    border: 1px solid #b71c1c;
+                    font-weight: bold;
+                    padding: 5px 12px 6px 32px;
+                }
+                PushButton:hover {
+                    background-color: #e53935;
+                }
+            """)
             
             def on_red_area_display():
                 # 获取选中的工单
                 selected = self.table_view.selectionModel().selectedRows()
                 if not selected:
-                    QMessageBox.warning(self, "提示", "请先选中要操作的工单")
+                    self.show_warning_tip("提示", "请先选中要操作的工单")
                     return
                 
                 row = selected[0].row()
@@ -997,14 +992,13 @@ class MainWindow(QMainWindow):
                 # 调用API创建工单反馈
                 import os
                 import sys
-                # 添加根目录到Python路径
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                 from src.core.api_manager import api_manager
                 response = api_manager.create_work_order(order_data)
                 
                 # 显示操作结果
                 if response['success']:
-                    QMessageBox.information(self, "成功", str(response.get('message', '')))
+                    self.show_success_tip("成功", str(response.get('message', '工单反馈创建成功')))
                 else:
                     self.show_error_dialog(f"失败: {response.get('error', '未知错误')}")
             
@@ -1012,15 +1006,17 @@ class MainWindow(QMainWindow):
             controls_layout.addWidget(red_area_button)
             
             # 新增工单按钮（放在编辑按钮旁边）
-            add_order_button = QPushButton("新增工单")
+            add_order_button = PrimaryPushButton(FIF.ADD, "新增工单")
+            add_order_button.setFixedHeight(32)
             add_order_button.clicked.connect(self.open_create_work_order_dialog)
             controls_layout.addWidget(add_order_button)
             
-            delete_button = QPushButton("删除工单")
+            delete_button = PushButton(FIF.DELETE, "删除工单")
+            delete_button.setFixedHeight(32)
             def on_delete_order():
                 selected = self.table_view.selectionModel().selectedRows()
                 if not selected:
-                    QMessageBox.warning(self, "提示", "请先选中要删除的工单")
+                    self.show_warning_tip("提示", "请先选中要删除的工单")
                     return
                 row = selected[0].row()
                 order_item = self.model.item(row, 0)
@@ -1117,22 +1113,28 @@ class MainWindow(QMainWindow):
                 res_dialog.exec()
                 
                 self.log_action("删除工单", f"ID={order_id}")
+                self.show_success_tip("删除成功", f"工单 {order_id} 及其关联文件已清除")
                 self.refresh_work_orders()
+
             delete_button.clicked.connect(on_delete_order)
             controls_layout.addWidget(delete_button)
 
             # 管理员：扫描清理 02视频部 源文件（跳过不删除.drp工程）
-            clean_video_src_btn = QPushButton("清理视频源")
+            clean_video_src_btn = PushButton(FIF.BROOM, "清理视频源")
+            clean_video_src_btn.setFixedHeight(32)
             clean_video_src_btn.setToolTip("扫描并一键清理 02视频部 各工单源文件（跳过不删除.drp工程文件）")
             clean_video_src_btn.clicked.connect(self.handle_clean_video_source)
             controls_layout.addWidget(clean_video_src_btn)
+
         controls_layout.addStretch()
-        refresh_button = QPushButton("刷新工单")
+        refresh_button = PushButton(FIF.SYNC, "刷新工单")
+        refresh_button.setFixedHeight(32)
         refresh_button.clicked.connect(self.refresh_work_orders)
         controls_layout.addWidget(refresh_button)
         center_layout.addLayout(controls_layout)
         center_layout.addWidget(self.table_view)
         splitter.addWidget(center_widget)
+
         # 右侧分栏容器：工单统计 (上) + 任务进度 (下)
         right_panel = QWidget()
         right_panel_layout = QVBoxLayout(right_panel)
@@ -1183,44 +1185,69 @@ class MainWindow(QMainWindow):
     def create_reports_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(40, 40, 40, 40)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label = QLabel("报表中心正在紧锣密鼓开发中...")
-        label.setFont(QFont("Arial", 24))
-        layout.addWidget(label)
+        
+        card = CardWidget()
+        card.setFixedSize(520, 240)
+        card_layout = QVBoxLayout(card)
+        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.setSpacing(14)
+        
+        icon = IconWidget(FIF.PIE_SINGLE)
+        icon.setFixedSize(48, 48)
+        
+        title = QLabel("报表与效能分析中心")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #e8eaed;")
+        
+        desc = QLabel("工单效能分析、部门产出统计与工时报表模块正在集成中...\n敬请期待！")
+        desc.setStyleSheet("font-size: 13px; color: #9ba3b0; line-height: 1.6;")
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        card_layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(title, 0, Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(desc, 0, Qt.AlignmentFlag.AlignCenter)
+        
+        layout.addWidget(card)
         return page
+
     def create_logs_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        # 筛选栏
-        filter_group = QGroupBox("日志筛选")
-        filter_layout = QGridLayout()
-        filter_layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+        
+        # 筛选卡片
+        filter_card = CardWidget()
+        filter_layout = QGridLayout(filter_card)
+        filter_layout.setContentsMargins(18, 16, 18, 16)
+        filter_layout.setHorizontalSpacing(14)
+        filter_layout.setVerticalSpacing(12)
 
         # 角色
-        self.role_filter = QComboBox()
+        self.role_filter = FluentComboBox()
         self.role_filter.addItem("全部角色")
         self.role_filter.addItems(db_manager.get_roles())
         filter_layout.addWidget(QLabel("角色:"), 0, 0)
         filter_layout.addWidget(self.role_filter, 0, 1)
 
         # 姓名
-        self.name_filter = QComboBox()
-        self.name_filter.setEditable(True)
+        self.name_filter = EditableComboBox()
         self.name_filter.addItem("全部姓名")
         self.name_filter.addItems(db_manager.get_user_names())
         filter_layout.addWidget(QLabel("姓名:"), 0, 2)
         filter_layout.addWidget(self.name_filter, 0, 3)
 
         # 操作类型
-        self.action_type_filter = QComboBox()
+        self.action_type_filter = FluentComboBox()
         self.action_type_filter.addItem("全部类型")
         self.action_type_filter.addItems(db_manager.get_action_types())
         filter_layout.addWidget(QLabel("操作类型:"), 0, 4)
         filter_layout.addWidget(self.action_type_filter, 0, 5)
 
         # IP
-        self.ip_filter = QLineEdit()
-        self.ip_filter.setPlaceholderText("全部IP")
+        self.ip_filter = SearchLineEdit()
+        self.ip_filter.setPlaceholderText("输入IP筛选...")
         filter_layout.addWidget(QLabel("IP地址:"), 0, 6)
         filter_layout.addWidget(self.ip_filter, 0, 7)
 
@@ -1232,10 +1259,6 @@ class MainWindow(QMainWindow):
         self.end_date_filter.setCalendarPopup(True)
         self.end_date_filter.setDisplayFormat("yyyy-MM-dd")
         
-        # 设置日历部件的最小尺寸
-        self.start_date_filter.calendarWidget().setMinimumSize(300, 250)
-        self.end_date_filter.calendarWidget().setMinimumSize(300, 250)
-        
         today = QDate.currentDate()
         self.start_date_filter.setDate(today.addMonths(-1))
         self.end_date_filter.setDate(today)
@@ -1246,9 +1269,13 @@ class MainWindow(QMainWindow):
         filter_layout.addWidget(self.end_date_filter, 1, 3)
 
         # 筛选按钮
-        filter_btn = QPushButton("筛选")
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(8)
+        filter_btn = PrimaryPushButton(FIF.SEARCH, "筛选")
+        filter_btn.setFixedHeight(32)
         filter_btn.clicked.connect(self.setup_logs_table)
-        reset_btn = QPushButton("重置")
+        reset_btn = PushButton(FIF.SYNC, "重置")
+        reset_btn.setFixedHeight(32)
         
         def reset_filters():
             self.role_filter.setCurrentIndex(0)
@@ -1260,27 +1287,36 @@ class MainWindow(QMainWindow):
             self.setup_logs_table()
             
         reset_btn.clicked.connect(reset_filters)
+        btn_box.addWidget(filter_btn)
+        btn_box.addWidget(reset_btn)
+        filter_layout.addLayout(btn_box, 1, 6, 1, 2)
         
-        filter_layout.addWidget(filter_btn, 1, 6)
-        filter_layout.addWidget(reset_btn, 1, 7)
-        
-        filter_group.setLayout(filter_layout)
-        layout.addWidget(filter_group)
+        layout.addWidget(filter_card)
+
         # 分页控制
         self.logs_page_size = 300
         self.logs_page_index = 0
         page_nav_layout = QHBoxLayout()
-        self.prev_page_btn = QPushButton("上一页")
-        self.next_page_btn = QPushButton("下一页")
+        page_nav_layout.setSpacing(10)
+        self.prev_page_btn = PushButton(FIF.LEFT_ARROW, "上一页")
+        self.prev_page_btn.setFixedHeight(30)
+        self.next_page_btn = PushButton(FIF.RIGHT_ARROW, "下一页")
+        self.next_page_btn.setFixedHeight(30)
         self.page_info_label = QLabel()
+        self.page_info_label.setStyleSheet("font-size: 13px; color: #9ba3b0; font-weight: bold;")
         self.prev_page_btn.clicked.connect(self.on_logs_prev_page)
         self.next_page_btn.clicked.connect(self.on_logs_next_page)
+        page_nav_layout.addStretch()
         page_nav_layout.addWidget(self.prev_page_btn)
         page_nav_layout.addWidget(self.page_info_label)
         page_nav_layout.addWidget(self.next_page_btn)
+        page_nav_layout.addStretch()
         layout.addLayout(page_nav_layout)
+
         # 日志表格
-        self.logs_table = QTableView()
+        self.logs_table = FluentTableView()
+        self.logs_table.setBorderVisible(True)
+        self.logs_table.setBorderRadius(8)
         self.logs_model = QStandardItemModel()
         layout.addWidget(self.logs_table)
         self.setup_logs_table()
@@ -1363,60 +1399,75 @@ class MainWindow(QMainWindow):
         # 用户管理Tab
         users_tab = QWidget()
         users_layout = QVBoxLayout(users_tab)
+        users_layout.setContentsMargins(16, 16, 16, 16)
+        users_layout.setSpacing(12)
         
-        # 添加筛选区域
-        filter_group = QGroupBox("用户筛选")
-        filter_layout = QGridLayout()
+        # 添加筛选卡片
+        filter_card = CardWidget()
+        filter_layout = QGridLayout(filter_card)
+        filter_layout.setContentsMargins(16, 14, 16, 14)
+        filter_layout.setHorizontalSpacing(12)
+        filter_layout.setVerticalSpacing(10)
         
         # 筛选输入框
-        name_filter = QLineEdit()
-        name_filter.setPlaceholderText("输入姓名筛选...")
-        ip_filter = QLineEdit()
-        ip_filter.setPlaceholderText("输入IP筛选...")
-        role_filter = QLineEdit()
-        role_filter.setPlaceholderText("输入角色筛选...")
-        dept_filter = QLineEdit()
-        dept_filter.setPlaceholderText("输入部门筛选...")
+        self.settings_name_filter = SearchLineEdit()
+        self.settings_name_filter.setPlaceholderText("输入姓名筛选...")
+        self.settings_ip_filter = SearchLineEdit()
+        self.settings_ip_filter.setPlaceholderText("输入IP筛选...")
+        self.settings_role_filter = SearchLineEdit()
+        self.settings_role_filter.setPlaceholderText("输入角色筛选...")
+        self.settings_dept_filter = SearchLineEdit()
+        self.settings_dept_filter.setPlaceholderText("输入部门筛选...")
         
         # 筛选和重置按钮
-        filter_btn = QPushButton("筛选")
-        reset_btn = QPushButton("重置")
+        filter_btn = PrimaryPushButton(FIF.SEARCH, "筛选")
+        filter_btn.setFixedHeight(30)
+        reset_btn = PushButton(FIF.SYNC, "重置")
+        reset_btn.setFixedHeight(30)
         
         # 添加到布局
         filter_layout.addWidget(QLabel("姓名:"), 0, 0)
-        filter_layout.addWidget(name_filter, 0, 1)
+        filter_layout.addWidget(self.settings_name_filter, 0, 1)
         filter_layout.addWidget(QLabel("IP:"), 0, 2)
-        filter_layout.addWidget(ip_filter, 0, 3)
+        filter_layout.addWidget(self.settings_ip_filter, 0, 3)
         filter_layout.addWidget(QLabel("角色:"), 1, 0)
-        filter_layout.addWidget(role_filter, 1, 1)
+        filter_layout.addWidget(self.settings_role_filter, 1, 1)
         filter_layout.addWidget(QLabel("部门:"), 1, 2)
-        filter_layout.addWidget(dept_filter, 1, 3)
-        filter_layout.addWidget(filter_btn, 2, 0)
-        filter_layout.addWidget(reset_btn, 2, 1)
+        filter_layout.addWidget(self.settings_dept_filter, 1, 3)
         
-        filter_group.setLayout(filter_layout)
-        users_layout.addWidget(filter_group)
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(8)
+        btn_box.addWidget(filter_btn)
+        btn_box.addWidget(reset_btn)
+        filter_layout.addLayout(btn_box, 1, 4, 1, 1)
+        filter_btn.clicked.connect(self.filter_users)
+        reset_btn.clicked.connect(self.reset_user_filters)
+        
+        users_layout.addWidget(filter_card)
         
         self.users_table = QTableWidget()
         self.users_table.setColumnCount(5)
         self.users_table.setHorizontalHeaderLabels(["ID", "内网IP", "姓名", "角色", "部门"])
-        # self.users_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # 注释掉全局拉伸
         self.users_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.users_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.users_table.setColumnWidth(0, 60)  # ID列窄
-        self.users_table.setColumnWidth(1, 180) # IP列宽
+        self.users_table.setColumnWidth(0, 60)
+        self.users_table.setColumnWidth(1, 180)
         header = self.users_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         for col in range(2, 5):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Stretch)
-        # 添加双击事件处理
         self.users_table.cellDoubleClicked.connect(self.on_user_double_clicked)
         users_layout.addWidget(self.users_table)
+        
         btn_layout = QHBoxLayout()
-        add_btn = QPushButton("新增用户")
-        edit_btn = QPushButton("编辑用户")
-        del_btn = QPushButton("删除用户")
+        btn_layout.setSpacing(10)
+        add_btn = PrimaryPushButton(FIF.ADD, "新增用户")
+        add_btn.setFixedHeight(32)
+        edit_btn = PushButton(FIF.EDIT, "编辑用户")
+        edit_btn.setFixedHeight(32)
+        del_btn = PushButton(FIF.DELETE, "删除用户")
+        del_btn.setFixedHeight(32)
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(edit_btn)
         btn_layout.addWidget(del_btn)
@@ -1426,26 +1477,30 @@ class MainWindow(QMainWindow):
         # 通知配置Tab
         notification_tab = QWidget()
         notification_layout = QVBoxLayout(notification_tab)
-        notification_group = QGroupBox("通知接口配置")
-        notification_form = QFormLayout()
+        notification_layout.setContentsMargins(16, 16, 16, 16)
+        notification_card = CardWidget()
+        notification_form = QFormLayout(notification_card)
+        notification_form.setContentsMargins(18, 18, 18, 18)
+        notification_form.setSpacing(14)
+        notification_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
         # 产线选择器（产线来源于部门表）
-        self.notify_line_combo = QComboBox()
+        self.notify_line_combo = FluentComboBox()
 
         # 通知类型选择器
-        self.notify_type_combo = QComboBox()
-        self.notify_type_combo.addItem("仅钉钉通知", "dingtalk")
-        self.notify_type_combo.addItem("仅企业微信通知", "wechat_work")
-        self.notify_type_combo.addItem("钉钉 + 企业微信", "both")
+        self.notify_type_combo = FluentComboBox()
+        self.notify_type_combo.addItem("仅钉钉通知", userData="dingtalk")
+        self.notify_type_combo.addItem("仅企业微信通知", userData="wechat_work")
+        self.notify_type_combo.addItem("钉钉 + 企业微信", userData="both")
 
         # 钉钉接口输入框（Webhook + Secret）
-        self.dingtalk_webhook_input = QLineEdit()
+        self.dingtalk_webhook_input = LineEdit()
         self.dingtalk_webhook_input.setPlaceholderText("请输入钉钉机器人 Webhook 地址")
-        self.dingtalk_secret_input = QLineEdit()
+        self.dingtalk_secret_input = LineEdit()
         self.dingtalk_secret_input.setPlaceholderText("请输入钉钉机器人加签 Secret（可选）")
 
         # 企业微信接口输入框（Webhook）
-        self.wechat_webhook_input = QLineEdit()
+        self.wechat_webhook_input = LineEdit()
         self.wechat_webhook_input.setPlaceholderText("请输入企业微信机器人 Webhook 地址")
 
         # 将控件放入表单布局，保持设置页排版统一
@@ -1454,12 +1509,12 @@ class MainWindow(QMainWindow):
         notification_form.addRow("钉钉 Webhook：", self.dingtalk_webhook_input)
         notification_form.addRow("钉钉 Secret：", self.dingtalk_secret_input)
         notification_form.addRow("企业微信 Webhook：", self.wechat_webhook_input)
-        notification_group.setLayout(notification_form)
-        notification_layout.addWidget(notification_group)
+        notification_layout.addWidget(notification_card)
 
         # 保存按钮区域
         notification_btn_layout = QHBoxLayout()
-        save_notification_btn = QPushButton("保存通知配置")
+        save_notification_btn = PrimaryPushButton(FIF.SAVE, "保存通知配置")
+        save_notification_btn.setFixedHeight(32)
         notification_btn_layout.addWidget(save_notification_btn)
         notification_btn_layout.addStretch()
         notification_layout.addLayout(notification_btn_layout)
@@ -1544,7 +1599,7 @@ class MainWindow(QMainWindow):
         pd_row = QHBoxLayout()
         pd_label = QLabel("禁止目录关键字:")
         pd_label.setStyleSheet("font-size: 13px; color: #e8eaed;")
-        self.blocked_keywords_edit = QLineEdit()
+        self.blocked_keywords_edit = LineEdit()
         self.blocked_keywords_edit.setPlaceholderText("如：01原始素材,源文件（留空表示不限制）")
         self.blocked_keywords_edit.setText(db_manager.get_system_setting('product_dir_blocked_keywords', default=''))
         self.blocked_keywords_edit.setMinimumWidth(360)
@@ -1567,35 +1622,31 @@ class MainWindow(QMainWindow):
         api_group_layout.addWidget(api_tip)
 
         token_row = QHBoxLayout()
+        token_row.setSpacing(8)
         token_label = QLabel("API Token:")
         token_label.setStyleSheet("font-size: 13px; color: #e8eaed;")
-        self.api_token_edit = QLineEdit()
+        self.api_token_edit = LineEdit()
         self.api_token_edit.setPlaceholderText("粘贴新的 API Token")
-        self.api_token_edit.setEchoMode(QLineEdit.EchoMode.Password)  # 默认隐藏，避免泄露
+        self.api_token_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_token_edit.setMinimumWidth(420)
-        # 显示当前已配置的 token（脱敏）
         _cur_token = db_manager.get_system_setting('api_token', default='')
         if _cur_token:
             self.api_token_edit.setPlaceholderText(f"已配置（{_cur_token[:12]}…），输入新值覆盖")
         token_row.addWidget(token_label)
         token_row.addWidget(self.api_token_edit, 1)
 
-        # 显示/隐藏切换
         self.api_token_visible = False
         def toggle_token_visible():
             self.api_token_visible = not self.api_token_visible
             self.api_token_edit.setEchoMode(QLineEdit.EchoMode.Normal if self.api_token_visible else QLineEdit.EchoMode.Password)
-        toggle_btn = QPushButton("显示")
-        toggle_btn.setStyleSheet(
-            "background-color: #3a3f4b; color: #e8eaed; border: none; border-radius: 6px; padding: 6px 14px;"
-        )
+            toggle_btn.setText("隐藏" if self.api_token_visible else "显示")
+        toggle_btn = PushButton(FIF.VIEW, "显示")
+        toggle_btn.setFixedHeight(32)
         toggle_btn.clicked.connect(toggle_token_visible)
         token_row.addWidget(toggle_btn)
 
-        save_token_btn = QPushButton("保存 Token")
-        save_token_btn.setStyleSheet(
-            "background-color: #4f8ef7; color: white; border: none; border-radius: 6px; padding: 6px 18px; font-weight: bold;"
-        )
+        save_token_btn = PrimaryPushButton(FIF.SAVE, "保存 Token")
+        save_token_btn.setFixedHeight(32)
         def on_save_token():
             token = self.api_token_edit.text().strip()
             if not token:
@@ -1615,7 +1666,8 @@ class MainWindow(QMainWindow):
         features_layout.addWidget(api_group)
 
         # 保存按钮
-        save_features_btn = QPushButton("保存功能设置")
+        save_features_btn = PrimaryPushButton(FIF.SAVE, "保存功能设置")
+        save_features_btn.setFixedHeight(36)
         save_features_btn.setFixedWidth(160)
         features_layout.addWidget(save_features_btn)
         features_layout.addStretch()
@@ -1640,18 +1692,6 @@ class MainWindow(QMainWindow):
         save_features_btn.clicked.connect(on_save_features)
         tab_widget.addTab(features_tab, "功能设置")
 
-        # 保存筛选控件的引用
-        self.settings_name_filter = name_filter
-        self.settings_ip_filter = ip_filter
-        self.settings_role_filter = role_filter
-        self.settings_dept_filter = dept_filter
-        self.settings_filter_btn = filter_btn
-        self.settings_reset_btn = reset_btn
-        
-        # 连接筛选和重置按钮的信号
-        filter_btn.clicked.connect(self.filter_users)
-        reset_btn.clicked.connect(self.reset_user_filters)
-        
         self.refresh_users_table()
         add_btn.clicked.connect(self.show_add_user_dialog)
         edit_btn.clicked.connect(self.show_edit_user_dialog)
@@ -1712,7 +1752,7 @@ class MainWindow(QMainWindow):
         self.notify_line_combo.blockSignals(True)
         self.notify_line_combo.clear()
         for line_name in line_names:
-            self.notify_line_combo.addItem(line_name, line_name)
+            self.notify_line_combo.addItem(line_name, userData=line_name)
         self.notify_line_combo.blockSignals(False)
 
         # 存在部门时默认选中第一条并回填，不存在时提示
@@ -2596,11 +2636,21 @@ class MainWindow(QMainWindow):
             self.refresh_users_table()
     def create_management_layout(self, title, get_func, add_func, remove_func):
         layout = QHBoxLayout()
+        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
+        
         list_widget = QListWidget()
         list_widget.addItems(get_func())
-        controls_layout = QVBoxLayout()
-        input_field = QLineEdit()
+        
+        controls_card = CardWidget()
+        controls_layout = QVBoxLayout(controls_card)
+        controls_layout.setContentsMargins(16, 16, 16, 16)
+        controls_layout.setSpacing(12)
+        
+        input_field = LineEdit()
         input_field.setPlaceholderText(f"输入新的{title}...")
+        input_field.setFixedHeight(32)
+        
         def add_item():
             new_item = input_field.text().strip()
             if new_item and add_func(new_item):
@@ -2608,23 +2658,30 @@ class MainWindow(QMainWindow):
                 input_field.clear()
             else:
                 QMessageBox.warning(self, "错误", f"添加{title}失败。可能是重复或无效输入。")
+                
         def remove_item():
             selected = list_widget.currentItem()
             if selected and remove_func(selected.text()):
                 list_widget.takeItem(list_widget.row(selected))
             else:
                 QMessageBox.warning(self, "错误", f"删除{title}失败。")
-        add_button = QPushButton(f"添加{title}")
+                
+        add_button = PrimaryPushButton(FIF.ADD, f"添加{title}")
+        add_button.setFixedHeight(32)
         add_button.clicked.connect(add_item)
-        remove_button = QPushButton(f"删除选中{title}")
+        
+        remove_button = PushButton(FIF.DELETE, f"删除选中{title}")
+        remove_button.setFixedHeight(32)
         remove_button.clicked.connect(remove_item)
+        
         controls_layout.addWidget(QLabel(f"管理{title}列表:"))
         controls_layout.addWidget(input_field)
         controls_layout.addWidget(add_button)
         controls_layout.addWidget(remove_button)
         controls_layout.addStretch()
-        layout.addWidget(list_widget)
-        layout.addLayout(controls_layout)
+        
+        layout.addWidget(list_widget, 1)
+        layout.addWidget(controls_card, 0)
         return layout
     def update_statistics(self):
         while self.stats_layout.count():
@@ -2656,166 +2713,88 @@ class MainWindow(QMainWindow):
         dialog.setWindowTitle(f"编辑工单 - {order_data['id']}")
         dialog.setMinimumWidth(650)
         dialog.setMinimumHeight(550)
-        # 设置弹窗样式，与主系统保持一致
         dialog.setStyleSheet("""
             QDialog {
-                background-color: #2E2E2E;
-                color: #FFFFFF;
-            }
-            QGroupBox {
-                border: 1px solid #555555;
-                border-radius: 5px;
-                margin-top: 1ex;
-                font-size: 14px;
-                font-weight: bold;
-                color: #FFFFFF;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 10px;
-                color: #FFFFFF;
-            }
-            QLineEdit, QComboBox, QLabel {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                padding: 8px 12px;
-                color: #FFFFFF;
-                font-size: 14px;
-                min-height: 20px;
-            }
-            QLineEdit:focus, QComboBox:focus {
-                border-color: #0078d4;
-                background-color: #4c4c4c;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #FFFFFF;
-                margin-right: 5px;
-            }
-            QComboBox QAbstractItemView {
-                background-color: #3c3c3c;
-                border: 1px solid #555555;
-                color: #FFFFFF;
-                selection-background-color: #0078d4;
+                background-color: #1e222a;
+                color: #e8eaed;
             }
             QLabel {
-                color: #FFFFFF;
-                font-size: 14px;
-            }
-            QPushButton {
-                background-color: #0078d4;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 24px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #106ebe;
-            }
-            QPushButton:pressed {
-                background-color: #005a9e;
-            }
-            QPushButton[type="cancel"] {
-                background-color: #555555;
-            }
-            QPushButton[type="cancel"]:hover {
-                background-color: #666666;
-            }
-            QPushButton[type="cancel"]:pressed {
-                background-color: #444444;
+                color: #e8eaed;
+                font-size: 13px;
             }
         """)
         # 主布局
         main_layout = QVBoxLayout(dialog)
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        
         # 标题
         title_label = QLabel(f"编辑工单 - {order_data['id']}")
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #FFFFFF;
-                padding: 10px 0;
-            }
-        """)
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #e8eaed; padding-bottom: 2px;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
-        # 表单区域
-        form_widget = QWidget()
-        form_layout = QVBoxLayout(form_widget)
-        form_layout.setSpacing(15)
-        # 工单基本信息分组
-        basic_group = QGroupBox("工单基本信息")
-        basic_layout = QFormLayout(basic_group)
+        
+        # 表单卡片
+        form_card = CardWidget()
+        form_layout = QVBoxLayout(form_card)
+        form_layout.setContentsMargins(18, 18, 18, 18)
+        form_layout.setSpacing(14)
+        
+        basic_layout = QFormLayout()
         basic_layout.setSpacing(12)
         basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        
         # 创建字段
         id_label = QLabel(str(order_data['id']))
-        dept_combo = QComboBox()
+        id_label.setStyleSheet("font-weight: bold; color: #4f8ef7; font-size: 14px;")
+        
+        dept_combo = FluentComboBox()
         dept_combo.addItems(self.departments)
         dept_combo.setCurrentText(order_data['department'])
-        model_edit = QLineEdit(order_data['model'])
-        model_edit.setPlaceholderText("请输入产品型号")
-        name_edit = QLineEdit(order_data['name'])
-        name_edit.setPlaceholderText("请输入产品名称")
-        creator_edit = QLineEdit(order_data['creator'])
-        creator_edit.setPlaceholderText("请输入发起人")
-        # 添加选择发起人的按钮
-        select_creator_btn = QPushButton("选择")
-        select_creator_btn.setMaximumWidth(60)
         
-        # 创建发起人布局，包含输入框和按钮
+        model_edit = LineEdit(order_data['model'])
+        model_edit.setPlaceholderText("请输入产品型号")
+        
+        name_edit = LineEdit(order_data['name'])
+        name_edit.setPlaceholderText("请输入产品名称")
+        
+        creator_edit = LineEdit(order_data['creator'])
+        creator_edit.setPlaceholderText("请输入发起人")
+        
+        select_creator_btn = PushButton(FIF.PEOPLE, "选择")
+        select_creator_btn.setFixedHeight(32)
+        
         creator_layout = QHBoxLayout()
+        creator_layout.setSpacing(6)
         creator_layout.addWidget(creator_edit)
         creator_layout.addWidget(select_creator_btn)
         
-        # 定义选择发起人函数
         def select_creator():
-            """打开用户选择对话框，让用户选择发起人"""
-            # 获取所有用户列表
             users = db_manager.get_users()
             if not users:
                 QMessageBox.warning(dialog, "提示", "没有找到可用的用户")
                 return
             
-            # 创建用户选择对话框
             user_dialog = QDialog(dialog)
             user_dialog.setWindowTitle("选择发起人")
-            user_dialog.resize(300, 400)
+            user_dialog.resize(340, 440)
+            user_dialog.setStyleSheet("QDialog { background-color: #1e222a; color: #e8eaed; }")
             layout = QVBoxLayout(user_dialog)
+            layout.setContentsMargins(16, 16, 16, 16)
+            layout.setSpacing(12)
             
-            # 添加搜索框
-            search_layout = QHBoxLayout()
-            search_layout.addWidget(QLabel("搜索:"))
-            search_edit = QLineEdit()
+            search_edit = SearchLineEdit()
             search_edit.setPlaceholderText("输入用户名或IP搜索")
-            search_layout.addWidget(search_edit)
-            layout.addLayout(search_layout)
+            search_edit.setClearButtonEnabled(True)
+            layout.addWidget(search_edit)
             
-            # 创建用户列表
             user_list = QListWidget()
-            
-            # 存储原始用户列表用于搜索过滤
             all_users = users.copy()
             
-            # 初始化用户列表
             def populate_user_list(filter_text=""):
                 user_list.clear()
                 for user in all_users:
                     user_text = f"{user['name']} ({user['ip']})"
-                    # 搜索过滤逻辑，不区分大小写
                     if not filter_text or \
                        filter_text.lower() in user['name'].lower() or \
                        filter_text.lower() in user['ip'].lower():
@@ -2823,89 +2802,72 @@ class MainWindow(QMainWindow):
                         user_item.setData(Qt.ItemDataRole.UserRole, user['name'])
                         user_list.addItem(user_item)
             
-            # 初始填充用户列表
             populate_user_list()
-            
-            # 连接搜索信号
             search_edit.textChanged.connect(populate_user_list)
-            
             layout.addWidget(user_list)
             
-            # 创建按钮
-            button_layout = QHBoxLayout()
-            cancel_btn = QPushButton("取消")
-            cancel_btn.clicked.connect(user_dialog.reject)
-            select_btn = QPushButton("确定")
-            select_btn.clicked.connect(user_dialog.accept)
+            btn_box = QHBoxLayout()
+            c_btn = PushButton("取消")
+            c_btn.setFixedHeight(32)
+            c_btn.clicked.connect(user_dialog.reject)
+            s_btn = PrimaryPushButton(FIF.ACCEPT, "确定选择")
+            s_btn.setFixedHeight(32)
+            s_btn.clicked.connect(user_dialog.accept)
+            btn_box.addWidget(c_btn)
+            btn_box.addWidget(s_btn)
+            layout.addLayout(btn_box)
             
-            button_layout.addWidget(cancel_btn)
-            button_layout.addWidget(select_btn)
-            layout.addLayout(button_layout)
-            
-            # 处理选择结果
             if user_dialog.exec() == QDialog.DialogCode.Accepted:
                 selected_items = user_list.selectedItems()
                 if selected_items:
                     creator_edit.setText(selected_items[0].data(Qt.ItemDataRole.UserRole))
         
-        # 连接选择按钮信号
         select_creator_btn.clicked.connect(select_creator)
-        # 添加字段到布局
+        
         basic_layout.addRow("工单ID:", id_label)
         basic_layout.addRow("产线/部门:", dept_combo)
         basic_layout.addRow("型号:", model_edit)
         basic_layout.addRow("名称:", name_edit)
         basic_layout.addRow("发起人:", creator_layout)
         
-        # 添加更多可编辑字段
         # 需求人字段
-        requester_edit = QLineEdit(order_data.get('requester', ''))
+        requester_edit = LineEdit(order_data.get('requester', ''))
         requester_edit.setPlaceholderText("请输入需求人")
         
-        # 添加选择需求人的按钮
-        select_requester_btn = QPushButton("选择")
-        select_requester_btn.setMaximumWidth(60)
+        select_requester_btn = PushButton(FIF.PEOPLE, "选择")
+        select_requester_btn.setFixedHeight(32)
         
-        # 创建需求人布局，包含输入框和按钮
         requester_layout = QHBoxLayout()
+        requester_layout.setSpacing(6)
         requester_layout.addWidget(requester_edit)
         requester_layout.addWidget(select_requester_btn)
         
-        # 定义选择需求人函数
         def select_requester():
-            """打开用户选择对话框，让用户选择需求人"""
-            # 获取所有用户列表
             users = db_manager.get_users()
             if not users:
                 QMessageBox.warning(dialog, "提示", "没有找到可用的用户")
                 return
             
-            # 创建用户选择对话框
             user_dialog = QDialog(dialog)
             user_dialog.setWindowTitle("选择需求人")
-            user_dialog.resize(300, 400)
+            user_dialog.resize(340, 440)
+            user_dialog.setStyleSheet("QDialog { background-color: #1e222a; color: #e8eaed; }")
             layout = QVBoxLayout(user_dialog)
+            layout.setContentsMargins(16, 16, 16, 16)
+            layout.setSpacing(12)
             
-            # 添加搜索框
-            search_layout = QHBoxLayout()
-            search_layout.addWidget(QLabel("搜索:"))
-            search_edit = QLineEdit()
+            search_edit = SearchLineEdit()
             search_edit.setPlaceholderText("输入用户名或IP搜索")
-            search_layout.addWidget(search_edit)
-            layout.addLayout(search_layout)
+            search_edit.setClearButtonEnabled(True)
+            layout.addWidget(search_edit)
             
-            # 创建用户列表
             user_list = QListWidget()
-            
-            # 存储原始用户列表用于搜索过滤
             all_users = users.copy()
             
-            # 初始化用户列表
             def populate_user_list(filter_text=""):
                 user_list.clear()
                 for user in all_users:
                     user_text = f"{user['name']} ({user['ip']})"
-                    # 搜索过滤逻辑，不区分大小写
                     if not filter_text or \
                        filter_text.lower() in user['name'].lower() or \
                        filter_text.lower() in user['ip'].lower():
@@ -2913,98 +2875,97 @@ class MainWindow(QMainWindow):
                         user_item.setData(Qt.ItemDataRole.UserRole, user['name'])
                         user_list.addItem(user_item)
             
-            # 初始填充用户列表
             populate_user_list()
-            
-            # 连接搜索信号
             search_edit.textChanged.connect(populate_user_list)
-            
             layout.addWidget(user_list)
             
-            # 创建按钮
-            button_layout = QHBoxLayout()
-            cancel_btn = QPushButton("取消")
-            cancel_btn.clicked.connect(user_dialog.reject)
-            select_btn = QPushButton("确定")
-            select_btn.clicked.connect(user_dialog.accept)
+            btn_box = QHBoxLayout()
+            c_btn = PushButton("取消")
+            c_btn.setFixedHeight(32)
+            c_btn.clicked.connect(user_dialog.reject)
+            s_btn = PrimaryPushButton(FIF.ACCEPT, "确定选择")
+            s_btn.setFixedHeight(32)
+            s_btn.clicked.connect(user_dialog.accept)
+            btn_box.addWidget(c_btn)
+            btn_box.addWidget(s_btn)
+            layout.addLayout(btn_box)
             
-            button_layout.addWidget(cancel_btn)
-            button_layout.addWidget(select_btn)
-            layout.addLayout(button_layout)
-            
-            # 处理选择结果
             if user_dialog.exec() == QDialog.DialogCode.Accepted:
                 selected_items = user_list.selectedItems()
                 if selected_items:
                     requester_edit.setText(selected_items[0].data(Qt.ItemDataRole.UserRole))
         
-        # 连接选择按钮信号
         select_requester_btn.clicked.connect(select_requester)
         
         # 项目类型选择
-        project_type_combo = QComboBox()
+        project_type_combo = FluentComboBox()
         project_types = db_manager.get_project_types()
-        project_type_combo.addItem("请选择项目类型", None)
+        project_type_combo.addItem("请选择项目类型", userData=None)
         project_type_id = None
         for pt in project_types:
-            project_type_combo.addItem(pt['name'], pt['id'])
+            project_type_combo.addItem(pt['name'], userData=pt['id'])
             if 'project_type_id' in order_data and order_data['project_type_id'] == pt['id']:
                 project_type_combo.setCurrentIndex(project_type_combo.count() - 1)
                 project_type_id = pt['id']
         
         # 项目内容选择
-        project_content_combo = QComboBox()
-        project_content_combo.addItem("请选择项目内容", None)
+        project_content_combo = FluentComboBox()
+        project_content_combo.addItem("请选择项目内容", userData=None)
         if project_type_id:
             project_contents = db_manager.get_project_contents_by_type(project_type_id)
             for pc in project_contents:
-                project_content_combo.addItem(pc['name'], pc['id'])
+                project_content_combo.addItem(pc['name'], userData=pc['id'])
                 if 'project_content_id' in order_data and order_data['project_content_id'] == pc['id']:
                     project_content_combo.setCurrentIndex(project_content_combo.count() - 1)
         
-        # 项目类型变化时更新项目内容
         def on_project_type_changed():
             type_id = project_type_combo.currentData()
             project_content_combo.clear()
-            project_content_combo.addItem("请选择项目内容", None)
+            project_content_combo.addItem("请选择项目内容", userData=None)
             if type_id:
                 project_contents = db_manager.get_project_contents_by_type(type_id)
                 for pc in project_contents:
-                    project_content_combo.addItem(pc['name'], pc['id'])
+                    project_content_combo.addItem(pc['name'], userData=pc['id'])
         
         project_type_combo.currentIndexChanged.connect(on_project_type_changed)
         
         # 备注字段
-        remarks_edit = QLineEdit(order_data.get('remarks', ''))
-        remarks_edit.setPlaceholderText("请输入备注信息")
+        remarks_edit = LineEdit(order_data.get('remarks', ''))
+        remarks_edit.setPlaceholderText("请输入备注信息（选填）")
         
-        # 添加新增字段到布局
+        # 添加字段到布局
         basic_layout.addRow("需求人:", requester_layout)
         basic_layout.addRow("项目类型:", project_type_combo)
         basic_layout.addRow("项目内容:", project_content_combo)
         basic_layout.addRow("备注:", remarks_edit)
-        form_layout.addWidget(basic_group)
+        
+        form_layout.addLayout(basic_layout)
+        main_layout.addWidget(form_card)
+        
         # 提示信息
         info_label = QLabel("💡 提示：型号、名称、发起人为必填项，修改后点击确定保存更改")
         info_label.setStyleSheet("""
             QLabel {
-                font-size: 13px;
-                color: #cccccc;
-                background-color: #3c3c3c;
-                padding: 10px;
-                border-radius: 4px;
-                border-left: 4px solid #f39c12;
+                font-size: 12px;
+                color: #9ba3b0;
+                background-color: #16191f;
+                padding: 8px 12px;
+                border-radius: 6px;
+                border-left: 3px solid #f59e0b;
             }
         """)
-        form_layout.addWidget(info_label)
-        main_layout.addWidget(form_widget)
+        main_layout.addWidget(info_label)
+        
         # 按钮区域
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
         button_layout.addStretch()
-        cancel_btn = QPushButton("取消")
-        cancel_btn.setProperty("type", "cancel")
+        cancel_btn = PushButton("取消")
+        cancel_btn.setFixedHeight(32)
         cancel_btn.clicked.connect(dialog.reject)
-        ok_btn = QPushButton("确定")
+        
+        ok_btn = PrimaryPushButton(FIF.ACCEPT, "保存修改")
+        ok_btn.setFixedHeight(32)
         def on_ok():
             new_dept = dept_combo.currentText()
             new_model = model_edit.text().strip()
@@ -3239,11 +3200,15 @@ class MainWindow(QMainWindow):
         self.show_process_order_dialog(order_data)
     def apply_styles(self):
         self.setStyleSheet("""
-            QMainWindow, QWidget {
+            QMainWindow {
                 background-color: #1a1d23;
                 color: #e8eaed;
-                font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+                font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
                 font-size: 14px;
+            }
+            QWidget#Header {
+                background-color: #16191f;
+                border-bottom: 1px solid #282c35;
             }
             QGroupBox {
                 border: 1px solid #2e3340;
@@ -3251,70 +3216,14 @@ class MainWindow(QMainWindow):
                 margin-top: 14px;
                 font-size: 12px;
                 font-weight: bold;
-                color: #6b7280;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
+                color: #9ba3b0;
+                background-color: #1d2128;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 8px;
                 left: 12px;
-            }
-            QPushButton {
-                background-color: #4f8ef7;
-                color: #ffffff;
-                border: none;
-                padding: 8px 18px;
-                border-radius: 7px;
-                font-weight: bold;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #6ba3ff;
-            }
-            QPushButton:pressed {
-                background-color: #3a72d6;
-            }
-            QPushButton:disabled {
-                background-color: #2e3340;
-                color: #6b7280;
-            }
-            QTableView {
-                gridline-color: #252830;
-                border: none;
-                background-color: #1f232b;
-                selection-background-color: #1e3a5f;
-                selection-color: #ffffff;
-                font-size: 13px;
-                alternate-background-color: #22262f;
-            }
-            QTableView::item {
-                padding: 10px 8px;
-                border-bottom: 1px solid #252830;
-            }
-            QTableView::item:selected {
-                background-color: #1e3a5f;
-                color: #ffffff;
-            }
-            QTableView::item:hover {
-                background-color: #262b35;
-            }
-            QTableView::item:selected:hover {
-                background-color: #254d7a;
-            }
-            QHeaderView::section {
-                background-color: #252830;
-                color: #9ba3b0;
-                padding: 10px 8px;
-                border: none;
-                border-right: 1px solid #2e3340;
-                border-bottom: 1px solid #2e3340;
-                font-weight: bold;
-                font-size: 12px;
-            }
-            QHeaderView::section:last {
-                border-right: none;
             }
             QListWidget {
                 background-color: #1f232b;
