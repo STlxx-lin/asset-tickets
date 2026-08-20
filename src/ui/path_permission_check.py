@@ -274,30 +274,31 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
     dialog.resize(900, 540)
     dialog.setStyleSheet("""
         QDialog {
-            background-color: #23272e;
-            color: #ffffff;
-            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            background-color: #121418;
+            color: #e8eaed;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
             font-size: 13px;
         }
         QLabel {
             color: #e8eaed;
+            background: transparent;
         }
         QTableWidget {
-            background-color: #2a2e37;
-            border: 1px solid #3a3f4b;
-            border-radius: 6px;
+            background-color: #1a1d24;
+            border: 1px solid #282c37;
+            border-radius: 8px;
             color: #e8eaed;
-            gridline-color: #3a3f4b;
+            gridline-color: #282c37;
         }
         QTableWidget::item {
-            padding: 4px;
+            padding: 6px;
         }
         QHeaderView::section {
-            background-color: #323742;
+            background-color: #232732;
             color: #9ba3b0;
             border: none;
-            border-right: 1px solid #3a3f4b;
-            padding: 6px;
+            border-bottom: 1px solid #282c37;
+            padding: 8px;
             font-weight: bold;
         }
         QPushButton {
@@ -312,10 +313,12 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
             background-color: #6ba3ff;
         }
         QPushButton[type="cancel"] {
-            background-color: #3a3f4b;
+            background-color: #282c37;
+            color: #9ba3b0;
         }
         QPushButton[type="cancel"]:hover {
-            background-color: #4a5060;
+            background-color: #353b49;
+            color: #ffffff;
         }
     """)
 
@@ -388,7 +391,9 @@ def show_path_permission_dialog(parent, roles: list, departments: list):
         if status != "正常":
             bg = QColor(60, 30, 35) if status != "只读" else QColor(58, 46, 28)
             for col in range(6):
-                table.item(row, col).setBackground(bg)
+                cell = table.item(row, col)
+                if cell:
+                    cell.setBackground(bg)
         summary_label.setText(
             f"检查中… 正常 {counts['ok']} · 只读 {counts['warn']} · 不存在/不可访问 {counts['fail']}"
         )

@@ -431,70 +431,69 @@ class TaskManagerDialog(QDialog):
     def __init__(self, parent=None, auto_show=False):
         super().__init__(parent)
         self.setWindowTitle("任务列表")
-        self.resize(600, 400)
+        self.resize(620, 460)
         # 任务进度窗口置顶显示（文件移动进度需随时可见，不被主窗口/其他弹窗遮挡）
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-        self.main_layout = QVBoxLayout(self)
-        self.auto_show = auto_show  # 控制是否自动显示窗口
-        # 恢复主标题为"任务列表"
-        self.title_label = QLabel("任务列表")
-        self.title_label.setStyleSheet("""
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #121418;
+                color: #e8eaed;
+            }
             QLabel {
-                font-size: 18px;
-                font-weight: bold;
-                color: #FFFFFF;
-                padding: 10px;
-                background: #2E2E2E;
-                border-radius: 5px;
-                margin-bottom: 10px;
+                background: transparent;
+                color: #e8eaed;
             }
         """)
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.main_layout.addWidget(self.title_label)
-        self.list_widget = QListWidget()
-        self.list_widget.setSpacing(8)
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                font-size: 16px;
-                padding: 8px;
-                background: #2E2E2E;
-                border: 1px solid #555555;
-                border-radius: 5px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                margin: 3px;
-                background: #3c3c3c;
-                border-radius: 5px;
-            }
-        """)
-        self.main_layout.addWidget(self.list_widget)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(18, 18, 18, 18)
+        self.main_layout.setSpacing(12)
+        self.auto_show = auto_show
 
-        # 添加关闭按钮
+        # 头部概览卡片
+        header_card = CardWidget(self)
+        header_layout = QHBoxLayout(header_card)
+        header_layout.setContentsMargins(16, 12, 16, 12)
+        
+        self.title_label = QLabel("后台任务监控中心")
+        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        header_layout.addWidget(self.title_label)
+        header_layout.addStretch()
+        
+        self.count_badge = QLabel("0 项进行中")
+        self.count_badge.setStyleSheet("color: #4f8ef7; font-size: 12px; font-weight: bold; background: #232732; padding: 4px 10px; border-radius: 6px;")
+        header_layout.addWidget(self.count_badge)
+        self.main_layout.addWidget(header_card)
+
+        # 任务卡片滚动列表
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        self.container_widget = QWidget()
+        self.container_layout = QVBoxLayout(self.container_widget)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
+        self.container_layout.setSpacing(8)
+        self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.placeholder_label = QLabel("暂无执行中的文件任务")
+        self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.placeholder_label.setStyleSheet("color: #6b7280; font-size: 13px; padding: 40px 0;")
+        self.container_layout.addWidget(self.placeholder_label)
+
+        self.scroll_area.setWidget(self.container_widget)
+        self.main_layout.addWidget(self.scroll_area)
+
+        # 底部按钮区
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        self.close_btn = QPushButton("关闭窗口")
-        self.close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #555555;
-                color: #FFFFFF;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #666666;
-            }
-            QPushButton:pressed {
-                background-color: #444444;
-            }
-        """)
+        self.close_btn = FluentPushButton(FIF.CLOSE, "关闭窗口")
+        self.close_btn.setFixedHeight(34)
         self.close_btn.clicked.connect(self.close)
         btn_layout.addWidget(self.close_btn)
         self.main_layout.addLayout(btn_layout)
 
         self.tasks = []
+        self.task_cards = {}
         self.auto_close_timer = QTimer(self)
         self.auto_close_timer.setInterval(1000)
         self.auto_close_timer.timeout.connect(self.check_tasks)
@@ -505,37 +504,35 @@ class TaskManagerDialog(QDialog):
         
         # 延迟关闭定时器，让用户看到完成状态
         self.delay_close_timer = QTimer(self)
-        self.delay_close_timer.setInterval(3000)  # 3秒后关闭
+        self.delay_close_timer.setInterval(3000)
         self.delay_close_timer.timeout.connect(self.delayed_close)
         self.delay_close_timer.setSingleShot(True)
 
     def check_tasks(self):
         if not self.tasks:
-            # 如果任务列表为空，隐藏窗口
             if not self.delay_close_timer.isActive():
                 self.delay_close_timer.start()
             if self.isVisible():
-                self.hide()  # 隐藏窗口
+                self.hide()
             return
         
-        # 检查所有任务是否都已完成
+        running_count = 0
         all_finished = True
         for task in self.tasks:
             if not hasattr(task, '_finished'):
                 task._finished = False
-            # 如果任务线程仍在运行，则标记为未完成
             if task.isRunning():
                 task._finished = False
                 all_finished = False
+                running_count += 1
             elif not task._finished:
-                # 线程已结束但未标记为完成
                 task._finished = True
             
-            # 如果有任何一个任务未完成，整体标记为未完成
             if not task._finished:
                 all_finished = False
+
+        self.count_badge.setText(f"{running_count} 项进行中" if running_count > 0 else "全部完成")
         
-        # 如果所有任务都完成了，启动延迟关闭
         if all_finished:
             self.auto_close_timer.stop()
             if not self.delay_close_timer.isActive():
@@ -546,77 +543,30 @@ class TaskManagerDialog(QDialog):
         self.close()
 
     def add_task(self, task):
-        # 如果有新任务添加，停止延迟关闭定时器
         if self.delay_close_timer.isActive():
             self.delay_close_timer.stop()
         
-        # 提取工单ID
-        work_order_id = "未知工单"
-        if "工单" in task.name:
-            try:
-                start_idx = task.name.find("工单") + 2
-                end_idx = task.name.find(" ", start_idx)
-                if end_idx == -1:
-                    end_idx = len(task.name)
-                work_order_id = task.name[start_idx:end_idx]
-            except (IndexError, ValueError):
-                pass
-        item = QListWidgetItem(task.name)
-        item.setSizeHint(QSize(0, 80))
-        widget = QWidget()
-        vbox = QVBoxLayout(widget)
-        vbox.setContentsMargins(10, 8, 10, 8)
-        vbox.setSpacing(5)
-        # 工单ID标签
-        id_label = QLabel(f"工单号：{work_order_id}")
-        id_label.setStyleSheet("font-size: 15px; color: #00e0ff; font-weight: bold; padding-bottom: 2px;")
-        vbox.addWidget(id_label)
-        # 进度条
-        progress = QProgressBar()
-        progress.setFixedHeight(35)
-        progress.setMinimumWidth(400)
-        progress.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #555555;
-                border-radius: 5px;
-                text-align: center;
-                background: #3c3c3c;
-                font-size: 14px;
-                padding: 2px;
-                color: #FFFFFF;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f8cff, stop:1 #00e0ff);
-                border-radius: 3px;
-            }
-        """)
-        vbox.addWidget(progress)
-        vbox.addStretch()
-        widget.setLayout(vbox)
-        self.list_widget.addItem(item)
-        self.list_widget.setItemWidget(item, widget)
+        self.placeholder_label.hide()
+        card = TaskCardWidget(task.name, self.container_widget)
+        self.task_cards[task] = card
+        self.container_layout.insertWidget(0, card)
+
         def on_progress(val):
-            progress.setValue(val)
+            card.set_progress(val)
+
         def on_finished():
-            # 暂时停止自动关闭检测，防止在弹窗时窗口被关闭
             self.auto_close_timer.stop()
             if self.delay_close_timer.isActive():
                 self.delay_close_timer.stop()
 
-            progress.setValue(100)
+            card.set_finished(task.errors)
             task._finished = True
             
             if task.errors:
-                item.setText(f"{task.name}（完成有错误）")
-                id_label.setText(f"工单号：{work_order_id}（完成有错误）")
-                id_label.setStyleSheet("font-size: 15px; color: #ff9900; font-weight: bold; padding-bottom: 2px;")
-                
-                # 构造错误信息
                 error_msg = "\n".join(task.errors[:10])
                 if len(task.errors) > 10:
                     error_msg += f"\n... (还有 {len(task.errors)-10} 个错误)"
                 
-                # 显示错误提示（带复制完整错误信息按钮）
                 msg_box = QMessageBox(self)
                 msg_box.setIcon(QMessageBox.Icon.Warning)
                 msg_box.setWindowTitle("任务执行出错")
@@ -635,20 +585,13 @@ class TaskManagerDialog(QDialog):
                 
                 copy_button.clicked.connect(on_copy_clicked)
                 msg_box.exec()
-            else:
-                item.setText(f"{task.name}（已完成）")
-                # 更新工单ID标签显示为已完成状态
-                id_label.setText(f"工单号：{work_order_id}（已完成）")
-                id_label.setStyleSheet("font-size: 15px; color: #00ff00; font-weight: bold; padding-bottom: 2px;")
             
-            # 恢复自动关闭检测
             self.auto_close_timer.start()
+
         def on_canceled():
-            item.setText(f"{task.name}（已取消）")
+            card.set_canceled()
             task._finished = True
-            # 更新工单ID标签显示为已取消状态
-            id_label.setText(f"工单号：{work_order_id}（已取消）")
-            id_label.setStyleSheet("font-size: 15px; color: #ff0000; font-weight: bold; padding-bottom: 2px;")
+
         task.progress_changed.connect(on_progress)
         task.task_finished.connect(on_finished)
         task.canceled.connect(on_canceled)
@@ -658,7 +601,6 @@ class TaskManagerDialog(QDialog):
             task._started_by_manager = True
             task.start()
         
-        # 只有在auto_show为True时才自动显示窗口
         if self.auto_show:
             self.show()
             self.raise_()

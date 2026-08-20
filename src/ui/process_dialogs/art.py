@@ -78,84 +78,82 @@ def show_art_dialog(parent, order_data, callbacks):
     dialog.setWindowTitle(f"办理工单 - {order_data['id']}")
     dialog.setMinimumWidth(650)
     dialog.setMinimumHeight(550)
-    # 设置弹窗样式，与主系统保持一致
+    # 设置弹窗样式，与主系统 Fluent 视觉规范保持一致
     dialog.setStyleSheet("""
         QDialog {
-            background-color: #2E2E2E;
-            color: #FFFFFF;
+            background-color: #121418;
+            color: #e8eaed;
+            font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+        QLabel {
+            color: #e8eaed;
+            background: transparent;
+            font-size: 13px;
         }
         QGroupBox {
-            border: 1px solid #555555;
-            border-radius: 5px;
-            margin-top: 1ex;
-            font-size: 14px;
+            background-color: #1a1d24;
+            border: 1px solid #282c37;
+            border-radius: 10px;
+            margin-top: 14px;
+            font-size: 13px;
             font-weight: bold;
-            color: #FFFFFF;
+            color: #8b949e;
+            padding: 16px;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             subcontrol-position: top left;
-            padding: 0 10px;
-            color: #FFFFFF;
+            padding: 0 8px;
+            left: 12px;
+            color: #8b949e;
+            background: transparent;
         }
-        QLineEdit, QComboBox, QLabel {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
+        QLineEdit, QComboBox {
+            background-color: #232732;
+            border: 1px solid #303646;
+            border-radius: 6px;
             padding: 8px 12px;
-            color: #FFFFFF;
-            font-size: 14px;
+            color: #e8eaed;
+            font-size: 13px;
             min-height: 20px;
         }
         QLineEdit:focus, QComboBox:focus {
-            border-color: #0078d4;
-            background-color: #4c4c4c;
+            border-color: #4f8ef7;
+            background-color: #282c3a;
         }
         QComboBox::drop-down {
             border: none;
             width: 20px;
         }
-        QComboBox::down-arrow {
-            image: none;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 5px solid #FFFFFF;
-            margin-right: 5px;
-        }
         QComboBox QAbstractItemView {
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            color: #FFFFFF;
-            selection-background-color: #0078d4;
-        }
-        QLabel {
-            color: #FFFFFF;
-            font-size: 14px;
+            background-color: #1a1d24;
+            border: 1px solid #282c37;
+            color: #e8eaed;
+            selection-background-color: #4f8ef7;
         }
         QPushButton {
-            background-color: #0078d4;
+            background-color: #4f8ef7;
             color: #FFFFFF;
             border: none;
-            border-radius: 4px;
-            padding: 10px 24px;
-            font-size: 14px;
+            border-radius: 6px;
+            padding: 9px 22px;
+            font-size: 13px;
             font-weight: bold;
             min-width: 80px;
         }
         QPushButton:hover {
-            background-color: #106ebe;
+            background-color: #6ba3ff;
         }
         QPushButton:pressed {
-            background-color: #005a9e;
+            background-color: #3a72d6;
         }
         QPushButton[type="cancel"] {
-            background-color: #555555;
+            background-color: #282c37;
+            color: #9ba3b0;
         }
         QPushButton[type="cancel"]:hover {
-            background-color: #666666;
-        }
-        QPushButton[type="cancel"]:pressed {
-            background-color: #444444;
+            background-color: #353b49;
+            color: #ffffff;
         }
     """)
     # 主布局
@@ -170,9 +168,10 @@ def show_art_dialog(parent, order_data, callbacks):
             font-weight: bold;
             color: #FFFFFF;
             padding: 10px 0;
+            background: transparent;
         }
     """)
-    title_label.setAlignment(Qt.AlignCenter)
+    title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     main_layout.addWidget(title_label)
     # 表单区域
     form_widget = QWidget()

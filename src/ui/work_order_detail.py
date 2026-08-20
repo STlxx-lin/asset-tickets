@@ -56,8 +56,8 @@ class CollapsibleBox(QWidget):
                 color: #4f8ef7;
             }
         """)
-        self.toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.toggle_button.setArrowType(Qt.RightArrow)
+        self.toggle_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggle_button.setArrowType(Qt.ArrowType.RightArrow)
         self.toggle_button.toggled.connect(self.on_toggled)
 
         self.content_area = QWidget()
@@ -75,10 +75,10 @@ class CollapsibleBox(QWidget):
         
         self.animation = QPropertyAnimation(self.content_area, b"maximumHeight")
         self.animation.setDuration(240)
-        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
 
     def on_toggled(self, checked):
-        self.toggle_button.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
+        self.toggle_button.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
         self.content_area.adjustSize()
         content_height = self.content_layout.sizeHint().height()
         if content_height == 0 and self.content_layout.count() > 0:
@@ -124,7 +124,7 @@ class WorkOrderDetailDialog(QDialog):
         # 滚动区域
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_widget = QWidget()
         self.scroll_layout = QVBoxLayout(self.scroll_widget)
         self.scroll_layout.setSpacing(14)
@@ -139,49 +139,33 @@ class WorkOrderDetailDialog(QDialog):
         # 2. 详细信息分组 (可折叠)
         self.setup_detail_groups()
 
-        # 3. 流转进度 (始终显示)
-        self.setup_progress_section()
-
-        # 4. 操作日志 (可折叠)
-        self.setup_logs_section()
-
-        self.scroll_layout.addStretch()
         scroll.setWidget(self.scroll_widget)
-        self.main_layout.addWidget(scroll)
+        self.main_layout.addWidget(scroll, 1)
 
-        # 底部关闭按钮
-        self.setup_footer()
+        # 底部确定按钮
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        ok_button = PrimaryPushButton(FIF.ACCEPT, "确定")
+        ok_button.setFixedSize(120, 36)
+        ok_button.clicked.connect(self.accept)
+        btn_layout.addWidget(ok_button)
+        self.main_layout.addLayout(btn_layout)
 
     def setup_review_feedback_section(self):
-        """展示重新拍摄 / 后期重新剪辑 / 美工后期重新制作的反馈原因"""
+        """展示审核退回提示"""
         from src.core.database import db_manager
-        current_status = self.order_data.get('status')
-        art_status = self.order_data.get('art_status')
-        if (current_status not in ['重新拍摄', '后期重新剪辑', '美工后期重新制作']
-                and art_status != '美工后期重新制作'):
-            return
-            
         feedbacks = db_manager.get_review_feedback(self.order_data['id'])
         if feedbacks:
             feedback_card = CardWidget()
-            feedback_card.setObjectName("ReviewFeedbackPanel")
-            feedback_card.setStyleSheet("""
-                CardWidget#ReviewFeedbackPanel {
-                    background-color: #2b1717;
-                    border: 1px solid #7f1d1d;
-                    border-radius: 8px;
-                }
-            """)
             layout = QVBoxLayout(feedback_card)
             layout.setContentsMargins(16, 14, 16, 14)
-            layout.setSpacing(8)
+            layout.setSpacing(10)
 
-            if current_status == '重新拍摄':
-                title_text = "⚠️ 视频审核退回提示（需要重新拍摄）"
-            elif current_status == '后期重新剪辑':
-                title_text = "⚠️ 视频后期审核退回提示（需要重新剪辑）"
-            elif current_status == '美工后期重新制作' or art_status == '美工后期重新制作':
-                title_text = "⚠️ 美工后期审批退回提示（需要重新制作）"
+            art_status = self.order_data.get('art_status', '')
+            if art_status == '美工后期重新制作':
+                title_text = "⚠️ 美工审核退回提示"
+            elif self.order_data.get('status') == '后期重新剪辑':
+                title_text = "⚠️ 剪辑审核退回提示"
             else:
                 title_text = "⚠️ 退回提示"
             title_label = QLabel(title_text)
@@ -192,7 +176,7 @@ class WorkOrderDetailDialog(QDialog):
                 item_label = QLabel(f"• <b>文件</b>: {fb['file_name']}<br/>  <b>所在目录</b>: {fb['directory']}<br/>  <b>原因</b>: <span style='color: #fca5a5;'>{fb['reason']}</span>")
                 item_label.setStyleSheet("color: #e8eaed; font-size: 13px; line-height: 1.5;")
                 item_label.setWordWrap(True)
-                item_label.setTextFormat(Qt.RichText)
+                item_label.setTextFormat(Qt.TextFormat.RichText)
                 layout.addWidget(item_label)
 
             self.scroll_layout.addWidget(feedback_card)
@@ -204,7 +188,7 @@ class WorkOrderDetailDialog(QDialog):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
-        # 状态标签
+        # 状态胶囊
         status = self.order_data.get('status', '未知')
         art_status = self.order_data.get('art_status')
         if art_status:
@@ -217,7 +201,7 @@ class WorkOrderDetailDialog(QDialog):
             }
             status = art_display_map.get(art_status, art_status)
         status_label = QLabel(status)
-        status_label.setAlignment(Qt.AlignCenter)
+        status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         status_color = self.get_status_color(status)
         status_label.setStyleSheet(f"""
             background-color: {status_color};
@@ -228,89 +212,62 @@ class WorkOrderDetailDialog(QDialog):
             padding: 4px 10px;
         """)
         status_label.setFixedHeight(28)
-
-        # 标题/型号/名称
-        title_text = f"{self.order_data.get('model', '')} {self.order_data.get('name', '')}"
-        title_label = QLabel(title_text)
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #FFFFFF;")
-        title_label.setWordWrap(True)
-
-        # ID 和 时间信息
-        meta_info_layout = QHBoxLayout()
-        meta_info_layout.setSpacing(12)
-        
-        id_label = QLabel(f"ID: {self.order_data['id']}")
-        id_label.setStyleSheet("color: #4f8ef7; font-weight: bold; font-size: 13px;")
-        
-        created_at = self.format_time(self.order_data.get('created_at'))
-        updated_at = self.format_time(self.order_data.get('updated_at'))
-        
-        time_label = QLabel(f"创建: {created_at}  |  更新: {updated_at}")
-        time_label.setStyleSheet("color: #9ba3b0; font-size: 12px;")
-        
-        meta_info_layout.addWidget(id_label)
-        meta_info_layout.addWidget(time_label)
-        meta_info_layout.addStretch()
-
-        # 快捷复制按钮
-        copy_id_btn = PushButton(FIF.COPY, "复制ID")
-        copy_id_btn.setFixedHeight(28)
-        def on_copy_id():
-            QApplication.clipboard().setText(str(self.order_data['id']))
-            InfoBar.success(
-                title="已复制",
-                content=f"工单ID {self.order_data['id']} 已存入剪贴板",
-                orient=Qt.Horizontal,
-                isClosable=True,
-                position=InfoBarPosition.TOP_RIGHT,
-                duration=2000,
-                parent=self
-            )
-        copy_id_btn.clicked.connect(on_copy_id)
-        meta_info_layout.addWidget(copy_id_btn)
-
-        layout.addWidget(status_label, 0, 0, Qt.AlignTop)
-        layout.addWidget(title_label, 0, 1)
-        layout.addLayout(meta_info_layout, 1, 1)
-        layout.setColumnStretch(1, 1)
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.addWidget(status_label)
 
         self.scroll_layout.addWidget(header_card)
 
     def setup_detail_groups(self):
-        """分组展示详细信息与快捷路径操作"""
+        """设置详细信息与流转进度分组"""
+        self.setup_detail_section()
+        self.setup_progress_section()
+        self.setup_logs_section()
+
+    def setup_detail_section(self):
+        """业务详细信息"""
         detail_card = CardWidget()
         main_vbox = QVBoxLayout(detail_card)
         main_vbox.setContentsMargins(18, 16, 18, 16)
         main_vbox.setSpacing(14)
 
-        card_title = QLabel("📋 详细信息")
+        card_title = QLabel("📋 业务工单信息")
         card_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #4f8ef7;")
         main_vbox.addWidget(card_title)
 
-        business_layout = QGridLayout()
-        business_layout.setSpacing(12)
-        business_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.add_field(business_layout, 0, 0, "项目类型", self.order_data.get('project_type'))
-        self.add_field(business_layout, 0, 1, "所属部门", self.order_data.get('department'))
-        self.add_field(business_layout, 0, 2, "优先级", "普通") 
-        self.add_field(business_layout, 0, 3, "发起人", self.order_data.get('creator'))
-        
-        self.add_field(business_layout, 1, 0, "需求人", self.order_data.get('requester'))
-        self.add_field(business_layout, 1, 1, "项目内容", self.order_data.get('project_content'), colspan=3)
-        
-        remarks = self.order_data.get('remarks', '')
-        if remarks:
-             self.add_field(business_layout, 2, 0, "备注", remarks, colspan=4)
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        grid.setContentsMargins(0, 0, 0, 0)
 
-        for i in range(4):
-            business_layout.setColumnStretch(i, 1)
+        fields = [
+            ("工单ID:", self.order_data.get('id', '')),
+            ("所属产线:", self.order_data.get('department', '')),
+            ("产品型号:", self.order_data.get('model', '')),
+            ("产品全称:", self.order_data.get('name', '')),
+            ("项目类型:", self.order_data.get('project_type', '')),
+            ("项目内容:", self.order_data.get('project_content', '')),
+            ("需求方:", self.order_data.get('requester', '')),
+            ("发起人:", self.order_data.get('creator', '')),
+            ("创建时间:", str(self.order_data.get('created_at', ''))),
+            ("期望完成:", str(self.order_data.get('expected_at', '') or '未指定')),
+        ]
 
-        main_vbox.addLayout(business_layout)
+        for i, (label_text, val_text) in enumerate(fields):
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet("color: #9ba3b0; font-size: 13px; font-weight: bold;")
+            val = QLabel(str(val_text))
+            val.setStyleSheet("color: #e8eaed; font-size: 13px;")
+            val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            row = i // 2
+            col = (i % 2) * 2
+            grid.addWidget(lbl, row, col)
+            grid.addWidget(val, row, col + 1)
+
+        main_vbox.addLayout(grid)
 
         # 快捷操作栏
         action_divider = QFrame()
-        action_divider.setFrameShape(QFrame.HLine)
+        action_divider.setFrameShape(QFrame.Shape.HLine)
         action_divider.setStyleSheet("background-color: #2e3340; max-height: 1px;")
         main_vbox.addWidget(action_divider)
 
@@ -323,22 +280,22 @@ class WorkOrderDetailDialog(QDialog):
         def on_copy_name():
             text = f"{self.order_data.get('model', '')} {self.order_data.get('name', '')}".strip()
             QApplication.clipboard().setText(text)
-            InfoBar.success("已复制", f"已复制产品全称：{text}", orient=Qt.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=2000, parent=self)
+            InfoBar.success("已复制", f"已复制产品全称：{text}", orient=Qt.Orientation.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=2000, parent=self)
         copy_name_btn.clicked.connect(on_copy_name)
         action_bar.addWidget(copy_name_btn)
 
         open_dir_btn = PushButton(FIF.FOLDER, "打开素材根目录")
         open_dir_btn.setFixedHeight(28)
         def on_open_dir():
-            from src.core.config import PHOTOGRAPHY_BASE
+            from src.core.paths import RAW_ROOT, to_local_path
             dept = self.order_data.get('department', '')
-            dept_path = os.path.join(PHOTOGRAPHY_BASE, dept) if dept else PHOTOGRAPHY_BASE
-            if os.path.exists(dept_path):
+            dept_path = to_local_path(os.path.join(RAW_ROOT, dept)) if dept else to_local_path(RAW_ROOT)
+            if dept_path and os.path.exists(dept_path):
                 os.startfile(dept_path)
-            elif os.path.exists(PHOTOGRAPHY_BASE):
-                os.startfile(PHOTOGRAPHY_BASE)
+            elif to_local_path(RAW_ROOT) and os.path.exists(to_local_path(RAW_ROOT)):
+                os.startfile(to_local_path(RAW_ROOT))
             else:
-                InfoBar.warning("提示", f"素材根目录不存在: {dept_path}", orient=Qt.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=2500, parent=self)
+                InfoBar.warning("提示", f"素材根目录不存在: {dept_path}", orient=Qt.Orientation.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=2500, parent=self)
         open_dir_btn.clicked.connect(on_open_dir)
         action_bar.addWidget(open_dir_btn)
 
@@ -380,7 +337,7 @@ class WorkOrderDetailDialog(QDialog):
             font_weight = "bold" if is_done else "normal"
 
             dot = QLabel(dot_text)
-            dot.setAlignment(Qt.AlignCenter)
+            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             dot.setFixedSize(22, 22)
             dot.setStyleSheet(f"""
                 background-color: {dot_color};
@@ -391,16 +348,16 @@ class WorkOrderDetailDialog(QDialog):
             """)
 
             label = QLabel(step)
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setStyleSheet(f"color: {text_color}; font-weight: {font_weight}; font-size: 12px;")
 
-            step_vbox.addWidget(dot, 0, Qt.AlignCenter)
-            step_vbox.addWidget(label, 0, Qt.AlignCenter)
+            step_vbox.addWidget(dot, 0, Qt.AlignmentFlag.AlignCenter)
+            step_vbox.addWidget(label, 0, Qt.AlignmentFlag.AlignCenter)
             art_layout.addWidget(step_widget)
 
             if i < len(art_steps) - 1:
                 line = QFrame()
-                line.setFrameShape(QFrame.HLine)
+                line.setFrameShape(QFrame.Shape.HLine)
                 line.setFixedHeight(2)
                 line.setStyleSheet(f"background-color: {dot_color};")
                 art_layout.addWidget(line)
@@ -425,7 +382,7 @@ class WorkOrderDetailDialog(QDialog):
             font_weight = "bold" if is_done else "normal"
 
             dot = QLabel(dot_text)
-            dot.setAlignment(Qt.AlignCenter)
+            dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
             dot.setFixedSize(22, 22)
             dot.setStyleSheet(f"""
                 background-color: {dot_color};
@@ -436,16 +393,16 @@ class WorkOrderDetailDialog(QDialog):
             """)
 
             label = QLabel(step)
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setStyleSheet(f"color: {text_color}; font-weight: {font_weight}; font-size: 12px;")
 
-            step_vbox.addWidget(dot, 0, Qt.AlignCenter)
-            step_vbox.addWidget(label, 0, Qt.AlignCenter)
+            step_vbox.addWidget(dot, 0, Qt.AlignmentFlag.AlignCenter)
+            step_vbox.addWidget(label, 0, Qt.AlignmentFlag.AlignCenter)
             edit_layout.addWidget(step_widget)
 
             if i < len(edit_steps) - 1:
                 line = QFrame()
-                line.setFrameShape(QFrame.HLine)
+                line.setFrameShape(QFrame.Shape.HLine)
                 line.setFixedHeight(2)
                 line.setStyleSheet(f"background-color: {dot_color};")
                 edit_layout.addWidget(line)
@@ -465,7 +422,7 @@ class WorkOrderDetailDialog(QDialog):
         if not self.logs:
             empty_label = QLabel("暂无操作日志")
             empty_label.setStyleSheet("color: #888888; padding: 16px;")
-            empty_label.setAlignment(Qt.AlignCenter)
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             logs_layout.addWidget(empty_label)
         else:
             for log in self.logs:
@@ -513,14 +470,14 @@ class WorkOrderDetailDialog(QDialog):
                 
                 if formatted_details:
                     line = QFrame()
-                    line.setFrameShape(QFrame.HLine)
+                    line.setFrameShape(QFrame.Shape.HLine)
                     line.setStyleSheet("background-color: #2e3340; max-height: 1px;")
                     item_layout.addWidget(line)
 
                     details_label = QLabel(formatted_details)
                     details_label.setStyleSheet("color: #d1d5db; font-size: 12px; margin-top: 2px;")
                     details_label.setWordWrap(True)
-                    details_label.setTextFormat(Qt.RichText)
+                    details_label.setTextFormat(Qt.TextFormat.RichText)
                     details_label.setOpenExternalLinks(True)
                     item_layout.addWidget(details_label)
                 
