@@ -475,8 +475,18 @@ def build_art_post_review_ui(container, dialog, parent, order_data, callbacks):
 
     cancel_btn.clicked.connect(dialog.reject)
 
-    # 已确认通过的侧（运营/销售），跨两次按钮点击共享，用于判断两侧是否都完成
+    # 已确认通过的侧（运营/销售）：从历史审批日志恢复，跨对话框会话生效
+    # （否则重开对话框后临时集合清空，另一侧判定"未通过"，工单永远无法完成）
     approved_sides = set()
+    try:
+        for _log in db_manager.get_logs_by_order_id(order_data['id']):
+            if _log.get('action_type') == '美工后期审批通过':
+                _details = _log.get('details', '')
+                for _i, _lb in enumerate(_SIDE_LABELS):
+                    if f'分发侧={_lb}' in _details:
+                        approved_sides.add(_i)
+    except Exception as _e:
+        logger.error(f"读取工单{order_data['id']}审批历史失败: {_e}")
 
     def _side_has_content(side):
         """该侧是否有成品内容（待审批目录有成品，或目标目录已有成品）。"""
