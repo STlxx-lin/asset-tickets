@@ -10,27 +10,33 @@ ICON_ICO = os.path.join(PROJECT_ROOT, 'app_icon.ico')
 sys.path.append(PROJECT_ROOT)
 from src.core.config import APP_VERSION
 
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
 # 打包 .env（数据库密码/API Token 配置），运行时由 config._load_env_file 从解压目录读取。
 # 注意：源路径必须为绝对路径——PyInstaller 会把 datas 中的相对路径按 spec 文件所在目录解析
 ENV_FILE = os.path.join(PROJECT_ROOT, '.env')
 DATA_FILES = [(ENV_FILE, '.')] if os.path.exists(ENV_FILE) else []
+DATA_FILES += collect_data_files('qfluentwidgets')
+
+HIDDEN_IMPORTS = [
+    'pymysql',
+    'PySide6.QtCore',
+    'PySide6.QtGui',
+    'PySide6.QtWidgets',
+    'src.core.api_manager',  # 添加项目中的关键模块
+    'src.core.database',     # 添加项目中的关键模块
+    'src.core.config',       # 添加配置模块
+    'src.ui.process_dialogs',
+    'typing_extensions',  # 修复urllib3相关警告
+    'charset_normalizer'  # 修复请求相关警告
+] + collect_submodules('qfluentwidgets')
 
 a = Analysis(
     [MAIN_SCRIPT],
     pathex=[PROJECT_ROOT],
     binaries=[],
     datas=DATA_FILES,
-    hiddenimports=[
-        'pymysql',
-        'PySide6.QtCore',
-        'PySide6.QtGui',
-        'PySide6.QtWidgets',
-        'src.core.api_manager',  # 添加项目中的关键模块
-        'src.core.database',     # 添加项目中的关键模块
-        'src.core.config',       # 添加配置模块
-        'typing_extensions',  # 修复urllib3相关警告
-        'charset_normalizer'  # 修复请求相关警告
-    ],
+    hiddenimports=HIDDEN_IMPORTS,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
