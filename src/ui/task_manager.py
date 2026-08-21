@@ -243,6 +243,14 @@ class TaskCardWidget(CardWidget):
         self.task_name = task_name
         self.is_finished = False
         self.has_errors = False
+        self.setBorderRadius(8)
+        self.setStyleSheet("""
+            CardWidget#TaskCard {
+                background-color: #232732;
+                border: 1px solid #303646;
+                border-radius: 8px;
+            }
+        """)
         
         # 提取工单ID
         self.work_order_id = "未知工单"
@@ -337,6 +345,23 @@ class EmbeddedTaskManagerWidget(QGroupBox):
 
     def _init_ui(self):
         self.setObjectName("EmbeddedTaskManager")
+        self.setStyleSheet("""
+            QGroupBox#EmbeddedTaskManager {
+                background-color: #1d2128;
+                border: 1px solid #2e3340;
+                border-radius: 8px;
+                margin-top: 14px;
+                font-size: 12px;
+                font-weight: bold;
+                color: #9ba3b0;
+            }
+            QGroupBox#EmbeddedTaskManager::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                left: 12px;
+            }
+        """)
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(10, 14, 10, 10)
         main_layout.setSpacing(6)
@@ -352,16 +377,23 @@ class EmbeddedTaskManagerWidget(QGroupBox):
         main_layout.addLayout(top_bar)
 
         # 滚动区域
-        self.scroll_area = QScrollArea()
+        self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
+        if self.scroll_area.viewport():
+            self.scroll_area.viewport().setStyleSheet("background: transparent;")
         self.scroll_area.setStyleSheet("""
             QScrollArea {
                 border: none;
+                background: transparent;
                 background-color: transparent;
+            }
+            QScrollArea > QWidget > QWidget {
+                background: transparent;
             }
         """)
 
         self.container_widget = QWidget()
+        self.container_widget.setStyleSheet("background: transparent;")
         self.container_layout = QVBoxLayout(self.container_widget)
         self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(8)
@@ -370,7 +402,7 @@ class EmbeddedTaskManagerWidget(QGroupBox):
         # 空状态占位标签
         self.placeholder_label = QLabel("暂无进行中的传输任务")
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder_label.setStyleSheet("color: #6b7280; font-size: 12px; padding: 25px 0;")
+        self.placeholder_label.setStyleSheet("color: #6b7280; font-size: 12px; padding: 25px 0; background: transparent;")
         self.container_layout.addWidget(self.placeholder_label)
 
         self.scroll_area.setWidget(self.container_widget)
@@ -451,11 +483,18 @@ class TaskManagerDialog(QDialog):
 
         # 头部概览卡片
         header_card = CardWidget(self)
+        header_card.setStyleSheet("""
+            CardWidget {
+                background-color: #1a1d24;
+                border: 1px solid #282c37;
+                border-radius: 10px;
+            }
+        """)
         header_layout = QHBoxLayout(header_card)
         header_layout.setContentsMargins(16, 12, 16, 12)
         
         self.title_label = QLabel("后台任务监控中心")
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff; background: transparent;")
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
         
@@ -467,9 +506,21 @@ class TaskManagerDialog(QDialog):
         # 任务卡片滚动列表
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        if self.scroll_area.viewport():
+            self.scroll_area.viewport().setStyleSheet("background: transparent;")
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background: transparent;
+                background-color: transparent;
+            }
+            QScrollArea > QWidget > QWidget {
+                background: transparent;
+            }
+        """)
 
         self.container_widget = QWidget()
+        self.container_widget.setStyleSheet("background: transparent;")
         self.container_layout = QVBoxLayout(self.container_widget)
         self.container_layout.setContentsMargins(0, 0, 0, 0)
         self.container_layout.setSpacing(8)
@@ -477,7 +528,7 @@ class TaskManagerDialog(QDialog):
 
         self.placeholder_label = QLabel("暂无执行中的文件任务")
         self.placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder_label.setStyleSheet("color: #6b7280; font-size: 13px; padding: 40px 0;")
+        self.placeholder_label.setStyleSheet("color: #6b7280; font-size: 13px; padding: 40px 0; background: transparent;")
         self.container_layout.addWidget(self.placeholder_label)
 
         self.scroll_area.setWidget(self.container_widget)
