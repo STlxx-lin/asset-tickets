@@ -30,6 +30,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qfluentwidgets import (
+    CardWidget,
+    ComboBox as FluentComboBox,
+    FluentIcon as FIF,
+    InfoBar,
+    InfoBarPosition,
+    PrimaryPushButton,
+    PushButton,
+)
+
 from src.core.api_manager import api_manager
 from src.core.config import get_feature_enabled
 from src.core.database import db_manager
@@ -83,8 +93,8 @@ def show_photography_dialog(parent, order_data, callbacks):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle(f"办理工单 - {order_data['id']}")
-    dialog.setMinimumWidth(650)
-    dialog.setMinimumHeight(550)
+    dialog.setMinimumWidth(860)
+    dialog.resize(880, 520)
     # 设置弹窗样式，与主系统 Fluent 视觉规范保持一致
     dialog.setStyleSheet("""
         QDialog {
@@ -165,16 +175,16 @@ def show_photography_dialog(parent, order_data, callbacks):
     """)
     # 主布局
     main_layout = QVBoxLayout(dialog)
-    main_layout.setSpacing(20)
-    main_layout.setContentsMargins(30, 30, 30, 30)
+    main_layout.setSpacing(12)
+    main_layout.setContentsMargins(20, 16, 20, 16)
     # 标题
     title_label = QLabel(f"办理工单 - {order_data['id']}")
     title_label.setStyleSheet("""
         QLabel {
-            font-size: 24px;
+            font-size: 18px;
             font-weight: bold;
             color: #FFFFFF;
-            padding: 10px 0;
+            padding: 4px 0;
         }
     """)
     title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -182,8 +192,6 @@ def show_photography_dialog(parent, order_data, callbacks):
 
     # 获取不通过反馈
     feedbacks = db_manager.get_review_feedback(order_data['id'])
-    dialog.setMinimumWidth(820)
-    dialog.setMinimumHeight(880)
 
     # ── 如果有退回明细，在标题下方添加 Tab 切换按钮 ──
     stacked = None
@@ -249,40 +257,73 @@ def show_photography_dialog(parent, order_data, callbacks):
     # ── Page 0: 表单区域 ──
     form_widget = QWidget()
     form_layout = QVBoxLayout(form_widget)
-    form_layout.setSpacing(15)
-    # 工单基本信息分组
-    basic_group = QGroupBox("工单基本信息")
-    basic_layout = QFormLayout(basic_group)
-    basic_layout.setSpacing(12)
+    form_layout.setContentsMargins(4, 4, 4, 4)
+    form_layout.setSpacing(12)
+
+    # 1. 工单基本信息卡片
+    basic_card = CardWidget()
+    basic_vbox = QVBoxLayout(basic_card)
+    basic_vbox.setContentsMargins(14, 10, 14, 10)
+    basic_vbox.setSpacing(6)
+
+    basic_title = QLabel("📋 工单基本信息")
+    basic_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    basic_vbox.addWidget(basic_title)
+
+    basic_layout = QFormLayout()
+    basic_layout.setSpacing(6)
     basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     id_label = QLabel(order_data['id'])
     dept_label = QLabel(order_data['department'])
     model_label = QLabel(order_data['model'])
     name_label = QLabel(order_data['name'])
     creator_label = QLabel(order_data['creator'])
+    for lbl in [id_label, dept_label, model_label, name_label, creator_label]:
+        lbl.setStyleSheet("color: #e8eaed; background: transparent;")
     basic_layout.addRow("工单ID:", id_label)
     basic_layout.addRow("产线/部门:", dept_label)
     basic_layout.addRow("型号:", model_label)
     basic_layout.addRow("名称:", name_label)
     basic_layout.addRow("发起人:", creator_label)
-    form_layout.addWidget(basic_group)
-    # 操作设置分组
-    operation_group = QGroupBox("操作设置")
-    operation_layout = QFormLayout(operation_group)
-    operation_layout.setSpacing(12)
+    basic_vbox.addLayout(basic_layout)
+    form_layout.addWidget(basic_card)
+
+    # 2. 操作设置卡片
+    operation_card = CardWidget()
+    op_vbox = QVBoxLayout(operation_card)
+    op_vbox.setContentsMargins(14, 10, 14, 10)
+    op_vbox.setSpacing(6)
+
+    op_title = QLabel("⚙️ 操作设置")
+    op_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    op_vbox.addWidget(op_title)
+
+    operation_layout = QFormLayout()
+    operation_layout.setSpacing(6)
     operation_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    photographer_combo = QComboBox()
+    photographer_combo = FluentComboBox()
     photographer_combo.addItem("")
     # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）
     photographer_combo.addItems(PHOTOGRAPHERS)
     photographer_combo.setObjectName('photographer_combo')
     photographer_combo.setPlaceholderText("请选择摄影师")
+    photographer_combo.setFixedHeight(30)
     operation_layout.addRow("摄影师:", photographer_combo)
-    form_layout.addWidget(operation_group)
-    # 路径信息分组
-    path_group = QGroupBox("路径信息")
-    path_layout = QFormLayout(path_group)
-    path_layout.setSpacing(12)
+    op_vbox.addLayout(operation_layout)
+    form_layout.addWidget(operation_card)
+
+    # 3. 路径信息卡片
+    path_card = CardWidget()
+    path_vbox = QVBoxLayout(path_card)
+    path_vbox.setContentsMargins(14, 10, 14, 10)
+    path_vbox.setSpacing(6)
+
+    path_title = QLabel("📁 路径信息")
+    path_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    path_vbox.addWidget(path_title)
+
+    path_layout = QFormLayout()
+    path_layout.setSpacing(6)
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     def create_clickable_path_label(path, tooltip_text):
         label = QLabel(path)
@@ -313,13 +354,15 @@ def show_photography_dialog(parent, order_data, callbacks):
     path_layout.addRow("上传素材路径:", upload_label)
     path_layout.addRow("分发图片路径:", dist_img_label)
     path_layout.addRow("分发视频路径:", dist_video_label)
-    form_layout.addWidget(path_group)
+    path_vbox.addLayout(path_layout)
+    form_layout.addWidget(path_card)
+
     def update_path_display():
         photographer = get_photographer()
         if photographer:
             new_upload_path = PHOTOGRAPHY_UPLOAD(photographer, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
             upload_label.setText(new_upload_path)
-            upload_label.setToolTip("双击打开：上传素材路径")
+            upload_label.setToolTip("点击打开：上传素材路径")
             def on_mouse_press_updated(event):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(new_upload_path))
             upload_label.mousePressEvent = on_mouse_press_updated
@@ -327,9 +370,10 @@ def show_photography_dialog(parent, order_data, callbacks):
     info_label = QLabel("💡 提示：请先选择摄影师，然后进行相应的操作")
     info_label.setStyleSheet("""
         QLabel {
-            font-size: 13px;
-            color: #cccccc;
-            padding: 8px 0;
+            font-size: 12px;
+            color: #9ba3b0;
+            padding: 4px 0;
+            background: transparent;
         }
     """)
     form_layout.addWidget(info_label)
@@ -372,10 +416,9 @@ def show_photography_dialog(parent, order_data, callbacks):
         """)
 
         for idx, fb in enumerate(feedbacks):
-            fb_table.setItem(idx, 0, QTableWidgetItem(fb['file_name']))
-            dir_name = os.path.basename(fb['directory']) if fb['directory'] else ""
-            dir_item = QTableWidgetItem(dir_name)
-            dir_item.setToolTip(fb['directory'])
+            name_item = QTableWidgetItem(fb['file_name'])
+            fb_table.setItem(idx, 0, name_item)
+            dir_item = QTableWidgetItem(fb.get('directory', ''))
             fb_table.setItem(idx, 1, dir_item)
             reason_item = QTableWidgetItem(fb['reason'])
             fb_table.setItem(idx, 2, reason_item)
@@ -414,10 +457,13 @@ def show_photography_dialog(parent, order_data, callbacks):
     # 按钮区域
     button_widget = QWidget()
     button_layout = QHBoxLayout(button_widget)
-    button_layout.setSpacing(15)
-    upload_btn = QPushButton("上传素材")
-    distribute_img_btn = QPushButton("分发图片")
-    distribute_vid_btn = QPushButton("分发视频")
+    button_layout.setSpacing(12)
+    upload_btn = PushButton(FIF.FOLDER_ADD, "上传素材")
+    upload_btn.setFixedHeight(34)
+    distribute_img_btn = PrimaryPushButton(FIF.SHARE, "分发图片")
+    distribute_img_btn.setFixedHeight(34)
+    distribute_vid_btn = PrimaryPushButton(FIF.VIDEO, "分发视频")
+    distribute_vid_btn.setFixedHeight(34)
 
     gray_style = "background-color: #444444; color: #888888; border: none; border-radius: 4px; padding: 10px 24px; font-size: 14px; font-weight: bold; min-width: 80px;"
 
