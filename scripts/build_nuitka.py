@@ -61,7 +61,7 @@ def build_windows_icon_ico(source_png, target_ico):
             return ""
         if os.path.exists(target_ico):
             os.remove(target_ico)
-        if image.save(target_ico, "ICO"):
+        if image.save(target_ico, b"ICO"):
             return target_ico
         return ""
     except Exception:
@@ -183,6 +183,8 @@ def build():
         
         # 显式包含模块
         "--include-package=packaging",
+        "--include-package=qfluentwidgets",
+        "--include-package-data=qfluentwidgets",
         "--include-package=src.core",
         "--include-package=src.ui",
         "--include-module=pymysql",

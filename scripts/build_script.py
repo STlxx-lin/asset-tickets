@@ -20,11 +20,13 @@ from src.core.config import APP_VERSION
 
 # 解决 Windows 环境下可能的编码问题
 if sys.platform.startswith('win'):
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
-    except AttributeError:
-        pass
+    for stream in (sys.stdout, sys.stderr):
+        reconf = getattr(stream, 'reconfigure', None)
+        if callable(reconf):
+            try:
+                reconf(encoding='utf-8')
+            except Exception:
+                pass
 
 def install_dependencies():
     """安装依赖包"""
