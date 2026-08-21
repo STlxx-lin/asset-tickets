@@ -23,6 +23,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qfluentwidgets import (
+    CardWidget,
+    FluentIcon as FIF,
+    PrimaryPushButton,
+    PushButton,
+)
+
 from src.core.config import get_blocked_dir_keywords, get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
@@ -72,8 +79,8 @@ def show_editing_dialog(parent, order_data, callbacks):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle(f"办理工单 - {order_data['id']}")
-    dialog.setMinimumWidth(650)
-    dialog.setMinimumHeight(550)
+    dialog.setMinimumWidth(860)
+    dialog.resize(880, 520)
     # 设置弹窗样式，与主系统 Fluent 视觉规范保持一致
     dialog.setStyleSheet("""
         QDialog {
@@ -154,16 +161,16 @@ def show_editing_dialog(parent, order_data, callbacks):
     """)
     # 主布局
     main_layout = QVBoxLayout(dialog)
-    main_layout.setSpacing(20)
-    main_layout.setContentsMargins(30, 30, 30, 30)
+    main_layout.setSpacing(12)
+    main_layout.setContentsMargins(20, 16, 20, 16)
     # 标题
     title_label = QLabel(f"办理工单 - {order_data['id']}")
     title_label.setStyleSheet("""
         QLabel {
-            font-size: 24px;
+            font-size: 18px;
             font-weight: bold;
             color: #FFFFFF;
-            padding: 10px 0;
+            padding: 4px 0;
             background: transparent;
         }
     """)
@@ -172,29 +179,49 @@ def show_editing_dialog(parent, order_data, callbacks):
     # 表单区域
     form_widget = QWidget()
     form_layout = QVBoxLayout(form_widget)
-    form_layout.setSpacing(15)
-    # 工单基本信息分组
-    basic_group = QGroupBox("工单基本信息")
-    basic_layout = QFormLayout(basic_group)
-    basic_layout.setSpacing(12)
+    form_layout.setContentsMargins(4, 4, 4, 4)
+    form_layout.setSpacing(10)
+
+    # 1. 工单基本信息卡片
+    basic_card = CardWidget()
+    basic_vbox = QVBoxLayout(basic_card)
+    basic_vbox.setContentsMargins(14, 10, 14, 10)
+    basic_vbox.setSpacing(6)
+
+    basic_title = QLabel("📋 工单基本信息")
+    basic_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    basic_vbox.addWidget(basic_title)
+
+    basic_layout = QFormLayout()
+    basic_layout.setSpacing(6)
     basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    # 创建字段
     id_label = QLabel(order_data['id'])
     dept_label = QLabel(order_data['department'])
     model_label = QLabel(order_data['model'])
     name_label = QLabel(order_data['name'])
     creator_label = QLabel(order_data['creator'])
-    # 添加字段到布局
+    for lbl in [id_label, dept_label, model_label, name_label, creator_label]:
+        lbl.setStyleSheet("color: #e8eaed; background: transparent;")
     basic_layout.addRow("工单ID:", id_label)
     basic_layout.addRow("产线/部门:", dept_label)
     basic_layout.addRow("型号:", model_label)
     basic_layout.addRow("名称:", name_label)
     basic_layout.addRow("发起人:", creator_label)
-    form_layout.addWidget(basic_group)
-    # 路径信息分组
-    path_group = QGroupBox("路径信息")
-    path_layout = QFormLayout(path_group)
-    path_layout.setSpacing(12)
+    basic_vbox.addLayout(basic_layout)
+    form_layout.addWidget(basic_card)
+
+    # 2. 路径信息卡片
+    path_card = CardWidget()
+    path_vbox = QVBoxLayout(path_card)
+    path_vbox.setContentsMargins(14, 10, 14, 10)
+    path_vbox.setSpacing(6)
+
+    path_title = QLabel("📁 路径信息")
+    path_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    path_vbox.addWidget(path_title)
+
+    path_layout = QFormLayout()
+    path_layout.setSpacing(6)
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     # 创建可双击的路径标签
     def create_clickable_path_label(path, tooltip_text):
@@ -259,14 +286,16 @@ def show_editing_dialog(parent, order_data, callbacks):
     path_layout.addRow("成品路径:", product_label)
     path_layout.addRow("分发运营路径:", ops_label)
     path_layout.addRow("分发销售路径:", sales_label)
-    form_layout.addWidget(path_group)
+    path_vbox.addLayout(path_layout)
+    form_layout.addWidget(path_card)
     # 提示信息
     info_label = QLabel("💡 提示：请先领取素材，然后选择成品路径，最后进行提交审核或分发操作")
     info_label.setStyleSheet("""
         QLabel {
-            font-size: 13px;
-            color: #cccccc;
-            padding: 8px 0;
+            font-size: 12px;
+            color: #9ba3b0;
+            padding: 4px 0;
+            background: transparent;
         }
     """)
     form_layout.addWidget(info_label)
@@ -274,12 +303,17 @@ def show_editing_dialog(parent, order_data, callbacks):
     # 按钮区域
     button_widget = QWidget()
     button_layout = QHBoxLayout(button_widget)
-    button_layout.setSpacing(15)
-    get_material_btn = QPushButton("领取素材")
-    select_product_btn = QPushButton("成品路径")
-    submit_review_btn = QPushButton("提交审核")
-    distribute_ops_btn = QPushButton("分发运营")
-    distribute_sales_btn = QPushButton("分发销售")
+    button_layout.setSpacing(12)
+    get_material_btn = PushButton(FIF.FOLDER_ADD, "领取素材")
+    get_material_btn.setFixedHeight(34)
+    select_product_btn = PushButton(FIF.FOLDER, "成品路径")
+    select_product_btn.setFixedHeight(34)
+    submit_review_btn = PrimaryPushButton(FIF.ACCEPT, "提交审核")
+    submit_review_btn.setFixedHeight(34)
+    distribute_ops_btn = PrimaryPushButton(FIF.SHARE, "分发运营")
+    distribute_ops_btn.setFixedHeight(34)
+    distribute_sales_btn = PrimaryPushButton(FIF.SHARE, "分发销售")
+    distribute_sales_btn.setFixedHeight(34)
 
     # 控制按钮启用状态与 ToolTip
     current_status = order_data.get('status', '')

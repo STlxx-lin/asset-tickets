@@ -25,6 +25,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qfluentwidgets import (
+    CardWidget,
+    FluentIcon as FIF,
+    LineEdit,
+    PrimaryPushButton,
+    PushButton,
+)
+
 from src.core.database import db_manager
 from src.core.paths import (
     OPS_GET_SRC,
@@ -52,8 +60,8 @@ def show_ops_dialog(parent, order_data, callbacks):
 
     dialog = QDialog(parent)
     dialog.setWindowTitle(f"办理工单 - {order_data['id']}")
-    dialog.setMinimumWidth(650)
-    dialog.setMinimumHeight(550)
+    dialog.setMinimumWidth(860)
+    dialog.resize(880, 560)
     # 设置弹窗样式，与主系统 Fluent 视觉规范保持一致
     dialog.setStyleSheet("""
         QDialog {
@@ -134,16 +142,16 @@ def show_ops_dialog(parent, order_data, callbacks):
     """)
     # 主布局
     main_layout = QVBoxLayout(dialog)
-    main_layout.setSpacing(20)
-    main_layout.setContentsMargins(30, 30, 30, 30)
+    main_layout.setSpacing(12)
+    main_layout.setContentsMargins(20, 16, 20, 16)
     # 标题
     title_label = QLabel(f"办理工单 - {order_data['id']}")
     title_label.setStyleSheet("""
         QLabel {
-            font-size: 24px;
+            font-size: 18px;
             font-weight: bold;
             color: #FFFFFF;
-            padding: 10px 0;
+            padding: 4px 0;
             background: transparent;
         }
     """)
@@ -152,29 +160,49 @@ def show_ops_dialog(parent, order_data, callbacks):
     # 表单区域
     form_widget = QWidget()
     form_layout = QVBoxLayout(form_widget)
-    form_layout.setSpacing(15)
-    # 工单基本信息分组
-    basic_group = QGroupBox("工单基本信息")
-    basic_layout = QFormLayout(basic_group)
-    basic_layout.setSpacing(12)
+    form_layout.setContentsMargins(4, 4, 4, 4)
+    form_layout.setSpacing(10)
+
+    # 1. 工单基本信息卡片
+    basic_card = CardWidget()
+    basic_vbox = QVBoxLayout(basic_card)
+    basic_vbox.setContentsMargins(14, 10, 14, 10)
+    basic_vbox.setSpacing(6)
+
+    basic_title = QLabel("📋 工单基本信息")
+    basic_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    basic_vbox.addWidget(basic_title)
+
+    basic_layout = QFormLayout()
+    basic_layout.setSpacing(6)
     basic_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    # 创建字段
     id_label = QLabel(order_data['id'])
     dept_label = QLabel(order_data['department'])
     model_label = QLabel(order_data['model'])
     name_label = QLabel(order_data['name'])
     creator_label = QLabel(order_data['creator'])
-    # 添加字段到布局
+    for lbl in [id_label, dept_label, model_label, name_label, creator_label]:
+        lbl.setStyleSheet("color: #e8eaed; background: transparent;")
     basic_layout.addRow("工单ID:", id_label)
     basic_layout.addRow("产线/部门:", dept_label)
     basic_layout.addRow("型号:", model_label)
     basic_layout.addRow("名称:", name_label)
     basic_layout.addRow("发起人:", creator_label)
-    form_layout.addWidget(basic_group)
-    # 路径信息分组
-    path_group = QGroupBox("路径信息")
-    path_layout = QFormLayout(path_group)
-    path_layout.setSpacing(12)
+    basic_vbox.addLayout(basic_layout)
+    form_layout.addWidget(basic_card)
+
+    # 2. 路径信息卡片
+    path_card = CardWidget()
+    path_vbox = QVBoxLayout(path_card)
+    path_vbox.setContentsMargins(14, 10, 14, 10)
+    path_vbox.setSpacing(6)
+
+    path_title = QLabel("📁 路径信息")
+    path_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    path_vbox.addWidget(path_title)
+
+    path_layout = QFormLayout()
+    path_layout.setSpacing(6)
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     # 创建可双击的路径标签
     def create_clickable_path_label(path, tooltip_text):
@@ -200,97 +228,65 @@ def show_ops_dialog(parent, order_data, callbacks):
     # 获取路径信息
     src_path = get_ops_get_src()
     store_path_label = QLabel("请选择存放路径")
+    store_path_label.setStyleSheet("color: #9ba3b0; background: transparent;")
     # 创建路径标签
     src_label = create_clickable_path_label(src_path, "素材源路径")
     # 添加路径到布局
     path_layout.addRow("素材源路径:", src_label)
     path_layout.addRow("存放路径:", store_path_label)
-    form_layout.addWidget(path_group)
-    # 产品上架信息分组
-    product_group = QGroupBox("产品上架信息")
-    product_layout = QVBoxLayout(product_group)
-    product_layout.setSpacing(12)
+    path_vbox.addLayout(path_layout)
+    form_layout.addWidget(path_card)
+
+    # 3. 产品上架信息卡片
+    product_card = CardWidget()
+    product_layout = QVBoxLayout(product_card)
+    product_layout.setContentsMargins(16, 14, 16, 14)
+    product_layout.setSpacing(10)
+
+    prod_title = QLabel("📦 产品上架信息")
+    prod_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    product_layout.addWidget(prod_title)
+
     # 产品信息输入区域 - 横向排列
     input_widget = QWidget()
     input_layout = QHBoxLayout(input_widget)
-    input_layout.setSpacing(6)  # 减少间距
-    input_layout.setContentsMargins(5, 5, 5, 5)  # 减少边距
+    input_layout.setSpacing(8)
+    input_layout.setContentsMargins(0, 4, 0, 4)
     # 创建输入框和标签
     title_label = QLabel("产品标题:")
-    title_label.setMinimumWidth(60)  # 设置标签最小宽度
-    title_edit = QLineEdit()
+    title_label.setStyleSheet("color: #e8eaed; background: transparent;")
+    title_edit = LineEdit()
     title_edit.setPlaceholderText("请输入产品标题")
-    title_edit.setMinimumWidth(120)  # 减少最小宽度
-    title_edit.setMaximumWidth(150)  # 设置最大宽度
+    title_edit.setFixedHeight(32)
     keywords_label = QLabel("关键词:")
-    keywords_label.setMinimumWidth(50)  # 设置标签最小宽度
-    keywords_edit = QLineEdit()
-    keywords_edit.setPlaceholderText("关键词，用逗号分隔")
-    keywords_edit.setMinimumWidth(120)  # 减少最小宽度
-    keywords_edit.setMaximumWidth(150)  # 设置最大宽度
+    keywords_label.setStyleSheet("color: #e8eaed; background: transparent;")
+    keywords_edit = LineEdit()
+    keywords_edit.setPlaceholderText("关键词，逗号分隔")
+    keywords_edit.setFixedHeight(32)
     url_label = QLabel("URL:")
-    url_label.setMinimumWidth(30)  # 设置标签最小宽度
-    url_edit = QLineEdit()
+    url_label.setStyleSheet("color: #e8eaed; background: transparent;")
+    url_edit = LineEdit()
     url_edit.setPlaceholderText("请输入产品URL")
-    url_edit.setMinimumWidth(150)  # 减少最小宽度
-    url_edit.setMaximumWidth(200)  # 设置最大宽度
+    url_edit.setFixedHeight(32)
     # 添加输入框到布局
     input_layout.addWidget(title_label)
-    input_layout.addWidget(title_edit)
+    input_layout.addWidget(title_edit, 2)
     input_layout.addWidget(keywords_label)
-    input_layout.addWidget(keywords_edit)
+    input_layout.addWidget(keywords_edit, 2)
     input_layout.addWidget(url_label)
-    input_layout.addWidget(url_edit)
-    input_layout.addStretch()  # 添加弹性空间
+    input_layout.addWidget(url_edit, 3)
     product_layout.addWidget(input_widget)
     # 按钮区域 - 横向排列
     button_widget = QWidget()
     button_layout = QHBoxLayout(button_widget)
-    button_layout.setSpacing(15)
+    button_layout.setContentsMargins(0, 0, 0, 0)
+    button_layout.setSpacing(10)
     # 添加按钮
-    add_btn = QPushButton("添加产品信息")
-    add_btn.setStyleSheet("""
-        QPushButton {
-            background-color: #28a745;
-            color: #FFFFFF;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-            font-weight: bold;
-            min-width: 100px;
-        }
-        QPushButton:hover {
-            background-color: #218838;
-        }
-        QPushButton:pressed {
-            background-color: #1e7e34;
-        }
-    """)
+    add_btn = PrimaryPushButton(FIF.ADD, "添加产品信息")
+    add_btn.setFixedHeight(32)
     # 删除按钮
-    delete_selected_btn = QPushButton("删除选中")
-    delete_selected_btn.setStyleSheet("""
-        QPushButton {
-            background-color: #dc3545;
-            color: #FFFFFF;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 13px;
-            font-weight: bold;
-            min-width: 80px;
-        }
-        QPushButton:hover {
-            background-color: #c82333;
-        }
-        QPushButton:pressed {
-            background-color: #bd2130;
-        }
-        QPushButton:disabled {
-            background-color: #6c757d;
-            color: #adb5bd;
-        }
-    """)
+    delete_selected_btn = PushButton(FIF.DELETE, "删除选中")
+    delete_selected_btn.setFixedHeight(32)
     delete_selected_btn.setEnabled(False)  # 初始状态禁用
     button_layout.addWidget(add_btn)
     button_layout.addStretch()  # 添加弹性空间
@@ -343,33 +339,7 @@ def show_ops_dialog(parent, order_data, callbacks):
     scroll_area.setWidget(products_container)
     list_layout.addWidget(scroll_area)
     product_layout.addWidget(list_widget)
-    # 将整个产品上架信息分组放在滚动区域中
-    product_scroll_area = QScrollArea()
-    product_scroll_area.setWidgetResizable(True)
-    product_scroll_area.setMinimumHeight(400)  # 设置整个分组的最小高度
-    product_scroll_area.setMaximumHeight(500)  # 设置整个分组的最大高度
-    product_scroll_area.setStyleSheet("""
-        QScrollArea {
-            border: 1px solid #555555;
-            border-radius: 4px;
-            background-color: #2a2a2a;
-        }
-        QScrollBar:vertical {
-            background-color: #3c3c3c;
-            width: 12px;
-            border-radius: 6px;
-        }
-        QScrollBar::handle:vertical {
-            background-color: #555555;
-            border-radius: 6px;
-            min-height: 20px;
-        }
-        QScrollBar::handle:vertical:hover {
-            background-color: #666666;
-        }
-    """)
-    product_scroll_area.setWidget(product_group)
-    form_layout.addWidget(product_scroll_area)
+    form_layout.addWidget(product_card)
     # 存储产品信息的列表
     products_list = []
     selected_products = set()  # 存储选中的产品索引
@@ -550,9 +520,11 @@ def show_ops_dialog(parent, order_data, callbacks):
     # 按钮区域
     button_widget = QWidget()
     button_layout = QHBoxLayout(button_widget)
-    button_layout.setSpacing(15)
-    select_store_btn = QPushButton("选择存放路径")
-    get_material_btn = QPushButton("领取素材")
+    button_layout.setSpacing(12)
+    select_store_btn = PushButton(FIF.FOLDER, "选择存放路径")
+    select_store_btn.setFixedHeight(34)
+    get_material_btn = PrimaryPushButton(FIF.FOLDER_ADD, "领取素材")
+    get_material_btn.setFixedHeight(34)
     parent.store_dir = None
     def on_select_store():
         dir_path = QFileDialog.getExistingDirectory(dialog, "选择存放路径")

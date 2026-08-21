@@ -27,6 +27,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from qfluentwidgets import (
+    CardWidget,
+    FluentIcon as FIF,
+    PrimaryPushButton,
+    PushButton,
+)
+
 from src.core.config import get_feature_enabled
 from src.core.database import db_manager
 from src.core.notification import send_notification
@@ -164,33 +171,56 @@ def show_video_review_dialog(parent, order_data, callbacks):
     left_layout.setContentsMargins(0, 0, 0, 0)
     left_layout.setSpacing(15)
 
-    # 工单基本信息
-    basic_group = QGroupBox("工单信息")
-    basic_layout = QFormLayout(basic_group)
-    basic_layout.setSpacing(8)
-    basic_layout.addRow("工单ID:", QLabel(order_data['id']))
-    basic_layout.addRow("产线/部门:", QLabel(order_data['department']))
-    basic_layout.addRow("型号:", QLabel(order_data['model']))
-    basic_layout.addRow("名称:", QLabel(order_data['name']))
-    basic_layout.addRow("发起人:", QLabel(order_data['creator']))
-    basic_layout.addRow("当前状态:", QLabel(order_data.get('status', '')))
-    left_layout.addWidget(basic_group)
+    # 工单基本信息卡片
+    basic_card = CardWidget()
+    basic_vbox = QVBoxLayout(basic_card)
+    basic_vbox.setContentsMargins(14, 12, 14, 12)
+    basic_vbox.setSpacing(8)
 
-    # 不通过反馈原因输入
-    feedback_group = QGroupBox("退回反馈设置")
-    feedback_layout = QVBoxLayout(feedback_group)
+    basic_title = QLabel("📋 工单信息")
+    basic_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    basic_vbox.addWidget(basic_title)
+
+    basic_layout = QFormLayout()
+    basic_layout.setSpacing(8)
+    for k, v in [("工单ID:", order_data['id']), ("产线/部门:", order_data['department']),
+                 ("型号:", order_data['model']), ("名称:", order_data['name']),
+                 ("发起人:", order_data['creator']), ("当前状态:", order_data.get('status', ''))]:
+        lbl = QLabel(str(v))
+        lbl.setStyleSheet("color: #e8eaed; background: transparent;")
+        basic_layout.addRow(k, lbl)
+    basic_vbox.addLayout(basic_layout)
+    left_layout.addWidget(basic_card)
+
+    # 不通过反馈原因输入卡片
+    feedback_card = CardWidget()
+    feedback_layout = QVBoxLayout(feedback_card)
+    feedback_layout.setContentsMargins(14, 12, 14, 12)
+    feedback_layout.setSpacing(8)
+
+    fb_title = QLabel("⚠️ 退回反馈设置")
+    fb_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #ef4444; background: transparent;")
+    feedback_layout.addWidget(fb_title)
+
     reason_edit = QTextEdit()
     reason_edit.setPlaceholderText("选择“重新拍摄”时，必须在此输入退回的具体原因...")
     reason_edit.setMinimumHeight(150)
+    reason_edit.setStyleSheet("background-color: #1a1d24; color: #FFFFFF; border: 1px solid #282c37; border-radius: 6px; padding: 8px;")
     feedback_layout.addWidget(reason_edit)
-    left_layout.addWidget(feedback_group)
+    left_layout.addWidget(feedback_card)
     left_layout.addStretch()
 
     content_layout.addWidget(left_container, 1) # 左侧权重 1（配合 MaximumWidth 360）
 
-    # 右侧素材列表分组
-    material_group = QGroupBox("摄影上传的素材列表")
-    material_layout = QVBoxLayout(material_group)
+    # 中间素材列表卡片
+    material_card = CardWidget()
+    material_layout = QVBoxLayout(material_card)
+    material_layout.setContentsMargins(14, 12, 14, 12)
+    material_layout.setSpacing(10)
+
+    mat_title = QLabel("📁 摄影上传的素材列表")
+    mat_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    material_layout.addWidget(mat_title)
 
     file_table = QTableWidget()
     file_table.setColumnCount(3)
@@ -237,45 +267,21 @@ def show_video_review_dialog(parent, order_data, callbacks):
         file_table.setCellWidget(idx, 0, chk_widget)
         checkboxes.append(chk)
 
-        file_table.setItem(idx, 1, QTableWidgetItem(fname))
-        file_table.setItem(idx, 2, QTableWidgetItem(pg_name))
+        name_item = QTableWidgetItem(fname)
+        name_item.setToolTip(fpath)
+        file_table.setItem(idx, 1, name_item)
 
-    # 解决不好点击：点击表格“选择”列（第一列）整格任意空白处即可勾选
-    def on_table_cell_clicked(row, column):
-        if column == 0:
-            if row < len(checkboxes):
-                chk = checkboxes[row]
-                chk.setChecked(not chk.isChecked())
-    file_table.cellClicked.connect(on_table_cell_clicked)
+        pg_item = QTableWidgetItem(pg_name)
+        pg_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        file_table.setItem(idx, 2, pg_item)
 
-    # 新增：操作控制条（全选/取消全选）
+    # 快捷全选/反选栏
     top_bar_layout = QHBoxLayout()
-    top_bar_layout.setContentsMargins(0, 5, 0, 5)
+    select_all_btn = PushButton(FIF.CHECKBOX, "全选")
+    select_all_btn.setFixedHeight(28)
+    deselect_all_btn = PushButton(FIF.CANCEL, "全不选")
+    deselect_all_btn.setFixedHeight(28)
 
-    select_all_btn = QPushButton("全选")
-    deselect_all_btn = QPushButton("取消全选")
-
-    tool_btn_style = """
-        QPushButton {
-            background-color: #3c3c3c;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 5px 12px;
-            font-size: 13px;
-            min-width: 70px;
-        }
-        QPushButton:hover {
-            background-color: #505050;
-        }
-        QPushButton:pressed {
-            background-color: #2b2b2b;
-        }
-    """
-    select_all_btn.setStyleSheet(tool_btn_style)
-    deselect_all_btn.setStyleSheet(tool_btn_style)
-
-    # 绑定全选与取消全选事件
     def select_all_files():
         for chk in checkboxes:
             chk.setChecked(True)
@@ -301,13 +307,18 @@ def show_video_review_dialog(parent, order_data, callbacks):
             QDesktopServices.openUrl(QUrl.fromLocalFile(fpath))
     file_table.cellDoubleClicked.connect(on_file_double_clicked)
 
-    content_layout.addWidget(material_group, 2)  # 中间素材列表权重提升至 2
+    content_layout.addWidget(material_card, 2)  # 中间素材列表权重提升至 2
 
     # ── 右侧预览面板 ──
-    preview_panel = QGroupBox("文件预览")
-    preview_panel.setMinimumWidth(380)
-    preview_panel_layout = QVBoxLayout(preview_panel)
+    preview_card = CardWidget()
+    preview_card.setMinimumWidth(380)
+    preview_panel_layout = QVBoxLayout(preview_card)
+    preview_panel_layout.setContentsMargins(14, 12, 14, 12)
     preview_panel_layout.setSpacing(8)
+
+    prev_title = QLabel("👁️ 媒体快速预览")
+    prev_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #4f8ef7; background: transparent;")
+    preview_panel_layout.addWidget(prev_title)
 
     # 直接实例化通用混合预览控件
     preview_widget = VideoPreviewWidget(dialog)
@@ -323,23 +334,10 @@ def show_video_review_dialog(parent, order_data, callbacks):
     preview_panel_layout.addWidget(preview_filename_label)
 
     nav_layout = QHBoxLayout()
-    nav_btn_style = """
-        QPushButton {
-            background-color: #3c3c3c;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 4px;
-            padding: 6px 14px;
-            font-size: 13px;
-            min-width: 80px;
-        }
-        QPushButton:hover { background-color: #505050; }
-        QPushButton:disabled { background-color: #2b2b2b; color: #555555; border-color: #3a3a3a; }
-    """
-    prev_file_btn = QPushButton("▲ 上一个")
-    next_file_btn = QPushButton("▼ 下一个")
-    prev_file_btn.setStyleSheet(nav_btn_style)
-    next_file_btn.setStyleSheet(nav_btn_style)
+    prev_file_btn = PushButton(FIF.UP, "上一个")
+    prev_file_btn.setFixedHeight(30)
+    next_file_btn = PushButton(FIF.DOWN, "下一个")
+    next_file_btn.setFixedHeight(30)
     prev_file_btn.setEnabled(False)
     next_file_btn.setEnabled(False)
     nav_layout.addWidget(prev_file_btn)
@@ -374,31 +372,33 @@ def show_video_review_dialog(parent, order_data, callbacks):
     prev_file_btn.clicked.connect(on_prev_file)
     next_file_btn.clicked.connect(on_next_file)
 
-    # 点击表格行更新预览（与已有的 checkbox 点击共存）
-    original_cell_clicked = on_table_cell_clicked
+    def on_table_cell_clicked(row, column):
+        if 0 <= row < len(checkboxes):
+            chk = checkboxes[row]
+            chk.setChecked(not chk.isChecked())
+
     def on_cell_clicked_with_preview(row, column):
-        original_cell_clicked(row, column)
+        on_table_cell_clicked(row, column)
         load_preview(row)
-    file_table.cellClicked.disconnect(on_table_cell_clicked)
     file_table.cellClicked.connect(on_cell_clicked_with_preview)
 
-    content_layout.addWidget(preview_panel, 2)  # 右侧预览权重 2
+    content_layout.addWidget(preview_card, 2)  # 右侧预览权重 2
 
     main_layout.addLayout(content_layout)
 
     # 按钮区域
     button_widget = QWidget()
     button_layout = QHBoxLayout(button_widget)
-    button_layout.setSpacing(15)
+    button_layout.setSpacing(12)
 
-    pass_btn = QPushButton("审核通过")
-    pass_btn.setStyleSheet("background-color: #28a745; color: white;")
+    pass_btn = PrimaryPushButton(FIF.ACCEPT, "审核通过")
+    pass_btn.setFixedHeight(34)
 
-    reject_btn = QPushButton("重新拍摄")
-    reject_btn.setStyleSheet("background-color: #dc3545; color: white;")
+    reject_btn = PushButton(FIF.CANCEL, "重新拍摄")
+    reject_btn.setFixedHeight(34)
 
-    cancel_btn = QPushButton("取消")
-    cancel_btn.setProperty("type", "cancel")
+    cancel_btn = PushButton(FIF.CLOSE, "取消")
+    cancel_btn.setFixedHeight(34)
 
     button_layout.addWidget(pass_btn)
     button_layout.addWidget(reject_btn)
