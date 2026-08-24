@@ -52,7 +52,7 @@ def build_windows(onefile=False):
         pass  # 已在 spec 文件中设置
     subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT)
     # 生成带版本号的文件名（须与 specs/工单管理系统.spec 中 name 一致，否则提示的路径与实际产物不符）
-    exe_name = f"素材工单系统_{APP_VERSION}_pyinstaller.exe"
+    exe_name = f"WorkOrder_System_{APP_VERSION}_PyInstaller.exe"
     print(f"Windows 版本构建完成: dist/{exe_name}")
 
 def build_mac(onefile=False):

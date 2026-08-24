@@ -131,13 +131,13 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
 
     if system == "Windows":
         if is_onefile:
-            target_name = f"素材工单系统_{APP_VERSION}_单文件版.exe"
+            target_name = f"WorkOrder_System_{APP_VERSION}_Portable.exe"
         else:
-            target_name = f"素材工单系统_{APP_VERSION}.exe"
+            target_name = f"WorkOrder_System_{APP_VERSION}.exe"
     elif system == "Darwin":
-        target_name = f"素材工单系统{APP_VERSION}"
+        target_name = f"WorkOrder_System_{APP_VERSION}"
     else:
-        target_name = f"素材工单系统{APP_VERSION}.bin"
+        target_name = f"WorkOrder_System_{APP_VERSION}.bin"
 
     print(f"\n==========================================")
     print(f"开始构建: {'单文件版' if is_onefile else '绿色免安装目录版'} ({system})")
@@ -199,9 +199,8 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
 
         if system == "Windows":
             if not is_onefile:
-                # 绿色免安装目录重命名与压缩
                 raw_dist = os.path.join("dist", "main.dist")
-                final_folder = os.path.join("dist", f"素材工单系统_{APP_VERSION}_绿色免安装版")
+                final_folder = os.path.join("dist", f"WorkOrder_System_{APP_VERSION}_Standalone")
                 if os.path.exists(raw_dist):
                     if os.path.exists(final_folder):
                         shutil.rmtree(final_folder)
@@ -210,7 +209,7 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
                     if os.path.exists(".env"):
                         shutil.copy(".env", os.path.join(final_folder, ".env"))
                     # 压缩成 zip
-                    zip_path = os.path.join("dist", f"素材工单系统_{APP_VERSION}_绿色免安装版.zip")
+                    zip_path = os.path.join("dist", f"WorkOrder_System_{APP_VERSION}_Standalone.zip")
                     zip_directory(final_folder, zip_path)
             else:
                 final_exe = os.path.join("dist", target_name)

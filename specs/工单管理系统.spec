@@ -56,7 +56,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name=f'素材工单系统_{APP_VERSION}_pyinstaller',
+    name=f'WorkOrder_System_{APP_VERSION}_PyInstaller',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

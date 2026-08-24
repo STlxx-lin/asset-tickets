@@ -108,6 +108,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         python scripts/build_nuitka.py --mode=both
+        python scripts/build_script.py --onefile
 
     - name: Build macOS
       if: matrix.os == 'macos-latest'
@@ -211,3 +212,13 @@ jobs:
         artifacts: "release-assets/*"
         token: ${{ secrets.GITHUB_TOKEN }}
         allowUpdates: true
+        body: |
+          ### 📦 资产下载与安装指南
+          
+          | 发布文件 | 操作系统 | 推荐场景 | 说明 |
+          |---|---|---|---|
+          | `WorkOrder_System_${{ needs.check_version.outputs.version_tag }}_Portable.exe` | Windows | 便携拷贝 | **Nuitka 单文件版**（内置版本持久化解压缓存） |
+          | `WorkOrder_System_${{ needs.check_version.outputs.version_tag }}_Standalone.zip` | Windows | **日常推荐** | **Nuitka 绿色免安装版**（免解压直接运行，0.5秒秒开） |
+          | `WorkOrder_System_${{ needs.check_version.outputs.version_tag }}_PyInstaller.exe` | Windows | 兼容备用 | **PyInstaller 单文件版**（传统打包引擎构建） |
+          | `WorkOrder_System_${{ needs.check_version.outputs.version_tag }}.dmg` | macOS | 苹果电脑 | **macOS 原生安装镜像**（拖入应用程序即可） |
+          | `WorkOrder_System_${{ needs.check_version.outputs.version_tag }}_macOS.zip` | macOS | 苹果电脑 | **macOS 便携绿色包** |
