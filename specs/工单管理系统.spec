@@ -7,15 +7,19 @@ SPEC_FILE = globals().get('__file__')
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(SPEC_FILE))) if SPEC_FILE else os.getcwd()
 MAIN_SCRIPT = os.path.join(PROJECT_ROOT, 'main.py')
 ICON_ICO = os.path.join(PROJECT_ROOT, 'app_icon.ico')
+ICON_PNG = os.path.join(PROJECT_ROOT, 'logo-ykohqv-s3wb4i-pck6c0.png')
 sys.path.append(PROJECT_ROOT)
 from src.core.config import APP_VERSION
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-# 打包 .env（数据库密码/API Token 配置），运行时由 config._load_env_file 从解压目录读取。
-# 注意：源路径必须为绝对路径——PyInstaller 会把 datas 中的相对路径按 spec 文件所在目录解析
+# 打包 .env 与图标资源，运行时由程序从解压目录读取
 ENV_FILE = os.path.join(PROJECT_ROOT, '.env')
 DATA_FILES = [(ENV_FILE, '.')] if os.path.exists(ENV_FILE) else []
+if os.path.exists(ICON_ICO):
+    DATA_FILES.append((ICON_ICO, '.'))
+if os.path.exists(ICON_PNG):
+    DATA_FILES.append((ICON_PNG, '.'))
 DATA_FILES += collect_data_files('qfluentwidgets')
 
 HIDDEN_IMPORTS = [

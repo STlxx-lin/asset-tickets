@@ -38,6 +38,14 @@ def install_dependencies():
 def build_windows(onefile=False):
     """构建 Windows 版本"""
     print(f"正在构建 Windows 版本 (单文件: {onefile})...")
+    ico_path = os.path.join(PROJECT_ROOT, "app_icon.ico")
+    png_path = os.path.join(PROJECT_ROOT, "logo-ykohqv-s3wb4i-pck6c0.png")
+    if not os.path.exists(ico_path) and os.path.exists(png_path):
+        try:
+            from scripts.generate_icons import png_to_ico
+            png_to_ico(png_path, ico_path)
+        except Exception as e:
+            print(f"警告: 生成 ICO 图标失败: {e}")
     spec_file = os.path.join(PROJECT_ROOT, "specs", "工单管理系统.spec")
     if onefile:
         # 确保 spec 文件中设置了 onefile=True

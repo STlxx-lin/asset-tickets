@@ -52,20 +52,37 @@ def clean_path_for_rebuild(path):
         raise RuntimeError(f"清理失败: {path}, 错误: {e}") from e
 
 def build_windows_icon_ico(source_png, target_ico):
+    """确保生成并返回标准的 Windows 多尺寸 ICO 图标路径"""
+    if os.path.exists(target_ico) and os.path.getsize(target_ico) > 1000:
+        print(f"[ICON] 发现现有的 Windows 图标: {target_ico}")
+        return os.path.abspath(target_ico)
+
     if not os.path.exists(source_png):
+        print(f"[ICON 警告] 源 PNG 图片不存在: {source_png}")
         return ""
+
+    try:
+        from scripts.generate_icons import png_to_ico
+        generated = png_to_ico(source_png, target_ico)
+        if generated and os.path.exists(generated):
+            print(f"[ICON] 成功生成多尺寸 Windows 图标: {generated}")
+            return os.path.abspath(generated)
+    except Exception as e:
+        print(f"[ICON 警告] generate_icons 生成失败: {e}，尝试备用转换...")
+
     try:
         from PySide6.QtGui import QImage
         image = QImage(source_png)
-        if image.isNull():
-            return ""
-        if os.path.exists(target_ico):
-            os.remove(target_ico)
-        if image.save(target_ico, b"ICO"):
-            return target_ico
-        return ""
-    except Exception:
-        return ""
+        if not image.isNull():
+            if os.path.exists(target_ico):
+                os.remove(target_ico)
+            if image.save(target_ico):
+                print(f"[ICON] 备用方案成功生成 ICO: {target_ico}")
+                return os.path.abspath(target_ico)
+    except Exception as e:
+        print(f"[ICON 错误] ICO 生成失败: {e}")
+
+    return ""
 
 def build_macos_icon_icns(source_png, target_icns):
     if platform.system() != "Darwin":
@@ -194,6 +211,7 @@ def build():
         "--include-package=encodings",
         "--include-module=codecs",
         f"--include-data-files={icon_png}={icon_png}",
+        f"--include-data-files={icon_ico}={icon_ico}" if os.path.exists(icon_ico) else "",
         # 打包 .env（数据库密码/API Token 配置），运行时从程序目录读取
         "--include-data-files=.env=.env" if os.path.exists(".env") else "",
 
@@ -215,7 +233,8 @@ def build():
         
         if onefile_mode:
             cmd.append("--onefile")
-            cmd.append("--onefile-tempdir-spec={TEMP}/MCSWorkOrder/onefile/{PID}")
+            # 优化：采用带版本号的解压缓存目录，首次解压后后续启动直接复用，极大提升打开速度
+            cmd.append(f"--onefile-tempdir-spec={{TEMP}}/MCSWorkOrder/cache/{APP_VERSION}")
         if not debug_console:
             cmd.append("--windows-console-mode=disable")
         built_ico = build_windows_icon_ico(icon_png, icon_ico)

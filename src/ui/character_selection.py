@@ -42,8 +42,10 @@ class CharacterSelection(QWidget):
         self.setGeometry(100, 100, 640, 480)
         self.main_window = None
         self.outer_layout = QVBoxLayout(self)
+        self._is_initialized = False
         self.setup_ui()
         self.apply_styles()
+        self._is_initialized = True
 
     def get_local_ip(self):
         return db_manager.get_local_ip()
@@ -85,7 +87,8 @@ class CharacterSelection(QWidget):
         # 自动获取本机IP
         local_ip = self.get_local_ip()
         user_info = None
-        for user in db_manager.get_users():
+        users_list = db_manager.get_users()
+        for user in users_list:
             if user['ip'] == local_ip:
                 user_info = user
                 break
@@ -352,8 +355,10 @@ class CharacterSelection(QWidget):
         """)
 
     def showEvent(self, event):
-        """窗口显示时重新加载数据并刷新UI"""
+        """窗口显示时触发。初次加载跳过冗余刷新；若从主窗口注销返回则重新加载数据并刷新UI"""
         super().showEvent(event)
+        if not getattr(self, '_is_initialized', False):
+            return
         self.roles = db_manager.get_roles()
         self.departments = db_manager.get_departments()
         self.setup_ui()

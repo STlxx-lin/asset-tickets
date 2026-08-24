@@ -75,10 +75,15 @@ def show_photography_dialog(parent, order_data, callbacks):
         return get_feature_enabled('video_review_enabled')
 
 
+    photographer_combo = None
+
     def get_photographer():
-        photographer_combo = dialog.findChild(QComboBox, 'photographer_combo')
-        if photographer_combo and photographer_combo.currentText().strip():
+        nonlocal photographer_combo
+        if photographer_combo is not None:
             return photographer_combo.currentText().strip()
+        cb = dialog.findChild(FluentComboBox, 'photographer_combo') or dialog.findChild(QComboBox, 'photographer_combo')
+        if cb and cb.currentText().strip():
+            return cb.currentText().strip()
         return ""
 
     def get_upload_dir():
@@ -308,6 +313,14 @@ def show_photography_dialog(parent, order_data, callbacks):
     photographer_combo.setObjectName('photographer_combo')
     photographer_combo.setPlaceholderText("请选择摄影师")
     photographer_combo.setFixedHeight(30)
+    # 若当前登录用户匹配某位摄影师，自动预选
+    current_user_name = getattr(parent, 'user_name', '')
+    if current_user_name:
+        for idx in range(photographer_combo.count()):
+            item_text = photographer_combo.itemText(idx)
+            if item_text and (current_user_name in item_text or item_text in current_user_name):
+                photographer_combo.setCurrentIndex(idx)
+                break
     operation_layout.addRow("摄影师:", photographer_combo)
     op_vbox.addLayout(operation_layout)
     form_layout.addWidget(operation_card)
@@ -632,6 +645,10 @@ def show_photography_dialog(parent, order_data, callbacks):
             return None
         return src_files
     def on_distribute_img():
+        photographer = get_photographer()
+        if not photographer:
+            QMessageBox.warning(dialog, "提示", "请先选择摄影师")
+            return
         status = order_data.get('status')
         if status == '重新拍摄':
             QMessageBox.warning(dialog, "提示", "工单已被退回重拍，请先重新上传素材后再分发！")
@@ -705,6 +722,10 @@ def show_photography_dialog(parent, order_data, callbacks):
             update_status_func=update_status
         )
     def on_distribute_vid():
+        photographer = get_photographer()
+        if not photographer:
+            QMessageBox.warning(dialog, "提示", "请先选择摄影师")
+            return
         status = order_data.get('status')
         vr_enabled = is_video_review_enabled()
         post_approved_statuses = {
