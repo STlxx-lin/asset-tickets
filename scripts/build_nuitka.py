@@ -264,28 +264,53 @@ def build():
         build_env.pop("PYTHONPATH", None)
         subprocess.check_call(cmd, env=build_env)
         
-        # macOS 额外处理：重命名生成的 .app
+        # macOS 额外处理：查找、重命名并保障可执行权限
         if system == "Darwin":
-            default_app_name = "main.app"
             target_app_name = f"{output_name}.app"
-            
-            # 查找生成的 .app (可能是 main.app 或者其他)
+            candidate_paths = [
+                "main.app",
+                os.path.join("main.dist", "main.app"),
+                os.path.join("dist", "main.app"),
+                os.path.join("dist", "main.dist", "main.app"),
+            ]
             source_app = None
-            if os.path.exists(default_app_name):
-                source_app = default_app_name
-            else:
-                # 尝试查找当前目录下其他的 .app
-                apps = [f for f in os.listdir('.') if f.endswith('.app') and f != target_app_name]
-                if apps:
-                    source_app = apps[0]
+            for p in candidate_paths:
+                if os.path.exists(p):
+                    source_app = p
+                    break
             
-            if source_app and source_app != target_app_name:
-                print(f"检测到应用包 {source_app}，正在重命名为 {target_app_name}...")
-                if os.path.exists(target_app_name):
-                    shutil.rmtree(target_app_name)
-                os.rename(source_app, target_app_name)
+            if not source_app:
+                # 递归查找所有 .app 目录
+                for root, dirs, _ in os.walk('.'):
+                    if '/.' in root or '\\.' in root:
+                        continue
+                    for d in dirs:
+                        if d.endswith('.app') and d != target_app_name:
+                            source_app = os.path.join(root, d)
+                            break
+                    if source_app:
+                        break
+
+            if source_app:
+                print(f"检测到生成的应用包: {source_app}，正在就位到: {target_app_name} ...")
+                if os.path.abspath(source_app) != os.path.abspath(target_app_name):
+                    if os.path.exists(target_app_name):
+                        shutil.rmtree(target_app_name)
+                    shutil.move(source_app, target_app_name)
+
+                # 为 .app 内的所有二进制文件添加执行权限 (chmod +x)
+                macos_bin_dir = os.path.join(target_app_name, "Contents", "MacOS")
+                if os.path.exists(macos_bin_dir):
+                    for fname in os.listdir(macos_bin_dir):
+                        fpath = os.path.join(macos_bin_dir, fname)
+                        try:
+                            st = os.stat(fpath)
+                            os.chmod(fpath, st.st_mode | 0o111)
+                            print(f"[PERMISSION] 已设置执行权限: {fpath}")
+                        except Exception as pe:
+                            print(f"[PERMISSION 警告] 设置权限失败 ({fpath}): {pe}")
             elif not os.path.exists(target_app_name):
-                print(f"警告: 未找到生成的 .app 包 (预期: {default_app_name} 或其他)")
+                print(f"警告: 未找到生成的 .app 包")
                 
             output_display = target_app_name
         elif system == "Windows":

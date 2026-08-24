@@ -1,6 +1,6 @@
 # 配置文件
 # 版本号统一管理
-APP_VERSION = "v1.18.23"
+APP_VERSION = "v1.18.24"
 
 # ---------------------------------------------------------------------------
 # 敏感配置统一从环境变量 / .env 文件读取（不提交到代码库）
@@ -20,15 +20,24 @@ def _load_env_file():
 
     候选位置：
     1. 打包后程序所在目录（exe / .app 同目录，构建产物自带 .env 时生效）
-    2. PyInstaller onefile 解压目录（sys._MEIPASS，datas 打包的 .env 解压至此）
-    3. 项目根目录（源码运行时，src/core/config.py 上溯三级；Nuitka onefile 解压根）
-    4. 当前工作目录
+    2. macOS App Bundle 特有目录（Contents/Resources、Contents/MacOS、.app 同级目录）
+    3. PyInstaller onefile 解压目录（sys._MEIPASS，datas 打包的 .env 解压至此）
+    4. 项目根目录（源码运行时，src/core/config.py 上溯三级；Nuitka onefile 解压根）
+    5. 当前工作目录
     """
     import sys
     candidates = []
     try:
         if getattr(sys, 'frozen', False):
-            candidates.append(os.path.dirname(sys.executable))
+            exe_dir = os.path.dirname(sys.executable)
+            candidates.append(exe_dir)
+            # macOS App Bundle 适配: xxx.app/Contents/MacOS -> Resources 与 Bundle 外部同级目录
+            contents_dir = os.path.dirname(exe_dir)
+            if os.path.basename(contents_dir) == 'Contents':
+                candidates.append(os.path.join(contents_dir, 'Resources'))
+                app_bundle_dir = os.path.dirname(contents_dir)
+                candidates.append(app_bundle_dir)
+                candidates.append(os.path.dirname(app_bundle_dir))
     except Exception:
         pass
     # PyInstaller onefile：数据文件解压到 _MEIPASS 临时目录

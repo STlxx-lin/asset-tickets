@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 from src.core.database import db_manager
 from src.ui.character_selection import CharacterSelection
 
-ICON_FILES = ["app_icon.ico", "logo-ykohqv-s3wb4i-pck6c0.png"]
+ICON_FILES = ["app_icon.ico", "app_icon.icns", "logo-ykohqv-s3wb4i-pck6c0.png"]
 
 def _resolve_icon_path():
     """按优先级从打包临时目录、程序所在目录和源码根目录解析图标文件。"""
@@ -20,9 +20,16 @@ def _resolve_icon_path():
     if meipass:
         search_dirs.append(meipass)
         
-    # 2. 可执行文件所在目录（Nuitka / PyInstaller 目录模式）
+    # 2. 可执行文件所在目录（Nuitka / PyInstaller 目录模式）与 macOS App Bundle 目录
     try:
-        search_dirs.append(os.path.dirname(os.path.abspath(sys.executable)))
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        search_dirs.append(exe_dir)
+        contents_dir = os.path.dirname(exe_dir)
+        if os.path.basename(contents_dir) == 'Contents':
+            search_dirs.append(os.path.join(contents_dir, 'Resources'))
+            app_dir = os.path.dirname(contents_dir)
+            search_dirs.append(app_dir)
+            search_dirs.append(os.path.dirname(app_dir))
     except Exception:
         pass
 

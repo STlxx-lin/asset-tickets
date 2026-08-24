@@ -115,16 +115,32 @@ jobs:
       run: |
         python scripts/build_nuitka.py
         
-        # Find the generated .app bundle
-        APP_PATH=$(find . -maxdepth 1 -name "*.app" -type d | head -n 1)
-        APP_NAME=$(basename "$APP_PATH" .app)
+        # 多层级搜索并就位 .app 产物
+        APP_PATH=$(find . -name "*.app" -type d | head -n 1)
+        if [ -z "$APP_PATH" ]; then
+          echo "错误: 未找到任何 .app 产物"
+          exit 1
+        fi
         
+        # 若不在当前根目录，移动到当前根目录
+        APP_BASENAME=$(basename "$APP_PATH")
+        if [ "$APP_PATH" != "./$APP_BASENAME" ] && [ "$APP_PATH" != "$APP_BASENAME" ]; then
+          echo "移动应用包到当前目录: $APP_PATH -> ./$APP_BASENAME"
+          rm -rf "./$APP_BASENAME"
+          mv "$APP_PATH" "./$APP_BASENAME"
+          APP_PATH="./$APP_BASENAME"
+        fi
+        
+        APP_NAME=$(basename "$APP_PATH" .app)
         echo "Found app: $APP_PATH"
         echo "App Name: $APP_NAME"
         
+        # 确保 Contents/MacOS 下的文件具有可执行权限
+        chmod -R +x "$APP_PATH/Contents/MacOS" || true
+        
         # 清理扩展属性并等待文件系统/Spotlight 释放占用，避免 hdiutil 报 Resource busy
         xattr -cr "$APP_PATH" 2>/dev/null || true
-        sleep 5
+        sleep 3
         
         # Create DMG using hdiutil (standard macOS tool)，带重试机制
         for i in 1 2 3 4 5; do
@@ -132,8 +148,8 @@ jobs:
             echo "DMG 创建成功"
             break
           fi
-          echo "hdiutil 创建 DMG 失败（第 ${i} 次），等待 10 秒后重试..."
-          sleep 10
+          echo "hdiutil 创建 DMG 失败（第 ${i} 次），等待 5 秒后重试..."
+          sleep 5
           if [ "$i" -eq 5 ]; then
             echo "hdiutil 重试 5 次仍失败，退出构建"
             exit 1
@@ -141,7 +157,6 @@ jobs:
         done
         
         # Zip the .app for alternative distribution
-        # Use -r for recursive and -y to preserve symlinks (important for macOS apps)
         zip -r -y "$APP_NAME.zip" "$APP_PATH"
 
     - name: Upload Artifacts (Windows)
