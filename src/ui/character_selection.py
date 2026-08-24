@@ -1,5 +1,6 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QGridLayout,
@@ -18,6 +19,7 @@ import hmac
 from qfluentwidgets import (
     CardWidget,
     FluentIcon as FIF,
+    IndeterminateProgressBar,
     LineEdit as FluentLineEdit,
     PrimaryPushButton,
     PushButton,
@@ -32,13 +34,18 @@ from src.core.database import db_manager
 
 
 class CharacterSelection(QWidget):
-    def __init__(self):
+    def __init__(self, initial_data: dict | None = None):
         super().__init__()
         setTheme(Theme.DARK)
         setThemeColor('#4f8ef7')
         self.setWindowTitle("角色选择 - 工单管理系统")
-        self.roles = db_manager.get_roles()
-        self.departments = db_manager.get_departments()
+        self.initial_data = initial_data or {}
+        if self.initial_data and self.initial_data.get('roles'):
+            self.roles = self.initial_data['roles']
+            self.departments = self.initial_data.get('departments', [])
+        else:
+            self.roles = db_manager.get_roles()
+            self.departments = db_manager.get_departments()
         self.setGeometry(100, 100, 640, 480)
         self.main_window = None
         self.outer_layout = QVBoxLayout(self)
@@ -84,12 +91,17 @@ class CharacterSelection(QWidget):
         divider.setStyleSheet("background-color: #282c37; max-height: 1px; margin: 4px 0;")
         self.main_layout.addWidget(divider)
 
-        # 自动获取本机IP
-        local_ip = self.get_local_ip()
+        # 获取本机IP与匹配用户（优先使用预加载好的数据）
+        if self.initial_data and self.initial_data.get('local_ip'):
+            local_ip = self.initial_data['local_ip']
+            users_list = self.initial_data.get('users') or db_manager.get_users()
+        else:
+            local_ip = self.get_local_ip()
+            users_list = db_manager.get_users()
+
         user_info = None
-        users_list = db_manager.get_users()
         for user in users_list:
-            if user['ip'] == local_ip:
+            if user.get('ip') == local_ip:
                 user_info = user
                 break
 
@@ -204,10 +216,61 @@ class CharacterSelection(QWidget):
         footer_layout.addWidget(ver_label)
         self.main_layout.addLayout(footer_layout)
 
+        # 保存 card 引用并构建半透明加载蒙层
+        self.card = card
+        self._init_loading_overlay(card)
+
         center_h.addWidget(card)
         center_h.addStretch()
         self.outer_layout.addLayout(center_h)
         self.outer_layout.addStretch()
+
+    def _init_loading_overlay(self, card_parent):
+        """初始化覆盖在卡片上方的半透明加载蒙层与流光进度条"""
+        self.loading_overlay = QWidget(card_parent)
+        self.loading_overlay.setObjectName("loading_overlay")
+        self.loading_overlay.setStyleSheet("""
+            QWidget#loading_overlay {
+                background-color: rgba(20, 23, 29, 0.95);
+                border: 1px solid #303646;
+                border-radius: 14px;
+            }
+        """)
+        overlay_layout = QVBoxLayout(self.loading_overlay)
+        overlay_layout.setContentsMargins(40, 40, 40, 40)
+        overlay_layout.setSpacing(18)
+        overlay_layout.addStretch()
+
+        self.overlay_label = QLabel("正在进入工作台，请稍候...")
+        self.overlay_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #ffffff; background: transparent;")
+        self.overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        overlay_layout.addWidget(self.overlay_label)
+
+        self.overlay_bar = IndeterminateProgressBar(self.loading_overlay)
+        self.overlay_bar.setFixedHeight(4)
+        overlay_layout.addWidget(self.overlay_bar)
+
+        overlay_layout.addStretch()
+        self.loading_overlay.hide()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'loading_overlay') and hasattr(self, 'card') and self.card:
+            self.loading_overlay.setGeometry(0, 0, self.card.width(), self.card.height())
+
+    def show_loading(self, text: str = "正在进入工作台，请稍候..."):
+        """激活加载蒙层与流光动画"""
+        if hasattr(self, 'loading_overlay') and hasattr(self, 'card') and self.card:
+            self.overlay_label.setText(text)
+            self.loading_overlay.setGeometry(0, 0, self.card.width(), self.card.height())
+            self.loading_overlay.raise_()
+            self.loading_overlay.show()
+            QApplication.processEvents()
+
+    def hide_loading(self):
+        """解除加载蒙层"""
+        if hasattr(self, 'loading_overlay'):
+            self.loading_overlay.hide()
 
     def admin_login(self):
         """管理员登录"""
@@ -270,20 +333,39 @@ class CharacterSelection(QWidget):
             return
         if hmac.compare_digest(password.encode('utf-8'), ADMIN_PASSWORD.encode('utf-8')):
             dialog.accept()
-            try:
-                # 以管理员身份进入主窗口
-                from src.ui.main_window import MainWindow
-                depts = getattr(self, 'departments', None) or db_manager.get_departments()
-                self.main_window = MainWindow("管理员", depts, is_admin=True, logout_callback=self.show, user_name="管理员", roles=["管理员"])
-                self.main_window.show()
-                self.hide()
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                QMessageBox.critical(self, "启动失败", f"进入管理员主窗口失败：{e}")
+            depts = getattr(self, 'departments', None) or db_manager.get_departments()
+            self.show_loading("正在以 [管理员] 身份进入工作台...")
+            QTimer.singleShot(30, lambda: self._do_launch_main("管理员", depts, True, "管理员", ["管理员"]))
         else:
             QMessageBox.warning(dialog, "错误", "密码错误！")
         
+    def _do_launch_main(self, role, departments, is_admin, user_name, roles):
+        """统一异步加载并展示主工作台"""
+        try:
+            from src.ui.main_window import MainWindow
+            self.main_window = MainWindow(
+                role,
+                departments,
+                is_admin=is_admin,
+                logout_callback=self._on_logout,
+                user_name=user_name,
+                roles=roles
+            )
+            self.main_window.show()
+            self.hide()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.hide_loading()
+            QMessageBox.critical(self, "启动失败", f"进入主窗口失败：{e}")
+        finally:
+            self.hide_loading()
+
+    def _on_logout(self):
+        """从主窗口注销返回"""
+        self.hide_loading()
+        self.show()
+
     def clear_layout(self, layout):
         if layout is not None:
             while layout.count():
@@ -388,8 +470,6 @@ class CharacterSelection(QWidget):
             selected_roles = ['视频后期审核', '美工后期审批']
         else:
             selected_roles = [role] if role else []
-        from src.ui.main_window import MainWindow
-        # 传递选中角色和所有部门
-        self.main_window = MainWindow(role, self.user_departments, is_admin=False, logout_callback=self.show, user_name=user_info['name'], roles=selected_roles)
-        self.main_window.show()
-        self.hide()
+
+        self.show_loading(f"正在以 [{role}] 身份进入工作台...")
+        QTimer.singleShot(30, lambda: self._do_launch_main(role, self.user_departments, False, user_info['name'], selected_roles))

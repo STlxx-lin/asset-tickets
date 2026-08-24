@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from src.core.database import db_manager
 from src.ui.character_selection import CharacterSelection
+from src.ui.splash_screen import SplashScreen, StartupLoaderWorker
 
 ICON_FILES = ["app_icon.ico", "app_icon.icns", "logo-ykohqv-s3wb4i-pck6c0.png"]
 
@@ -67,18 +68,39 @@ def main():
     app.aboutToQuit.connect(db_manager.disconnect)
     
     icon_path = _resolve_icon_path()
-    if icon_path:
-        app_icon = QIcon(icon_path)
-        app.setWindowIcon(app_icon)
-    else:
-        app_icon = None
-
-    window = CharacterSelection()
+    app_icon = QIcon(icon_path) if icon_path else None
     if app_icon:
-        window.setWindowIcon(app_icon)
-    window.show()
+        app.setWindowIcon(app_icon)
+
+    # 1. 秒级展示 Fluent 启动闪屏
+    splash = SplashScreen(icon_path=icon_path)
+    splash.show()
+    app.processEvents()
+
+    # 2. 启动后台异步数据加载线程
+    loader_worker = StartupLoaderWorker()
+    main_window_holder = {}
+
+    def on_progress(val: int, msg: str):
+        splash.set_progress(val, msg)
+
+    def on_loaded(loaded_data: dict):
+        # 数据就绪后创建并显示角色选择主界面
+        window = CharacterSelection(initial_data=loaded_data)
+        if app_icon:
+            window.setWindowIcon(app_icon)
+        window.show()
+        main_window_holder['window'] = window
+        # 平滑关闭闪屏
+        splash.finish()
+
+    loader_worker.progress_changed.connect(on_progress)
+    loader_worker.finished_loading.connect(on_loaded)
+    loader_worker.start()
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()
+
 

@@ -1,42 +1,33 @@
+import argparse
 import os
 import platform
 import shutil
 import subprocess
 import sys
 import time
+import zipfile
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.core.config import APP_VERSION
 
 
 def remove_build_artifacts():
-    """
-    尝试清理 Nuitka 生成的构建目录，带有重试机制以解决文件锁定问题
-    """
+    """尝试清理 Nuitka 生成的临时构建中间目录"""
     dirs_to_remove = [
         "main.build",
         "main.onefile-build",
         os.path.join("dist", "main.build"),
         os.path.join("dist", "main.onefile-build"),
     ]
-    
     for d in dirs_to_remove:
         if os.path.exists(d):
-            print(f"正在清理目录: {d} ...")
-            # 简单的重试机制
-            max_retries = 5
-            for i in range(max_retries):
+            for _ in range(3):
                 try:
                     shutil.rmtree(d)
-                    print(f"清理成功: {d}")
                     break
-                except Exception as e:
-                    if i < max_retries - 1:
-                        print(f"清理失败 ({e})，等待 2 秒后重试 ({i+1}/{max_retries})...")
-                        time.sleep(2)
-                    else:
-                        print(f"警告: 无法清理目录 {d}: {e}")
-                        print("您可以稍后手动删除这些目录。")
+                except Exception:
+                    time.sleep(1)
+
 
 def clean_path_for_rebuild(path):
     if not os.path.exists(path):
@@ -47,28 +38,25 @@ def clean_path_for_rebuild(path):
             shutil.rmtree(path)
         else:
             os.remove(path)
-        print(f"清理成功: {path}")
     except Exception as e:
-        raise RuntimeError(f"清理失败: {path}, 错误: {e}") from e
+        print(f"清理警告: {path}, 错误: {e}")
+
 
 def build_windows_icon_ico(source_png, target_ico):
     """确保生成并返回标准的 Windows 多尺寸 ICO 图标路径"""
     if os.path.exists(target_ico) and os.path.getsize(target_ico) > 1000:
-        print(f"[ICON] 发现现有的 Windows 图标: {target_ico}")
         return os.path.abspath(target_ico)
 
     if not os.path.exists(source_png):
-        print(f"[ICON 警告] 源 PNG 图片不存在: {source_png}")
         return ""
 
     try:
         from scripts.generate_icons import png_to_ico
         generated = png_to_ico(source_png, target_ico)
         if generated and os.path.exists(generated):
-            print(f"[ICON] 成功生成多尺寸 Windows 图标: {generated}")
             return os.path.abspath(generated)
-    except Exception as e:
-        print(f"[ICON 警告] generate_icons 生成失败: {e}，尝试备用转换...")
+    except Exception:
+        pass
 
     try:
         from PySide6.QtGui import QImage
@@ -77,12 +65,12 @@ def build_windows_icon_ico(source_png, target_ico):
             if os.path.exists(target_ico):
                 os.remove(target_ico)
             if image.save(target_ico):
-                print(f"[ICON] 备用方案成功生成 ICO: {target_ico}")
                 return os.path.abspath(target_ico)
-    except Exception as e:
-        print(f"[ICON 错误] ICO 生成失败: {e}")
+    except Exception:
+        pass
 
     return ""
+
 
 def build_macos_icon_icns(source_png, target_icns):
     if platform.system() != "Darwin":
@@ -100,22 +88,16 @@ def build_macos_icon_icns(source_png, target_icns):
         for size in sizes:
             subprocess.run(
                 ["sips", "-z", str(size), str(size), source_png, "--out", os.path.join(iconset_dir, f"icon_{size}x{size}.png")],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             retina_size = size * 2
             subprocess.run(
                 ["sips", "-z", str(retina_size), str(retina_size), source_png, "--out", os.path.join(iconset_dir, f"icon_{size}x{size}@2x.png")],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
         subprocess.run(
             ["iconutil", "-c", "icns", iconset_dir, "-o", target_icns],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
         return target_icns if os.path.exists(target_icns) else ""
     except Exception:
@@ -124,81 +106,50 @@ def build_macos_icon_icns(source_png, target_icns):
         if os.path.exists(iconset_dir):
             shutil.rmtree(iconset_dir, ignore_errors=True)
 
-def build():
-    """
-    使用 Nuitka 进行打包，生成更小、更快的可执行文件。
-    支持 Windows 和 macOS。
-    """
+
+def zip_directory(dir_path, zip_path):
+    """将目录打包为 zip 文件"""
+    print(f"正在压缩生成绿色免安装包: {zip_path} ...")
+    base_dir_name = os.path.basename(dir_path)
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(dir_path):
+            for f in files:
+                full_path = os.path.join(root, f)
+                rel_path = os.path.relpath(full_path, os.path.dirname(dir_path))
+                zf.write(full_path, rel_path)
+    print(f"绿色免安装包生成完成: {zip_path}")
+
+
+def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
+    system = platform.system()
     main_script = "main.py"
     icon_png = "logo-ykohqv-s3wb4i-pck6c0.png"
     icon_ico = "app_icon.ico"
     icon_icns = "app_icon.icns"
-    clean_path_for_rebuild("dist")
-    clean_path_for_rebuild("main.build")
-    clean_path_for_rebuild("main.onefile-build")
-    
-    # 检测操作系统
-    system = platform.system()
-    print(f"检测到操作系统: {system}")
-    
+
+    os.makedirs("dist", exist_ok=True)
+
     if system == "Windows":
-        output_name = f"素材工单系统_{APP_VERSION}_nuitka.exe"
-    elif system == "Darwin": # macOS
-        output_name = f"素材工单系统{APP_VERSION}"
+        if is_onefile:
+            target_name = f"素材工单系统_{APP_VERSION}_单文件版.exe"
+        else:
+            target_name = f"素材工单系统_{APP_VERSION}.exe"
+    elif system == "Darwin":
+        target_name = f"素材工单系统{APP_VERSION}"
     else:
-        output_name = f"素材工单系统{APP_VERSION}.bin"
+        target_name = f"素材工单系统{APP_VERSION}.bin"
 
-    python_exe = sys.executable
-    onefile_mode = os.environ.get("NUITKA_ONEFILE", "1") == "1"# 生成单文件可执行文件
-    debug_console = os.environ.get("NUITKA_DEBUG_CONSOLE", "0") == "1" # 调试模式下保持控制台可见
-    pythonhome_env = os.environ.get("PYTHONHOME")
-    pythonpath_env = os.environ.get("PYTHONPATH")
+    print(f"\n==========================================")
+    print(f"开始构建: {'单文件版' if is_onefile else '绿色免安装目录版'} ({system})")
+    print(f"==========================================")
 
-    # Windows 特定环境检测
-    if system == "Windows":
-        if "WindowsApps" in python_exe:
-            print("警告: 检测到正在使用 Windows Store 版 Python，Nuitka 不支持该版本。")
-            # 尝试寻找官方 Python 安装
-            local_app_data = os.environ.get('LOCALAPPDATA', '')
-            possible_paths = [
-                os.path.join(local_app_data, r"Programs\Python\Python312\python.exe"),
-                os.path.join(local_app_data, r"Programs\Python\Python311\python.exe"),
-                r"C:\Program Files\Python312\python.exe",
-                r"C:\Program Files\Python311\python.exe",
-            ]
-            
-            found_good_python = False
-            for path in possible_paths:
-                if os.path.exists(path):
-                    print(f"自动切换到官方 Python: {path}")
-                    python_exe = path
-                    found_good_python = True
-                    break
-            
-            if not found_good_python:
-                print("错误: 未找到官方 Python 安装 (非 Windows Store 版)。请安装官方 Python 并确保已安装 Nuitka。")
-                sys.exit(1)
-    
-    print(f"开始使用 Nuitka 打包 {main_script}...")
-    if pythonhome_env:
-        print(f"警告: 当前环境变量 PYTHONHOME={pythonhome_env}，已启用隔离模式避免影响运行。")
-    if pythonpath_env:
-        print(f"警告: 当前环境变量 PYTHONPATH={pythonpath_env}，已启用隔离模式避免影响运行。")
-    # 基础构建命令
     cmd = [
         python_exe, "-m", "nuitka",
-        # 编译模式
-        "--standalone",      # 独立运行模式
-        
-        # 自动下载依赖 (如 MinGW64/ccache)
+        "--standalone",
         "--assume-yes-for-downloads",
         "--python-flag=isolated",
-        
-        # 插件支持
-        "--enable-plugin=pyside6", # 自动检测并包含 PySide6 依赖
+        "--enable-plugin=pyside6",
         "--include-qt-plugins=platforms,styles,imageformats",
-        
-        # 显式包含模块
         "--include-package=packaging",
         "--include-package=qfluentwidgets",
         "--include-package-data=qfluentwidgets",
@@ -212,28 +163,16 @@ def build():
         "--include-module=codecs",
         f"--include-data-files={icon_png}={icon_png}",
         f"--include-data-files={icon_ico}={icon_ico}" if os.path.exists(icon_ico) else "",
-        # 打包 .env（数据库密码/API Token 配置），运行时从程序目录读取
         "--include-data-files=.env=.env" if os.path.exists(".env") else "",
-
-        # 优化选项
-        "--lto=no",          # 链接时间优化 (yes=更小但慢, no=快)
+        "--lto=no",
     ]
-    # 移除空参数（.env 不存在时）
     cmd = [c for c in cmd if c]
 
-    # 平台特定选项
     if system == "Windows":
-        cmd.append(f"--output-filename={output_name}") # 输出文件名
-        
-        # 强制指定输出目录为 dist
-        dist_dir = "dist"
-        if not os.path.exists(dist_dir):
-            os.makedirs(dist_dir)
-        cmd.append(f"--output-dir={dist_dir}")
-        
-        if onefile_mode:
+        cmd.append(f"--output-filename={target_name}")
+        cmd.append("--output-dir=dist")
+        if is_onefile:
             cmd.append("--onefile")
-            # 优化：采用带版本号的解压缓存目录，首次解压后后续启动直接复用，极大提升打开速度
             cmd.append(f"--onefile-tempdir-spec={{TEMP}}/MCSWorkOrder/cache/{APP_VERSION}")
         if not debug_console:
             cmd.append("--windows-console-mode=disable")
@@ -242,31 +181,43 @@ def build():
             cmd.append(f"--windows-icon-from-ico={built_ico}")
     elif system == "Darwin":
         built_icns = build_macos_icon_icns(icon_png, icon_icns)
-        cmd.append("--macos-create-app-bundle") # 生成 .app 包
+        cmd.append("--macos-create-app-bundle")
         if built_icns:
             cmd.append(f"--macos-app-icon={built_icns}")
-        # 不指定 app-name，让其默认为 main.app，然后手动重命名
-        # 避免 Nuitka 对非 ASCII 字符名称的潜在处理问题
-        # cmd.append(f"--macos-app-name={output_name}") 
-        # macOS 下不使用 --onefile，因为 app bundle 本身就是个文件夹结构
     else:
         cmd.append("--onefile")
-        cmd.append(f"--output-filename={output_name}")
+        cmd.append(f"--output-filename={target_name}")
 
-    # 添加入口脚本
     cmd.append(main_script)
-    
-    print("执行命令:", " ".join(cmd))
-    
+
+    build_env = os.environ.copy()
+    build_env.pop("PYTHONHOME", None)
+    build_env.pop("PYTHONPATH", None)
+
     try:
-        build_env = os.environ.copy()
-        build_env.pop("PYTHONHOME", None)
-        build_env.pop("PYTHONPATH", None)
         subprocess.check_call(cmd, env=build_env)
-        
-        # macOS 额外处理：查找、重命名并保障可执行权限
-        if system == "Darwin":
-            target_app_name = f"{output_name}.app"
+
+        if system == "Windows":
+            if not is_onefile:
+                # 绿色免安装目录重命名与压缩
+                raw_dist = os.path.join("dist", "main.dist")
+                final_folder = os.path.join("dist", f"素材工单系统_{APP_VERSION}_绿色免安装版")
+                if os.path.exists(raw_dist):
+                    if os.path.exists(final_folder):
+                        shutil.rmtree(final_folder)
+                    shutil.move(raw_dist, final_folder)
+                    # 将 .env 拷贝一份进绿色文件夹
+                    if os.path.exists(".env"):
+                        shutil.copy(".env", os.path.join(final_folder, ".env"))
+                    # 压缩成 zip
+                    zip_path = os.path.join("dist", f"素材工单系统_{APP_VERSION}_绿色免安装版.zip")
+                    zip_directory(final_folder, zip_path)
+            else:
+                final_exe = os.path.join("dist", target_name)
+                print(f"\n单文件版构建完成: {final_exe}")
+
+        elif system == "Darwin":
+            target_app_name = f"{target_name}.app"
             candidate_paths = [
                 "main.app",
                 os.path.join("main.dist", "main.app"),
@@ -278,9 +229,8 @@ def build():
                 if os.path.exists(p):
                     source_app = p
                     break
-            
+
             if not source_app:
-                # 递归查找所有 .app 目录
                 for root, dirs, _ in os.walk('.'):
                     if '/.' in root or '\\.' in root:
                         continue
@@ -292,13 +242,11 @@ def build():
                         break
 
             if source_app:
-                print(f"检测到生成的应用包: {source_app}，正在就位到: {target_app_name} ...")
                 if os.path.abspath(source_app) != os.path.abspath(target_app_name):
                     if os.path.exists(target_app_name):
                         shutil.rmtree(target_app_name)
                     shutil.move(source_app, target_app_name)
 
-                # 为 .app 内的所有二进制文件添加执行权限 (chmod +x)
                 macos_bin_dir = os.path.join(target_app_name, "Contents", "MacOS")
                 if os.path.exists(macos_bin_dir):
                     for fname in os.listdir(macos_bin_dir):
@@ -306,33 +254,59 @@ def build():
                         try:
                             st = os.stat(fpath)
                             os.chmod(fpath, st.st_mode | 0o111)
-                            print(f"[PERMISSION] 已设置执行权限: {fpath}")
-                        except Exception as pe:
-                            print(f"[PERMISSION 警告] 设置权限失败 ({fpath}): {pe}")
-            elif not os.path.exists(target_app_name):
-                print(f"警告: 未找到生成的 .app 包")
-                
-            output_display = target_app_name
-        elif system == "Windows":
-            output_display = os.path.join("dist", output_name) if onefile_mode else os.path.join("dist", "main.dist", output_name)
-        else:
-            output_display = output_name
+                        except Exception:
+                            pass
+                print(f"\nmacOS 应用包构建完成: {target_app_name}")
 
-        print(f"\n打包成功！文件位于: {output_display}")
-        if system == "Windows":
-            print(f"打包模式: {'onefile' if onefile_mode else 'standalone'}")
-            print(f"控制台模式: {'开启' if debug_console else '关闭'}")
-            if not onefile_mode:
-                print("提示: 若需单文件，请先设置环境变量 NUITKA_ONEFILE=1 后再执行打包。")
-            if not debug_console:
-                print("提示: 若需查看启动报错，请先设置环境变量 NUITKA_DEBUG_CONSOLE=1 后再执行打包。")
-            print("提示: Nuitka 首次运行可能需要下载 C 编译器 (MinGW64)，请耐心等待。")
-    except subprocess.CalledProcessError as e:
-        print(f"\n打包失败，错误代码: {e.returncode}")
-        sys.exit(1)
     finally:
-        # 手动清理构建目录
         remove_build_artifacts()
+
+
+def build():
+    parser = argparse.ArgumentParser(description="工单系统 Nuitka 高性能打包脚本")
+    parser.add_argument(
+        "--mode",
+        choices=["both", "standalone", "onefile"],
+        default=os.environ.get("BUILD_MODE", "both"),
+        help="打包模式：standalone(绿色免安装秒开版), onefile(单文件版), both(同时构建两者)"
+    )
+    parser.add_argument("--debug", action="store_true", help="开启调试控制台")
+    args = parser.parse_args()
+
+    system = platform.system()
+    python_exe = sys.executable
+
+    if system == "Windows":
+        if "WindowsApps" in python_exe:
+            local_app_data = os.environ.get('LOCALAPPDATA', '')
+            possible_paths = [
+                os.path.join(local_app_data, r"Programs\Python\Python312\python.exe"),
+                os.path.join(local_app_data, r"Programs\Python\Python311\python.exe"),
+                r"C:\Program Files\Python312\python.exe",
+                r"C:\Program Files\Python311\python.exe",
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    python_exe = path
+                    break
+
+    debug_console = args.debug or os.environ.get("NUITKA_DEBUG_CONSOLE", "0") == "1"
+
+    if system == "Windows":
+        if args.mode == "both":
+            run_single_build(python_exe, is_onefile=False, debug_console=debug_console)
+            run_single_build(python_exe, is_onefile=True, debug_console=debug_console)
+        elif args.mode == "standalone":
+            run_single_build(python_exe, is_onefile=False, debug_console=debug_console)
+        else:
+            run_single_build(python_exe, is_onefile=True, debug_console=debug_console)
+    else:
+        run_single_build(python_exe, is_onefile=False, debug_console=debug_console)
+
+    print("\n==========================================")
+    print(f"🎉 全部打包完成！产物已存放在 dist/ 目录中。")
+    print("==========================================")
+
 
 if __name__ == "__main__":
     build()
