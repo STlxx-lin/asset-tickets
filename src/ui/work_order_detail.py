@@ -1,7 +1,7 @@
 import html
 import os
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -342,9 +342,9 @@ class WorkOrderDetailDialog(QDialog):
             dept = self.order_data.get('department', '')
             dept_path = to_local_path(os.path.join(RAW_ROOT, dept)) if dept else to_local_path(RAW_ROOT)
             if dept_path and os.path.exists(dept_path):
-                os.startfile(dept_path)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(dept_path))
             elif to_local_path(RAW_ROOT) and os.path.exists(to_local_path(RAW_ROOT)):
-                os.startfile(to_local_path(RAW_ROOT))
+                QDesktopServices.openUrl(QUrl.fromLocalFile(to_local_path(RAW_ROOT)))
             else:
                 InfoBar.warning("提示", f"素材根目录不存在: {dept_path}", orient=Qt.Orientation.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=2500, parent=self)
         open_dir_btn.clicked.connect(on_open_dir)

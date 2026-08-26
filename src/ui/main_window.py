@@ -3860,9 +3860,9 @@ class MainWindow(QMainWindow):
             dept = order_data.get('department', '')
             dept_path = to_local_path(os.path.join(RAW_ROOT, dept)) if dept else to_local_path(RAW_ROOT)
             if dept_path and os.path.exists(dept_path):
-                os.startfile(dept_path)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(dept_path))
             elif to_local_path(RAW_ROOT) and os.path.exists(to_local_path(RAW_ROOT)):
-                os.startfile(to_local_path(RAW_ROOT))
+                QDesktopServices.openUrl(QUrl.fromLocalFile(to_local_path(RAW_ROOT)))
             else:
                 self.show_warning_tip("提示", f"素材根目录不存在: {dept_path}")
         open_dir_action.triggered.connect(on_open_dir)
