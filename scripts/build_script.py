@@ -55,59 +55,67 @@ def build_windows(onefile=False):
     exe_name = f"WorkOrder_System_{APP_VERSION}_PyInstaller.exe"
     print(f"Windows 版本构建完成: dist/{exe_name}")
 
-def build_mac(onefile=False):
-    """构建 macOS 版本，同时生成DMG安装包"""
-    print(f"正在构建 macOS 版本 (单文件: {onefile})...")
+def build_mac(onefile=False, debug=None):
+    """构建 macOS 版本（默认自动构建标准版与控制台调试版两种产物，并分别生成 DMG 安装包）"""
     spec_file = os.path.join(PROJECT_ROOT, "specs", "工单管理系统_mac.spec")
-    # 确保在spec文件中设置了正确的onefile参数
-    # 这里我们已经在spec文件中直接设置了one_file=True
-    # 执行打包命令
-    subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT)
     
-    # 生成带版本号的文件名（须与 specs/工单管理系统_mac.spec 中 name 一致，否则 DMG 步骤会因源目录不存在而失败）
-    if onefile:
-        exe_name = f"工单管理系统{APP_VERSION}_mac"
-        print(f"macOS 单文件版本构建完成: dist/{exe_name}")
+    # 根据参数决定构建单版本还是双版本
+    if debug is True:
+        build_targets = [("控制台调试版", "1", f"工单管理系统{APP_VERSION}_mac_debug", f"素材工单系统{APP_VERSION}_Debug_mac")]
+    elif debug is False:
+        build_targets = [("标准版", "0", f"工单管理系统{APP_VERSION}_mac", f"素材工单系统{APP_VERSION}_mac")]
     else:
-        app_name = f"工单管理系统{APP_VERSION}_mac.app"
-        print(f"macOS App版本构建完成: dist/{app_name}")
-    
-    # 生成DMG安装包
-    if platform.system() == "Darwin":  # 确保在macOS系统上运行
-        print("正在生成DMG安装包...")
-        dmg_name = f"素材工单系统{APP_VERSION}_mac.dmg"
-        app_path = os.path.join("dist", f"工单管理系统{APP_VERSION}_mac.app")
-        dmg_path = os.path.join("dist", dmg_name)
+        build_targets = [
+            ("标准版", "0", f"工单管理系统{APP_VERSION}_mac", f"素材工单系统{APP_VERSION}_mac"),
+            ("控制台调试版", "1", f"工单管理系统{APP_VERSION}_mac_debug", f"素材工单系统{APP_VERSION}_Debug_mac"),
+        ]
+
+    for label, console_flag, base_name, dmg_prefix in build_targets:
+        print(f"\n==========================================")
+        print(f"正在构建 macOS {label} (单文件: {onefile})...")
+        print(f"==========================================")
         
-        # 使用hdiutil（macOS系统自带工具）创建DMG文件
-        # 步骤1: 创建临时目录
-        temp_dir = os.path.join("dist", "temp_dmg")
-        # 若上次运行被中断残留临时目录，先清理，避免 copytree 目标已存在而失败
-        if os.path.exists(temp_dir):
-            import shutil
-            shutil.rmtree(temp_dir)
-        os.makedirs(temp_dir, exist_ok=True)
+        build_env = os.environ.copy()
+        build_env["BUILD_CONSOLE"] = console_flag
+        subprocess.run([sys.executable, "-m", "PyInstaller", spec_file], check=True, cwd=PROJECT_ROOT, env=build_env)
         
-        try:
-            # 步骤2: 将App复制到临时目录
-            import shutil
-            shutil.copytree(app_path, os.path.join(temp_dir, f"工单管理系统{APP_VERSION}_mac.app"))
+        app_name = f"{base_name}.app"
+        app_path = os.path.join("dist", app_name)
+        print(f"macOS {label} 应用包构建完成: {app_path}")
+        
+        # 生成 DMG 安装包
+        if platform.system() == "Darwin":
+            print(f"正在生成 {label} 的 DMG 安装包...")
+            dmg_name = f"{dmg_prefix}.dmg"
+            dmg_path = os.path.join("dist", dmg_name)
             
-            # 步骤3: 添加Applications链接（macOS安装惯例）
-            applications_link = os.path.join(temp_dir, "Applications")
-            subprocess.run(["ln", "-s", "/Applications", applications_link], check=True)
-            
-            # 步骤4: 创建DMG文件
-            subprocess.run([
-                "hdiutil", "create", "-volname", f"素材工单系统{APP_VERSION}", 
-                "-srcfolder", temp_dir, "-ov", "-format", "UDZO", dmg_path
-            ], check=True)
-            
-            print(f"macOS DMG安装包构建完成: {dmg_path}")
-        finally:
-            # 清理临时目录
+            temp_dir = os.path.join("dist", f"temp_dmg_{console_flag}")
             if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            try:
+                # 复制 App 到临时目录
+                shutil.copytree(app_path, os.path.join(temp_dir, app_name), symlinks=True)
+                
+                # 添加 Applications 软链接
+                applications_link = os.path.join(temp_dir, "Applications")
+                try:
+                    subprocess.run(["ln", "-s", "/Applications", applications_link], check=True)
+                except Exception:
+                    pass
+                
+                # 创建 DMG 文件
+                vol_name = f"素材工单系统{APP_VERSION}" + ("(调试版)" if console_flag == "1" else "")
+                subprocess.run([
+                    "hdiutil", "create", "-volname", vol_name, 
+                    "-srcfolder", temp_dir, "-ov", "-format", "UDZO", dmg_path
+                ], check=True)
+                
+                print(f"macOS {label} DMG 安装包构建完成: {dmg_path}")
+            finally:
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
 
 def increment_version():
     """读取 config.py，增加版本号，并保存"""
@@ -188,6 +196,8 @@ def release_version(skip_push=False):
 def main():
     parser = argparse.ArgumentParser(description="工单管理系统打包脚本")
     parser.add_argument("--onefile", action="store_true", help="打包成单个可执行文件")
+    parser.add_argument("--debug", action="store_true", help="仅构建带控制台的调试版本")
+    parser.add_argument("--standard", action="store_true", help="仅构建不带控制台的标准版本")
     parser.add_argument("--release", action="store_true", help="发布新版本(打标签并推送)")
     parser.add_argument("--release-local", action="store_true", help="仅本地发布(提交+打标签，不推送)")
     args = parser.parse_args()
@@ -204,6 +214,9 @@ def main():
     print(f"当前平台: {current_platform}")
     print(f"单文件模式: {args.onefile}")
     
+    # 调试选项：True 为仅调试版，False 为仅标准版，None 为默认双版本
+    debug_mode = True if args.debug else (False if args.standard else None)
+    
     # 安装依赖
     install_dependencies()
     
@@ -211,22 +224,18 @@ def main():
         build_windows(args.onefile)
         print("\n=== 构建完成 ===")
         if args.onefile:
-            print(f"Windows 可执行文件: dist/素材工单系统{APP_VERSION}.exe")
+            print(f"Windows 可执行文件: dist/WorkOrder_System_{APP_VERSION}_PyInstaller.exe")
         else:
-            print(f"Windows 可执行文件目录: dist/素材工单系统{APP_VERSION}/")
+            print(f"Windows 可执行文件目录: dist/WorkOrder_System_{APP_VERSION}_PyInstaller/")
         print("\n如需构建 macOS 版本，请在 macOS 系统上运行:")
-        print("python build_script.py")
+        print("python scripts/build_script.py")
         
     elif current_platform == "Darwin":  # macOS
-        build_mac(args.onefile)
-        print("\n=== 构建完成 ===")
-        if args.onefile:
-            print(f"macOS 可执行文件: dist/素材工单系统{APP_VERSION}_mac")
-        else:
-            print(f"macOS 可执行文件目录: dist/素材工单系统{APP_VERSION}_mac.app")
-        print(f"macOS DMG安装包: dist/素材工单系统{APP_VERSION}_mac.dmg")
+        build_mac(args.onefile, debug=debug_mode)
+        print("\n=== macOS 打包全部完成 ===")
+        print(f"产物已存放于 dist/ 目录中。")
         print("\n如需构建 Windows 版本，请在 Windows 系统上运行:")
-        print("python build_script.py")
+        print("python scripts/build_script.py")
         
     else:
         print(f"不支持的平台: {current_platform}")

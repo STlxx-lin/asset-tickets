@@ -57,9 +57,13 @@ def resolve_bundle_icon():
             shutil.rmtree(iconset_dir, ignore_errors=True)
 
 bundle_icon = resolve_bundle_icon()
+IS_DEBUG = os.environ.get('BUILD_CONSOLE', '0') == '1' or os.environ.get('NUITKA_DEBUG_CONSOLE', '0') == '1'
+EXE_NAME = f'工单管理系统{APP_VERSION}_mac_debug' if IS_DEBUG else f'工单管理系统{APP_VERSION}_mac'
+APP_NAME = f'工单管理系统{APP_VERSION}_mac_debug.app' if IS_DEBUG else f'工单管理系统{APP_VERSION}_mac.app'
+
 bundle_info_plist = {
-    'CFBundleName': '工单管理系统',
-    'CFBundleDisplayName': '工单管理系统',
+    'CFBundleName': '工单管理系统(调试版)' if IS_DEBUG else '工单管理系统',
+    'CFBundleDisplayName': '工单管理系统(调试版)' if IS_DEBUG else '工单管理系统',
     'CFBundleVersion': APP_VERSION,
     'CFBundleShortVersionString': APP_VERSION,
     'NSHighResolutionCapable': True,
@@ -111,14 +115,14 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name=f'工单管理系统{APP_VERSION}_mac',
-    debug=False,
+    name=EXE_NAME,
+    debug=IS_DEBUG,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=IS_DEBUG,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -129,9 +133,9 @@ exe = EXE(
 
 app = BUNDLE(
     exe,
-    name=f'工单管理系统{APP_VERSION}_mac.app',
+    name=APP_NAME,
     icon=bundle_icon,
-    bundle_identifier='com.workorder.management',
+    bundle_identifier='com.workorder.management.debug' if IS_DEBUG else 'com.workorder.management',
     version=APP_VERSION,
     info_plist=bundle_info_plist,
 )
