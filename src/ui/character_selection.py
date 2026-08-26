@@ -276,7 +276,7 @@ class CharacterSelection(QWidget):
         """管理员登录"""
         dialog = QDialog(self)
         dialog.setWindowTitle("管理员登录")
-        dialog.setFixedSize(340, 180)
+        dialog.setFixedSize(360, 200)
         dialog.setModal(True)
         dialog.setStyleSheet("""
             QDialog {
@@ -291,8 +291,8 @@ class CharacterSelection(QWidget):
         """)
         
         layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
         
         # 密码输入框
         password_label = QLabel("请输入管理员密码：")
@@ -301,6 +301,11 @@ class CharacterSelection(QWidget):
         password_edit.setPlaceholderText("请输入密码")
         password_edit.setFixedHeight(32)
         password_edit.setFocus()
+
+        # 错误提示 Label（默认隐藏）
+        error_label = QLabel("")
+        error_label.setStyleSheet("color: #ef4444; font-size: 12px; background: transparent; padding-top: 2px;")
+        error_label.hide()
         
         # 按钮布局
         button_layout = QHBoxLayout()
@@ -310,8 +315,11 @@ class CharacterSelection(QWidget):
         ok_button = PrimaryPushButton(FIF.ACCEPT, "确定")
         ok_button.setFixedHeight(32)
         
-        ok_button.clicked.connect(lambda: self.verify_admin_password(dialog, password_edit.text()))
-        password_edit.returnPressed.connect(lambda: self.verify_admin_password(dialog, password_edit.text()))
+        def on_verify():
+            self.verify_admin_password(dialog, password_edit.text(), error_label, password_edit)
+
+        ok_button.clicked.connect(on_verify)
+        password_edit.returnPressed.connect(on_verify)
         cancel_button.clicked.connect(dialog.reject)
         
         button_layout.addStretch()
@@ -320,24 +328,41 @@ class CharacterSelection(QWidget):
         
         layout.addWidget(password_label)
         layout.addWidget(password_edit)
+        layout.addWidget(error_label)
         layout.addLayout(button_layout)
         
         dialog.exec()
     
-    def verify_admin_password(self, dialog, password):
+    def verify_admin_password(self, dialog, password, error_label=None, password_edit=None):
         """验证管理员密码"""
         from src.core.config import ADMIN_PASSWORD
         # 安全：未配置 ADMIN_PASSWORD 或输入为空时一律拒绝，避免空密码绕过管理员认证
-        if not ADMIN_PASSWORD or not password:
-            QMessageBox.warning(dialog, "错误", "请输入密码！" if not password else "未配置管理员密码！")
+        if not ADMIN_PASSWORD:
+            if error_label:
+                error_label.setText("⚠ 未配置管理员密码（请检查 .env）")
+                error_label.show()
+            return
+        if not password:
+            if error_label:
+                error_label.setText("⚠ 请输入密码！")
+                error_label.show()
+                if password_edit:
+                    password_edit.setFocus()
             return
         if hmac.compare_digest(password.encode('utf-8'), ADMIN_PASSWORD.encode('utf-8')):
+            if error_label:
+                error_label.hide()
             dialog.accept()
             depts = getattr(self, 'departments', None) or db_manager.get_departments()
             self.show_loading("正在以 [管理员] 身份进入工作台...")
             QTimer.singleShot(30, lambda: self._do_launch_main("管理员", depts, True, "管理员", ["管理员"]))
         else:
-            QMessageBox.warning(dialog, "错误", "密码错误！")
+            if error_label:
+                error_label.setText("❌ 密码错误，请重新输入！")
+                error_label.show()
+                if password_edit:
+                    password_edit.selectAll()
+                    password_edit.setFocus()
         
     def _do_launch_main(self, role, departments, is_admin, user_name, roles):
         """统一异步加载并展示主工作台"""
