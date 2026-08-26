@@ -121,28 +121,65 @@ def zip_directory(dir_path, zip_path):
 
 
 def generate_macos_console_launcher(target_dir, app_name):
-    """为 macOS App 生成配套的双击启动控制台 .command 脚本"""
+    """为 macOS App 生成配套的双击启动控制台 .command 脚本（精确通过 Info.plist 定位主程序，排除 .so / .dylib）"""
     launcher_path = os.path.join(target_dir, "启动调试控制台.command")
     script_content = f'''#!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "=========================================="
 echo "正在启动工单管理系统 (控制台调试模式)..."
 echo "=========================================="
+
 APP_PATH="$DIR/{app_name}"
 if [ ! -d "$APP_PATH" ]; then
     APP_PATH=$(find "$DIR" -name "*.app" -type d -maxdepth 2 | head -n 1)
 fi
 
-if [ -n "$APP_PATH" ] && [ -d "$APP_PATH" ]; then
-    EXEC_BIN=$(find "$APP_PATH/Contents/MacOS" -type f -perm +111 -o -type f -perm -111 2>/dev/null | head -n 1)
-    if [ -z "$EXEC_BIN" ]; then
-        EXEC_BIN="$APP_PATH/Contents/MacOS/$(ls "$APP_PATH/Contents/MacOS" | head -n 1)"
+if [ -z "$APP_PATH" ] || [ ! -d "$APP_PATH" ]; then
+    echo "错误: 未在当前目录下找到应用程序包 (.app)！"
+    echo "=========================================="
+    echo "按任意键关闭此终端窗口..."
+    read -n 1 -s
+    exit 1
+fi
+
+EXEC_BIN=""
+
+# 1. 首选方案：从 Info.plist 读取 CFBundleExecutable 主程序名称（最权威精确）
+if [ -f "$APP_PATH/Contents/Info.plist" ]; then
+    EXEC_NAME=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null)
+    if [ -z "$EXEC_NAME" ]; then
+        EXEC_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Contents/Info.plist" 2>/dev/null)
     fi
+    if [ -z "$EXEC_NAME" ]; then
+        EXEC_NAME=$(grep -A 1 "CFBundleExecutable" "$APP_PATH/Contents/Info.plist" | tail -n 1 | sed -e 's/.*<string>//' -e 's/<\\/string>.*//' | tr -d ' \\t\\r\\n')
+    fi
+    if [ -n "$EXEC_NAME" ] && [ -f "$APP_PATH/Contents/MacOS/$EXEC_NAME" ]; then
+        EXEC_BIN="$APP_PATH/Contents/MacOS/$EXEC_NAME"
+    fi
+fi
+
+# 2. 备选方案：匹配 App 同名二进制文件或 main
+if [ -z "$EXEC_BIN" ] || [ ! -f "$EXEC_BIN" ]; then
+    APP_BASENAME=$(basename "$APP_PATH" .app)
+    if [ -f "$APP_PATH/Contents/MacOS/$APP_BASENAME" ]; then
+        EXEC_BIN="$APP_PATH/Contents/MacOS/$APP_BASENAME"
+    elif [ -f "$APP_PATH/Contents/MacOS/main" ]; then
+        EXEC_BIN="$APP_PATH/Contents/MacOS/main"
+    fi
+fi
+
+# 3. 兜底方案：在 MacOS 目录下查找第一个非 .so/.dylib/.plist/.command 的独立二进制文件
+if [ -z "$EXEC_BIN" ] || [ ! -f "$EXEC_BIN" ]; then
+    EXEC_BIN=$(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f ! -name "*.so" ! -name "*.dylib" ! -name "*.plist" ! -name "*.command" ! -name "*.sh" 2>/dev/null | head -n 1)
+fi
+
+if [ -n "$EXEC_BIN" ] && [ -f "$EXEC_BIN" ]; then
+    chmod +x "$EXEC_BIN" 2>/dev/null
     echo "正在运行: $EXEC_BIN"
     echo "------------------------------------------"
     "$EXEC_BIN" "$@"
 else
-    echo "错误: 未找到应用程序包！"
+    echo "错误: 未能在 $APP_PATH/Contents/MacOS/ 下找到可执行二进制文件！"
 fi
 
 echo ""
