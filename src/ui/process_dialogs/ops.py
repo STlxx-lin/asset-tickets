@@ -38,7 +38,7 @@ from src.core.paths import (
     OPS_GET_SRC,
 )
 from src.core.status_sync import update_status_with_api
-from src.ui.dialog_helpers import show_api_update_error, show_path_result
+from src.ui.dialog_helpers import ClickablePathLabel, show_api_update_error, show_path_result
 
 
 def show_ops_dialog(parent, order_data, callbacks):
@@ -204,33 +204,12 @@ def show_ops_dialog(parent, order_data, callbacks):
     path_layout = QFormLayout()
     path_layout.setSpacing(6)
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    # 创建可双击的路径标签
-    def create_clickable_path_label(path, tooltip_text):
-        label = QLabel(path)
-        label.setCursor(Qt.CursorShape.PointingHandCursor)
-        label.setStyleSheet("""
-            QLabel {
-                color: #4f8ef7;
-                text-decoration: underline;
-                padding: 4px 8px;
-                border-radius: 3px;
-            }
-            QLabel:hover {
-                background-color: #232732;
-                color: #6ba3ff;
-            }
-        """)
-        label.setToolTip(f"点击打开：{tooltip_text}")
-        def on_press(event):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-        label.mousePressEvent = on_press
-        return label
     # 获取路径信息
     src_path = get_ops_get_src()
     store_path_label = QLabel("请选择存放路径")
     store_path_label.setStyleSheet("color: #9ba3b0; background: transparent;")
     # 创建路径标签
-    src_label = create_clickable_path_label(src_path, "素材源路径")
+    src_label = ClickablePathLabel(src_path, "素材源路径：")
     # 添加路径到布局
     path_layout.addRow("素材源路径:", src_label)
     path_layout.addRow("存放路径:", store_path_label)

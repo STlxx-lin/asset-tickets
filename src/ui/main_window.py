@@ -127,6 +127,7 @@ from src.core.paths import (
     PHOTOGRAPHY_UPLOAD,
     SALES_GET_SRC,
 )
+from src.ui.dialog_helpers import ClickablePathLabel
 
 
 class FileOperationDialog(QDialog):
@@ -3935,28 +3936,10 @@ class MainWindow(QMainWindow):
                 }
             """)
             label.setToolTip(f"已领取 - {tooltip_text}")
+            return label
         else:
-            # 未领取状态
-            label = QLabel(path)
-            label.setCursor(Qt.CursorShape.PointingHandCursor)
-            label.setStyleSheet("""
-                QLabel {
-                    color: #4f8ef7;
-                    text-decoration: underline;
-                    padding: 4px 8px;
-                    border-radius: 3px;
-                }
-                QLabel:hover {
-                    background-color: #232732;
-                    color: #6ba3ff;
-                }
-            """)
-            label.setToolTip(f"点击打开：{tooltip_text}")
-            def on_label_press(event):
-                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-            label.mousePressEvent = on_label_press
-        
-        return label
+            # 未领取状态：使用跨平台安全的 ClickablePathLabel
+            return ClickablePathLabel(path, f"点击打开：{tooltip_text}")
 
 # 状态进度条委托
 class StatusProgressDelegate(QStyledItemDelegate):

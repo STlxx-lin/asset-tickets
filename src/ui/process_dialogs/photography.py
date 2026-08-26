@@ -53,7 +53,7 @@ from src.core.paths import (
     VID_EXTS,
 )
 from src.core.status_sync import update_status_with_api
-from src.ui.dialog_helpers import show_api_update_error, show_path_result
+from src.ui.dialog_helpers import ClickablePathLabel, show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
 
@@ -80,14 +80,21 @@ def show_photography_dialog(parent, order_data, callbacks):
     def get_photographer():
         nonlocal photographer_combo
         if photographer_combo is not None:
-            return photographer_combo.currentText().strip()
+            text = photographer_combo.currentText().strip()
+            if text and text != "请选择摄影师":
+                return text
         cb = dialog.findChild(FluentComboBox, 'photographer_combo') or dialog.findChild(QComboBox, 'photographer_combo')
-        if cb and cb.currentText().strip():
-            return cb.currentText().strip()
+        if cb:
+            text = cb.currentText().strip()
+            if text and text != "请选择摄影师":
+                return text
         return ""
 
     def get_upload_dir():
-        return PHOTOGRAPHY_UPLOAD(get_photographer(), order_data['department'], order_data['id'], order_data['model'], order_data['name'])
+        photographer = get_photographer()
+        if not photographer:
+            return ""
+        return PHOTOGRAPHY_UPLOAD(photographer, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
 
     def get_dist_img_dir():
         return PHOTOGRAPHY_DIST_IMG(order_data['department'], order_data['id'], order_data['model'], order_data['name'])
@@ -307,12 +314,11 @@ def show_photography_dialog(parent, order_data, callbacks):
     operation_layout.setSpacing(6)
     operation_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
     photographer_combo = FluentComboBox()
-    photographer_combo.addItem("")
+    photographer_combo.setObjectName('photographer_combo')
+    photographer_combo.setFixedHeight(32)
+    photographer_combo.addItem("请选择摄影师")
     # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）
     photographer_combo.addItems(PHOTOGRAPHERS)
-    photographer_combo.setObjectName('photographer_combo')
-    photographer_combo.setPlaceholderText("请选择摄影师")
-    photographer_combo.setFixedHeight(30)
     # 若当前登录用户匹配某位摄影师，自动预选
     current_user_name = getattr(parent, 'user_name', '')
     if current_user_name:
@@ -338,30 +344,11 @@ def show_photography_dialog(parent, order_data, callbacks):
     path_layout = QFormLayout()
     path_layout.setSpacing(6)
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    def create_clickable_path_label(path, tooltip_text):
-        label = QLabel(path)
-        label.setCursor(Qt.CursorShape.PointingHandCursor)
-        label.setStyleSheet("""
-            QLabel {
-                color: #4f8ef7;
-                text-decoration: underline;
-                padding: 4px 8px;
-                border-radius: 3px;
-            }
-            QLabel:hover {
-                background-color: #232732;
-                color: #6ba3ff;
-            }
-        """)
-        label.setToolTip(f"点击打开：{tooltip_text}")
-        def on_mouse_press(event):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-        label.mousePressEvent = on_mouse_press
-        return label
+
     upload_path = get_upload_dir()
     dist_img_path = get_dist_img_dir()
     dist_video_path = get_dist_video_dir()
-    upload_label = create_clickable_path_label(upload_path, "上传素材路径")
+    upload_label = ClickablePathLabel(upload_path, "上传素材路径：")
     dist_img_label = parent.create_path_status_label(dist_img_path, "分发图片路径", order_data, 'dist_img')
     dist_video_label = parent.create_path_status_label(dist_video_path, "分发视频路径", order_data, 'dist_video')
     path_layout.addRow("上传素材路径:", upload_label)
@@ -370,16 +357,16 @@ def show_photography_dialog(parent, order_data, callbacks):
     path_vbox.addLayout(path_layout)
     form_layout.addWidget(path_card)
 
-    def update_path_display():
+    def update_path_display(new_text=""):
         photographer = get_photographer()
         if photographer:
             new_upload_path = PHOTOGRAPHY_UPLOAD(photographer, order_data['department'], order_data['id'], order_data['model'], order_data['name'])
-            upload_label.setText(new_upload_path)
-            upload_label.setToolTip("点击打开：上传素材路径")
-            def on_mouse_press_updated(event):
-                QDesktopServices.openUrl(QUrl.fromLocalFile(new_upload_path))
-            upload_label.mousePressEvent = on_mouse_press_updated
+            upload_label.setPath(new_upload_path)
+        else:
+            upload_label.setPath("")
     photographer_combo.currentTextChanged.connect(update_path_display)
+    # 初始刷新一次
+    update_path_display()
     info_label = QLabel("💡 提示：请先选择摄影师，然后进行相应的操作")
     info_label.setStyleSheet("""
         QLabel {

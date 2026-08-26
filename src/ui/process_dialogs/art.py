@@ -41,7 +41,7 @@ from src.core.paths import (
     ART_POST_REVIEW_TRANSIT,
 )
 from src.core.status_sync import update_local_status_only, update_time_with_api
-from src.ui.dialog_helpers import show_api_update_error, show_path_result
+from src.ui.dialog_helpers import ClickablePathLabel, show_api_update_error, show_path_result
 
 logger = logging.getLogger(__name__)
 
@@ -227,27 +227,6 @@ def show_art_dialog(parent, order_data, callbacks):
     path_layout = QFormLayout()
     path_layout.setSpacing(6)
     path_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    # 创建可双击的路径标签
-    def create_clickable_path_label(path, tooltip_text):
-        label = QLabel(path)
-        label.setCursor(Qt.CursorShape.PointingHandCursor)
-        label.setStyleSheet("""
-            QLabel {
-                color: #4f8ef7;
-                text-decoration: underline;
-                padding: 4px 8px;
-                border-radius: 3px;
-            }
-            QLabel:hover {
-                background-color: #232732;
-                color: #6ba3ff;
-            }
-        """)
-        label.setToolTip(f"点击打开：{tooltip_text}")
-        def on_press(event):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-        label.mousePressEvent = on_press
-        return label
     # 获取路径信息
     get_src = get_art_get_img_src()
     get_dest = get_art_get_img_dest()
@@ -288,26 +267,9 @@ def show_art_dialog(parent, order_data, callbacks):
                 }
             """)
             label.setToolTip(f"已领取 - {tooltip_text}")
+            return label
         else:
-            label = QLabel(path)
-            label.setCursor(Qt.CursorShape.PointingHandCursor)
-            label.setStyleSheet("""
-                QLabel {
-                    color: #4f8ef7;
-                    text-decoration: underline;
-                    padding: 4px 8px;
-                    border-radius: 3px;
-                }
-                QLabel:hover {
-                    background-color: #232732;
-                    color: #6ba3ff;
-                }
-            """)
-            label.setToolTip(f"点击打开：{tooltip_text}")
-            def on_press(event):
-                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-            label.mousePressEvent = on_press
-        return label
+            return ClickablePathLabel(path, f"点击打开：{tooltip_text}")
 
     # 创建路径标签
     collected_status = check_collected_status()
@@ -333,8 +295,8 @@ def show_art_dialog(parent, order_data, callbacks):
             }
         """)
     else:
-        get_src_label = create_clickable_path_label(get_src, "领取源路径")
-        get_dest_label = create_clickable_path_label(get_dest, "领取存放路径")
+        get_src_label = ClickablePathLabel(get_src, "领取源路径：")
+        get_dest_label = ClickablePathLabel(get_dest, "领取存放路径：")
 
     ops_label = create_distribute_path_label(ops_path, "分发运营路径", order_data, 'art_dist_ops')
     sales_label = create_distribute_path_label(sales_path, "分发销售路径", order_data, 'art_dist_sales')
@@ -360,26 +322,8 @@ def show_art_dialog(parent, order_data, callbacks):
 
     # 根据是否有操作记录决定显示内容
     product_path = check_product_path_status()
-    if product_path:
-        # 有设置过，显示完整路径
-        product_label = QLabel(product_path)
-        product_label.setStyleSheet("""
-            QLabel {
-                color: #00ff00;
-                font-weight: bold;
-                padding: 4px 8px;
-                border-radius: 3px;
-                background-color: #1a3d1a;
-            }
-        """)
-        product_label.setToolTip("点击打开路径")
-        product_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        def on_press_product(event):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(product_path))
-        product_label.mousePressEvent = on_press_product
-    else:
-        # 未设置过，显示为空
-        product_label = QLabel("")
+    product_label = ClickablePathLabel(product_path or "", "成品路径：")
+    if not product_path:
         product_label.setStyleSheet("""
             QLabel {
                 color: #cccccc;
@@ -513,7 +457,7 @@ def show_art_dialog(parent, order_data, callbacks):
             show_api_update_error(dialog, error_msg)
             return  # 中断后续 UI 成功展示
         # 更新成品路径显示
-        product_label.setText(dir_path)
+        product_label.setPath(dir_path)
         product_label.setStyleSheet("""
             QLabel {
                 color: #00ff00;
@@ -523,11 +467,6 @@ def show_art_dialog(parent, order_data, callbacks):
                 background-color: #1a3d1a;
             }
         """)
-        product_label.setToolTip("点击打开路径")
-        product_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        def on_press_dir(event):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
-        product_label.mousePressEvent = on_press_dir
         show_path_result(dialog, "已选择", f"成品路径：\n{dir_path}", dir_path)
     def on_distribute(target_kind):
         """美工分发成品到运营/销售（共用逻辑，避免两份 150 行重复代码漂移）。
