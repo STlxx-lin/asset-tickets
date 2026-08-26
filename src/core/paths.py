@@ -125,3 +125,67 @@ def to_local_path(path_str: str) -> str:
             local_path = norm_path
         # macOS 必须是正斜杠
         return os.path.normpath(local_path).replace('\\', '/')
+
+
+def get_order_all_paths(dept: str, id_: str | int, model: str, name: str) -> list[str]:
+    """
+    获取指定工单在全系统所有可能存在的网络盘路径列表（自动规整为当前操作系统本地路径格式，并严格有序去重）。
+    
+    涵盖节点（共 13 个模板）：
+    1. 摄影师上传目录（8 位摄影师）
+    2. 美工待领取图片 (01原始素材/02美工待领取/.../01图片)
+    3. 剪辑待领取视频 (01原始素材/02美工待领取/.../02视频)
+    4. 美工待处理目录 (02图像部/01美工部/.../00待处理)
+    5. 美工待审批中转目录 (02图像部/01美工部/.../01待审批)
+    6. 美工/运营分发素材中心 (03素材中心/01运营部)
+    7. 美工/销售分发素材中心 (03素材中心/02销售部)
+    8. 视频待处理目录 (02图像部/02视频部/.../00待处理)
+    9. 视频待审核中转目录 (02图像部/02视频部/.../01待审核)
+    10. 视频分发运营素材中心 (03素材中心/01运营部/.../02视频)
+    11. 视频分发销售素材中心 (03素材中心/02销售部/.../02视频)
+    """
+    paths = []
+    
+    # 1. 摄影师上传目录（8位摄影师）
+    for photographer in PHOTOGRAPHERS:
+        p = to_local_path(PHOTOGRAPHY_UPLOAD(photographer, dept, id_, model, name))
+        if p and p not in paths:
+            paths.append(p)
+            
+    # 2. 各业务流转与中转目录模板
+    flow_templates = [
+        PHOTOGRAPHY_DIST_IMG,
+        PHOTOGRAPHY_DIST_VIDEO,
+        ART_GET_IMG_DEST,
+        ART_POST_REVIEW_TRANSIT,
+        ART_DIST_OPS,
+        ART_DIST_SALES,
+        EDIT_GET_VIDEO_DEST,
+        EDIT_POST_REVIEW_TRANSIT,
+        EDIT_DIST_OPS,
+        EDIT_DIST_SALES,
+    ]
+    for tpl in flow_templates:
+        p = to_local_path(tpl(dept, id_, model, name))
+        if p and p not in paths:
+            paths.append(p)
+            
+    return paths
+
+
+def get_order_path_migration_pairs(old_dept: str, old_model: str, old_name: str,
+                                    new_dept: str, new_model: str, new_name: str,
+                                    id_: str | int) -> list[tuple[str, str]]:
+    """
+    生成工单信息（产线/型号/名称）变更时所有关联路径的 (old_path, new_path) 迁移映射对。
+    自动按顺序对应、过滤无变动路径并严格去重。
+    """
+    old_paths = get_order_all_paths(old_dept, id_, old_model, old_name)
+    new_paths = get_order_all_paths(new_dept, id_, new_model, new_name)
+    
+    pairs = []
+    for old_p, new_p in zip(old_paths, new_paths):
+        if old_p and new_p and old_p != new_p and (old_p, new_p) not in pairs:
+            pairs.append((old_p, new_p))
+    return pairs
+

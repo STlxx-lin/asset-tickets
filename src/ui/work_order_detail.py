@@ -107,6 +107,8 @@ class CollapsibleBox(QWidget):
 class WorkOrderDetailDialog(QDialog):
     def __init__(self, order_data, logs, is_admin=False, parent=None):
         super().__init__(parent)
+        setTheme(Theme.DARK)
+        setThemeColor('#4f8ef7')
         self.order_data = order_data
         self.logs = logs
         self.is_admin = is_admin
@@ -734,12 +736,24 @@ class WorkOrderDetailDialog(QDialog):
     def apply_styles(self):
         self.setStyleSheet("""
             QDialog {
-                background-color: #1e222a;
+                background-color: #121418;
                 color: #e8eaed;
             }
             QScrollArea {
                 border: none;
                 background-color: transparent;
+            }
+            QScrollArea > QWidget > QWidget {
+                background-color: transparent;
+            }
+            CardWidget {
+                background-color: #1a1d24;
+                border: 1px solid #282c37;
+                border-radius: 10px;
+            }
+            QLabel {
+                color: #e8eaed;
+                background: transparent;
             }
             QScrollBar:vertical {
                 border: none;

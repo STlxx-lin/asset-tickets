@@ -116,16 +116,21 @@ from src.core.paths import (
     ART_DIST_SALES,
     ART_GET_IMG_DEST,
     ART_GET_IMG_SRC,
+    ART_POST_REVIEW_TRANSIT,
     EDIT_DIST_OPS,
     EDIT_DIST_SALES,
     EDIT_GET_VIDEO_DEST,
     EDIT_GET_VIDEO_SRC,
+    EDIT_POST_REVIEW_TRANSIT,
     OPS_GET_SRC,
     PHOTOGRAPHERS,
     PHOTOGRAPHY_DIST_IMG,
     PHOTOGRAPHY_DIST_VIDEO,
     PHOTOGRAPHY_UPLOAD,
     SALES_GET_SRC,
+    get_order_all_paths,
+    get_order_path_migration_pairs,
+    to_local_path,
 )
 from src.ui.dialog_helpers import ClickablePathLabel
 
@@ -2679,13 +2684,16 @@ class MainWindow(QMainWindow):
         dept_combo.addItems(self.departments)
         dept_combo.setCurrentText(order_data['department'])
         
-        model_edit = LineEdit(order_data['model'])
+        model_edit = LineEdit()
+        model_edit.setText(str(order_data.get('model', '')))
         model_edit.setPlaceholderText("请输入产品型号")
         
-        name_edit = LineEdit(order_data['name'])
+        name_edit = LineEdit()
+        name_edit.setText(str(order_data.get('name', '')))
         name_edit.setPlaceholderText("请输入产品名称")
         
-        creator_edit = LineEdit(order_data['creator'])
+        creator_edit = LineEdit()
+        creator_edit.setText(str(order_data.get('creator', '')))
         creator_edit.setPlaceholderText("请输入发起人")
         
         select_creator_btn = PushButton(FIF.PEOPLE, "选择")
@@ -2758,7 +2766,8 @@ class MainWindow(QMainWindow):
         basic_layout.addRow("发起人:", creator_layout)
         
         # 需求人字段
-        requester_edit = LineEdit(order_data.get('requester', ''))
+        requester_edit = LineEdit()
+        requester_edit.setText(str(order_data.get('requester', '')))
         requester_edit.setPlaceholderText("请输入需求人")
         
         select_requester_btn = PushButton(FIF.PEOPLE, "选择")
@@ -2857,7 +2866,8 @@ class MainWindow(QMainWindow):
         project_type_combo.currentIndexChanged.connect(on_project_type_changed)
         
         # 备注字段
-        remarks_edit = LineEdit(order_data.get('remarks', ''))
+        remarks_edit = LineEdit()
+        remarks_edit.setText(str(order_data.get('remarks', '')))
         remarks_edit.setPlaceholderText("请输入备注信息（选填）")
         
         # 添加字段到布局
@@ -2919,99 +2929,137 @@ class MainWindow(QMainWindow):
             old_model = order_data['model']
             old_name = order_data['name']
             id_ = order_data['id']
-            # 生成所有相关路径的原-新映射
-            path_pairs = []
-            # 摄影上传
-            for photographer in PHOTOGRAPHERS:
-                old_path = PHOTOGRAPHY_UPLOAD(photographer, old_dept, id_, old_model, old_name)
-                new_path = PHOTOGRAPHY_UPLOAD(photographer, new_dept, id_, new_model, new_name)
-                path_pairs.append((old_path, new_path))
-            # 美工/剪辑/运营/销售所有流转路径
-            path_templates = [
-                PHOTOGRAPHY_DIST_IMG, PHOTOGRAPHY_DIST_VIDEO,
-                ART_GET_IMG_SRC, ART_GET_IMG_DEST,
-                ART_DIST_OPS, ART_DIST_SALES,
-                EDIT_GET_VIDEO_SRC, EDIT_GET_VIDEO_DEST,
-                EDIT_DIST_OPS, EDIT_DIST_SALES,
-                OPS_GET_SRC, SALES_GET_SRC
-            ]
-            for tpl in path_templates:
-                old_path = tpl(old_dept, id_, old_model, old_name)
-                new_path = tpl(new_dept, id_, new_model, new_name)
-                path_pairs.append((old_path, new_path))
-            # 检查路径状态并构建确认列表（先检测原路径，再检测目标路径）
-            path_checks = []
+
+            # 1. 获取全量标准流转路径迁移映射对（自动规整、过滤未变更项并严格去重）
+            path_pairs = get_order_path_migration_pairs(
+                old_dept, old_model, old_name,
+                new_dept, new_model, new_name,
+                id_
+            )
+
+            # 2. 如果工单在数据库中记录了自定义剪辑成品路径 edit_product_path，且包含工单特征，也加入迁移
+            custom_product_old_path = ""
+            custom_product_new_path = ""
+            db_product_path = order_data.get('edit_product_path')
+            if db_product_path:
+                local_prod_path = to_local_path(db_product_path)
+                old_folder_name = f"{id_} {old_model} {old_name}"
+                new_folder_name = f"{id_} {new_model} {new_name}"
+                if old_folder_name in local_prod_path:
+                    custom_product_old_path = local_prod_path
+                    custom_product_new_path = local_prod_path.replace(old_folder_name, new_folder_name)
+                    if custom_product_old_path != custom_product_new_path:
+                        pair = (custom_product_old_path, custom_product_new_path)
+                        if pair not in path_pairs:
+                            path_pairs.append(pair)
+
+            # 3. 检查路径状态（区分：需实际迁移项 vs 无需处理项）
+            active_checks = []  # 实际存在需要迁移的项 (old_path, new_path, target_exists)
             for old_path, new_path in path_pairs:
-                if old_path == new_path:
-                    continue
-                old_exists = os.path.exists(old_path)
-                new_exists = os.path.exists(new_path)
-                path_checks.append((old_path, new_path, old_exists, new_exists))
-            if not path_checks:
-                # 没有需要移动/重命名的路径，直接保存
+                if os.path.exists(old_path):
+                    target_exists = os.path.exists(new_path)
+                    active_checks.append((old_path, new_path, target_exists))
+
+            # 4. 如果磁盘上无任何旧路径存在（例如新工单尚未上传素材）
+            if not active_checks:
                 if db_manager.update_work_order_full(
-                order_data['id'], new_dept, new_model, new_name, new_creator, new_requester,
-                new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
-            ):
-                    self.log_action("编辑工单", f"ID={order_data['id']}（无路径变更）")
+                    order_data['id'], new_dept, new_model, new_name, new_creator, new_requester,
+                    new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
+                ):
+                    self.log_action("编辑工单", f"ID={order_data['id']}，信息已更新（网络盘无旧素材目录，无需迁移）")
                     self.refresh_work_orders()
+                    InfoBar.success("保存成功", f"工单 {order_data['id']} 信息已更新", orient=Qt.Orientation.Horizontal, isClosable=True, position=InfoBarPosition.TOP_RIGHT, duration=2000, parent=self)
                     dialog.accept()
                 else:
                     QMessageBox.critical(dialog, "失败", "更新工单失败")
                 return
-            # 使用与删除检测一致的表格弹窗确认
-            check_rows = []
-            check_rows.append("<tr><th style='padding: 4px; border-bottom: 1px solid #555; text-align:left;'>路径</th><th style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>原路径</th><th style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>目标路径</th></tr>")
-            for old_path, new_path, old_exists, new_exists in path_checks:
-                old_status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if old_exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
-                new_status_html = "<span style='color: #4caf50; font-weight: bold;'>存在</span>" if new_exists else "<span style='color: #ff4d4f; font-weight: bold;'>不存在</span>"
-                display_path = f"{old_path} → {new_path}"
-                check_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{display_path}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>{old_status_html}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='80' align='center'>{new_status_html}</td></tr>")
+
+            # 5. 存在需要移动/重命名的路径，弹出确认表格（仅展示实际存在需迁移的项）
+            check_rows = [
+                "<tr>"
+                "<th style='padding: 6px; border-bottom: 1px solid #555; text-align:left;'>原路径 (已存在)</th>"
+                "<th style='padding: 6px; border-bottom: 1px solid #555; text-align:left;'>目标新路径</th>"
+                "<th style='padding: 6px; border-bottom: 1px solid #555;' width='90' align='center'>目标状态</th>"
+                "</tr>"
+            ]
+            has_conflict = False
+            for old_path, new_path, target_exists in active_checks:
+                if target_exists:
+                    has_conflict = True
+                    target_status_html = "<span style='color: #ff4d4f; font-weight: bold;'>已存在(跳过)</span>"
+                else:
+                    target_status_html = "<span style='color: #4caf50; font-weight: bold;'>正常</span>"
+                check_rows.append(
+                    f"<tr>"
+                    f"<td style='padding: 5px; border-bottom: 1px solid #444; font-size: 12px;'>{old_path}</td>"
+                    f"<td style='padding: 5px; border-bottom: 1px solid #444; font-size: 12px;'>{new_path}</td>"
+                    f"<td style='padding: 5px; border-bottom: 1px solid #444;' width='90' align='center'>{target_status_html}</td>"
+                    f"</tr>"
+                )
+
             check_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(check_rows)}</table>"
+            header_tip = "⚠️ 警告：检测到该工单已存在以下网络盘素材目录，将执行文件夹重命名与迁移："
+            if has_conflict:
+                header_tip += "<br/><span style='color: #ff4d4f; font-weight: bold;'>注意：标记为【已存在】的目标路径将被跳过，以防止覆盖已有文件！</span>"
+
             confirm_dialog = FileOperationDialog(
                 check_msg,
                 dialog,
-                title="确认保存",
-                header_text="⚠️ 警告：将要移动/重命名以下路径：",
-                footer_text="是否确认执行上述路径变更并保存工单？",
+                title="确认工单路径迁移",
+                header_text=header_tip,
+                footer_text="是否确认执行上述目录迁移并保存工单？",
                 is_confirmation=True,
-                confirm_button_text="确认保存"
+                confirm_button_text="确认迁移并保存"
             )
             if confirm_dialog.exec() != QDialog.DialogCode.Accepted:
                 return
-            # 执行移动/重命名
+
+            # 6. 执行物理移动/重命名
             move_results = []
             moved_pairs = []  # 记录已成功移动的 (旧路径, 新路径)，用于 DB 失败时回滚
-            for old_path, new_path, old_exists, new_exists in path_checks:
-                if old_exists:
-                    if new_exists:
-                        # 目标已存在，跳过移动，避免静默删除已有数据
-                        move_results.append((f"{old_path} → {new_path}", "目标已存在，未覆盖", "#ff4d4f"))
-                        continue
-                    try:
-                        os.makedirs(os.path.dirname(new_path), exist_ok=True)
-                        shutil.move(old_path, new_path)
-                        moved_pairs.append((old_path, new_path))
-                        move_results.append((f"{old_path} → {new_path}", "已移动/重命名", "#4caf50"))
-                        self.log_action("工单路径变更", f"{old_path} → {new_path} 已移动/重命名")
-                    except Exception as e:
-                        move_results.append((f"{old_path} → {new_path}", f"失败（{e}）", "#ff4d4f"))
-                        self.log_action("工单路径变更失败", f"{old_path} → {new_path} 失败：{e}")
-                else:
-                    move_results.append((f"{old_path} → {new_path}", "不存在", "#ff4d4f"))
-            # 保存工单信息
+            for old_path, new_path, target_exists in active_checks:
+                if target_exists:
+                    # 目标已存在，跳过移动，避免静默覆盖已有数据
+                    move_results.append((f"{old_path} → {new_path}", "目标已存在(未覆盖)", "#ff4d4f"))
+                    continue
+                try:
+                    os.makedirs(os.path.dirname(new_path), exist_ok=True)
+                    shutil.move(old_path, new_path)
+                    moved_pairs.append((old_path, new_path))
+                    move_results.append((f"{old_path} → {new_path}", "迁移成功", "#4caf50"))
+                    self.log_action("工单路径迁移", f"{old_path} → {new_path} 迁移成功")
+                except Exception as e:
+                    move_results.append((f"{old_path} → {new_path}", f"迁移失败（{e}）", "#ff4d4f"))
+                    self.log_action("工单路径迁移失败", f"{old_path} → {new_path} 失败：{e}")
+
+            # 7. 保存工单数据库信息
             if db_manager.update_work_order_full(
                 order_data['id'], new_dept, new_model, new_name, new_creator, new_requester,
                 new_project_type, new_project_content, new_project_type_id, new_project_content_id, new_remarks
             ):
-                self.log_action("编辑工单", f"ID={order_data['id']}，产线/型号/名称变更")
-                # 使用与删除检测一致的结果展示
-                result_rows = []
+                # 若自定义成品路径也成功迁移，同步更新数据库
+                if custom_product_old_path and (custom_product_old_path, custom_product_new_path) in moved_pairs:
+                    db_manager.update_work_order_product_path(order_data['id'], custom_product_new_path)
+
+                self.log_action("编辑工单", f"ID={order_data['id']}，信息及关联路径已更新成功")
+                
+                # 迁移结果展示
+                result_rows = [
+                    "<tr>"
+                    "<th style='padding: 6px; border-bottom: 1px solid #555; text-align:left;'>迁移路径</th>"
+                    "<th style='padding: 6px; border-bottom: 1px solid #555;' width='110' align='center'>执行结果</th>"
+                    "</tr>"
+                ]
                 for p, status, color in move_results:
-                    result_rows.append(f"<tr><td style='padding: 4px; border-bottom: 1px solid #555;'>{p}</td><td style='padding: 4px; border-bottom: 1px solid #555;' width='100' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td></tr>")
+                    result_rows.append(
+                        f"<tr>"
+                        f"<td style='padding: 5px; border-bottom: 1px solid #444; font-size: 12px;'>{p}</td>"
+                        f"<td style='padding: 5px; border-bottom: 1px solid #444;' width='110' align='center'><span style='color: {color}; font-weight: bold;'>{status}</span></td>"
+                        f"</tr>"
+                    )
                 result_msg = f"<table width='100%' cellspacing='0' cellpadding='0'>{''.join(result_rows)}</table>"
-                # 钉钉推送
-                # 生成推送内容
+                
+                # 8. 钉钉/企业微信推送
                 changes = []
                 if old_dept != new_dept:
                     changes.append(f"产线/部门：{old_dept} → {new_dept}")
@@ -3019,21 +3067,17 @@ class MainWindow(QMainWindow):
                     changes.append(f"型号：{old_model} → {new_model}")
                 if old_name != new_name:
                     changes.append(f"名称：{old_name} → {new_name}")
-                change_text = "\n".join(changes) if changes else "无字段变更"
-                # 已领取素材的重命名提示
-                rename_tips = []
-                for old_path, new_path in path_pairs:
-                    if old_path != new_path and os.path.exists(new_path):
-                        rename_tips.append(f"{old_path} → {new_path}")
-                # 新的重命名提示格式
+                change_text = "\n".join(changes) if changes else "无关键字段变更"
+                
                 rename_text = f"{order_data['id']} {new_model} {new_name}"
-                push_text = f"工单 {order_data['id']} 信息已修改：\n{change_text}\n\n如已领取素材，请将相关文件夹重命名为：{rename_text}"
+                push_text = f"工单 {order_data['id']} 信息已修改：\n{change_text}\n\n如本地已领取素材，请将相关工作文件夹重命名为：{rename_text}"
                 send_notification("工单信息变更通知", push_text)
+                
                 result_dialog = FileOperationDialog(
                     result_msg,
                     dialog,
-                    title="保存结果",
-                    header_text=f"工单 {order_data['id']} 路径操作结果：",
+                    title="路径迁移结果",
+                    header_text=f"工单 {order_data['id']} 路径操作结果明细：",
                     footer_text=None,
                     is_confirmation=False
                 )
@@ -3041,21 +3085,21 @@ class MainWindow(QMainWindow):
                 self.refresh_work_orders()
                 dialog.accept()
             else:
-                # DB 更新失败：反向回滚已移动的文件，避免文件系统与数据库不一致
+                # 9. DB 更新失败：反向回滚已移动的文件，避免文件系统与数据库不一致
                 rollback_failures = []
                 for old_path, new_path in reversed(moved_pairs):
                     try:
                         if os.path.exists(new_path) and not os.path.exists(old_path):
                             shutil.move(new_path, old_path)
                     except Exception as e:
-                        rollback_failures.append(f"{new_path} 回滚失败：{e}")
+                        rollback_failures.append(f"{new_path} → {old_path} 回滚失败：{e}")
                 if rollback_failures:
                     QMessageBox.critical(
                         dialog, "失败",
                         "更新工单失败，且部分已移动文件回滚失败，请手动检查：\n" + "\n".join(rollback_failures)
                     )
                 else:
-                    QMessageBox.critical(dialog, "失败", "更新工单失败，已回滚文件移动")
+                    QMessageBox.critical(dialog, "失败", "更新工单数据库失败，已安全回滚所有文件移动操作")
         ok_btn.clicked.connect(on_ok)
         button_layout.addWidget(cancel_btn)
         button_layout.addWidget(ok_btn)
@@ -3693,28 +3737,16 @@ class MainWindow(QMainWindow):
         model = order_data['model']
         name = order_data['name']
         
-        # 生成所有相关路径
-        all_paths = []
-        for photographer in PHOTOGRAPHERS:
-            path = PHOTOGRAPHY_UPLOAD(photographer, dept, id_, model, name)
-            all_paths.append((path, os.path.exists(path)))
-        
-        paths = [
-            PHOTOGRAPHY_DIST_IMG(dept, id_, model, name),
-            PHOTOGRAPHY_DIST_VIDEO(dept, id_, model, name),
-            ART_GET_IMG_SRC(dept, id_, model, name),
-            ART_GET_IMG_DEST(dept, id_, model, name),
-            ART_DIST_OPS(dept, id_, model, name),
-            ART_DIST_SALES(dept, id_, model, name),
-            EDIT_GET_VIDEO_SRC(dept, id_, model, name),
-            EDIT_GET_VIDEO_DEST(dept, id_, model, name),
-            EDIT_DIST_OPS(dept, id_, model, name),
-            EDIT_DIST_SALES(dept, id_, model, name),
-            OPS_GET_SRC(dept, id_, model, name),
-            SALES_GET_SRC(dept, id_, model, name)
-        ]
-        for path in paths:
-            all_paths.append((path, os.path.exists(path)))
+        # 生成所有相关路径（调用集中式路径生成器，自动规整、涵盖全部13个流转节点且严格去重）
+        unique_paths = get_order_all_paths(dept, id_, model, name)
+        # 若数据库中存在自定义剪辑成品路径，也一并加入清理检测
+        db_prod_path = order_data.get('edit_product_path')
+        if db_prod_path:
+            local_prod = to_local_path(db_prod_path)
+            if local_prod and local_prod not in unique_paths:
+                unique_paths.append(local_prod)
+                
+        all_paths = [(p, os.path.exists(p)) for p in unique_paths]
             
         rows = []
         for p, exists in all_paths:
