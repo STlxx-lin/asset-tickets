@@ -244,7 +244,7 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
     icon_png = "logo-ykohqv-s3wb4i-pck6c0.png"
     icon_ico = "app_icon.ico"
     icon_icns = "app_icon.icns"
-
+    remove_build_artifacts()
     os.makedirs("dist", exist_ok=True)
 
     if system == "Windows":
@@ -307,11 +307,19 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
         cmd.append("--onefile")
         cmd.append(f"--output-filename={target_name}")
 
-    cmd.append(main_script)
-
     build_env = os.environ.copy()
     build_env.pop("PYTHONHOME", None)
     build_env.pop("PYTHONPATH", None)
+
+    if system == "Darwin" and "SDKROOT" not in build_env:
+        try:
+            sdk_path = subprocess.check_output(["xcrun", "--show-sdk-path"], text=True).strip()
+            if sdk_path and os.path.exists(sdk_path):
+                build_env["SDKROOT"] = sdk_path
+        except Exception:
+            pass
+
+    cmd.append(main_script)
 
     try:
         subprocess.check_call(cmd, env=build_env)
