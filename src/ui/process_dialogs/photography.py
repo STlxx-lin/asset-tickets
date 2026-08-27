@@ -313,9 +313,10 @@ def show_photography_dialog(parent, order_data, callbacks):
     operation_layout = QFormLayout()
     operation_layout.setSpacing(6)
     operation_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-    photographer_combo = QComboBox()
+    photographer_combo = FluentComboBox()
     photographer_combo.setObjectName('photographer_combo')
     photographer_combo.setFixedHeight(32)
+    photographer_combo.setMinimumWidth(220)
     photographer_combo.addItem("请选择摄影师")
     # 摄影师列表统一引用 paths.PHOTOGRAPHERS（单一来源，新增摄影师只改一处）
     photographer_combo.addItems(PHOTOGRAPHERS)
