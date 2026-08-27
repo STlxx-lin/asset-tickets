@@ -3820,18 +3820,20 @@ class MainWindow(QMainWindow):
         
         menu = RoundMenu(parent=self)
         
-        # 1. 查看详情
+        # 1. 查看详情 (使用 QTimer.singleShot 异步解耦模态弹窗)
         detail_action = Action(FIF.INFO, "查看工单详情", self)
-        detail_action.triggered.connect(lambda: self.on_work_order_row_double_clicked(index))
+        detail_action.triggered.connect(
+            lambda: QTimer.singleShot(0, lambda: self.on_work_order_row_double_clicked(index))
+        )
         menu.addAction(detail_action)
 
-        # 2. 办理工单
+        # 2. 办理工单 (使用 QTimer.singleShot 异步解耦模态弹窗，避免菜单销毁与 dialog.exec 冲突)
         if self.role in ["摄影", "美工", "剪辑", "运营", "销售", "视频审核", "视频后期审核", "美工后期审批", "后期审批"]:
             process_action = Action(FIF.EDIT, "办理此工单", self)
             def on_process():
                 self.table_view.selectRow(row)
                 self.handle_process_selected_order()
-            process_action.triggered.connect(on_process)
+            process_action.triggered.connect(lambda: QTimer.singleShot(0, on_process))
             menu.addAction(process_action)
 
         menu.addSeparator()
@@ -3868,21 +3870,21 @@ class MainWindow(QMainWindow):
         open_dir_action.triggered.connect(on_open_dir)
         menu.addAction(open_dir_action)
 
-        # 5. 管理员工具
+        # 5. 管理员工具 (使用 QTimer.singleShot 异步解耦)
         if self.is_admin:
             menu.addSeparator()
             check_path_action = Action(FIF.SEARCH, "路径与文件检查", self)
             def on_check_path():
                 from .path_check import show_path_check_dialog
                 show_path_check_dialog(self, order_data)
-            check_path_action.triggered.connect(on_check_path)
+            check_path_action.triggered.connect(lambda: QTimer.singleShot(0, on_check_path))
             menu.addAction(check_path_action)
 
             delete_action = Action(FIF.DELETE, "删除工单", self)
             def on_delete():
                 self.table_view.selectRow(row)
                 self.handle_delete_order()
-            delete_action.triggered.connect(on_delete)
+            delete_action.triggered.connect(lambda: QTimer.singleShot(0, on_delete))
             menu.addAction(delete_action)
 
         menu.exec(self.table_view.viewport().mapToGlobal(pos))
