@@ -63,6 +63,13 @@ def main():
 
     os.environ["QT_LOGGING_RULES"] = "qt.imageformats.*=false"
     
+    # 应用 QFluentWidgets 跨平台稳定性运行时补丁（防止 macOS / Linux 下模态对话框事件循环中的焦点析构闪退）
+    try:
+        from src.core.patch_fluent import patch_qfluentwidgets
+        patch_qfluentwidgets()
+    except Exception as e:
+        print(f"[Warning] 加载稳定性补丁失败: {e}")
+
     app = QApplication(sys.argv)
     # 应用退出时关闭数据库常驻连接
     app.aboutToQuit.connect(db_manager.disconnect)
