@@ -32,7 +32,7 @@ else:
 IMG_EXTS = {
     '.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tif', '.tiff', '.webp', '.heic',
     '.raw', '.arw', '.cr2', '.nef', '.raf', '.dng', '.sr2', '.orf',
-    '.rw2', '.pef', '.srw', '.cr3',
+    '.rw2', '.pef', '.srw', '.cr3', '.pdf',
 }
 # 视频扩展名
 VID_EXTS = {
