@@ -8,7 +8,10 @@ echo           素材工单管理系统 - 一键打包发布
 echo ===================================================
 echo [INFO] 正在检测 Python 环境...
 
-set "PYTHON_EXE="
+if exist ".venv\Scripts\python.exe" (
+    set "PYTHON_EXE=.venv\Scripts\python.exe"
+    goto :FOUND
+)
 
 if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
     set "PYTHON_EXE=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
@@ -30,8 +33,13 @@ if exist "C:\Program Files\Python311\python.exe" (
     goto :FOUND
 )
 
+for /f "delims=" %%I in ('where python 2^>nul') do (
+    set "PYTHON_EXE=%%I"
+    goto :FOUND
+)
+
 :NOT_FOUND
-echo [ERROR] 未找到官方 Python 3.11 或 3.12 安装。
+echo [ERROR] 未找到 Python 环境（项目 .venv、系统 PATH 或官方 Python 3.11/3.12 安装）。
 pause
 exit /b 1
 
