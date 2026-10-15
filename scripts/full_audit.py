@@ -124,8 +124,11 @@ print('='*60)
 print('6. 检查 patch off-by-one 是否导致其他方法丢失')
 print('='*60)
 # 对比 .bak (原始) 与当前文件的所有 indent=4 def 方法列表
-with open(r'e:\2025\pyproj\src\ui\main_window.py.bak', encoding='utf-8') as f:
-    bak_lines = f.readlines()
+bak_file = r'e:\2025\pyproj\src\ui\main_window.py.bak'
+bak_lines = []
+if os.path.exists(bak_file):
+    with open(bak_file, encoding='utf-8') as f:
+        bak_lines = f.readlines()
 
 bak_methods = set()
 for line in bak_lines:

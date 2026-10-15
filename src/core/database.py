@@ -1,6 +1,7 @@
 import functools
 import logging
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -32,6 +33,18 @@ def _db_locked(func):
         with _db_lock:
             return func(*args, **kwargs)
     return wrapper
+
+
+@contextmanager
+def transaction_scope(connection):
+    """显式事务上下文管理器，提供原子化提交与异常回滚"""
+    connection.begin()
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
 
 
 class DatabaseManager:
@@ -126,9 +139,12 @@ class DatabaseManager:
     def get_work_orders(self, user_departments: list[str] = None) -> list[dict[str, Any]]:
         if not self.connect():
             return []
+        if user_departments is not None and not user_departments:
+            # 修复空列表越权：显式传入空列表时直接返回空结果集，严禁越权全量查询
+            return []
         try:
             with self.connection.cursor(pymysql.cursors.DictCursor) as cursor:
-                if user_departments:
+                if user_departments is not None:
                     placeholders = ','.join(['%s'] * len(user_departments))
                     query = f"""
                         SELECT wo.id, d.name as department, wo.model, wo.name, 

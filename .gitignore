@@ -33,6 +33,7 @@ htmlcov/
 coverage.xml
 .tox/
 .nox/
+.agents/
 
 # ===== 虚拟环境 =====
 .venv/
@@ -46,7 +47,9 @@ ENV/
 !.env.example
 
 # ===== 数据库导出（含生产数据与密钥，禁止提交） =====
+*.sql
 sql/*.sql
+!sql/mcs_by_takuya.sql
 
 # ===== 本地配置 / 审查草稿 =====
 src/core/config.local.py

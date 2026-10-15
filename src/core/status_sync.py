@@ -15,7 +15,7 @@ v1.2（2026-08-14）增强：
 import logging
 
 from src.core.api_manager import api_manager
-from src.core.database import db_manager, TIME_FIELDS
+from src.core.database import TIME_FIELDS, db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +45,10 @@ def _rollback(order_id: str, updates: dict) -> list[str]:
     """回滚本地改动，逐一检查回滚结果，任一失败都如实上报。"""
     failures = []
     # 回滚不带版本检查：紧随写入之后执行，窗口极小；且回滚目标是"恢复原状"
-    if not db_manager.update_work_order_fields(order_id, updates):
-        failures.append(f"回滚字段{list(updates.keys())}失败")
+    res = db_manager.update_work_order_fields(order_id, updates)
+    # update_work_order_fields 异常时返回 -1，影响行数为 0 表示未命中更新
+    if res <= 0:
+        failures.append(f"回滚字段{list(updates.keys())}失败(错误码: {res})")
     return failures
 
 
@@ -164,16 +166,21 @@ def update_local_status_only(order_id: str, updates: dict) -> tuple:
 
 
 def has_pending_edit_review(order_id: str) -> bool:
-    """剪辑已提交视频后期审核且尚未通过（兼容全局状态被 API 回滚的场景）。
+    """剪辑已提交视频后期审核且尚未通过（兼容全局状态被 API 回滚的场景，支持退回重修再提交）。
 
     统一供 video_post_review.py 与 post_review_combined.py 使用，
     避免两处重复定义。
     """
     try:
         logs = db_manager.get_logs_by_order_id(order_id)
-        has_submit = any(l.get('action_type') == '提交视频后期审核' for l in logs)
-        has_approved = any(l.get('action_type') == '视频后期审核通过' for l in logs)
-        return has_submit and not has_approved
+        relevant_actions = {'提交视频后期审核', '视频后期审核通过', '视频后期审核退回', '后期重新剪辑'}
+        # 按时间倒序查找最新的一条相关操作日志
+        for log in sorted(logs, key=lambda x: str(x.get('timestamp') or ''), reverse=True):
+            action = log.get('action_type')
+            if action in relevant_actions:
+                # 仅当最新发生的事件为"提交视频后期审核"时判定为待审核
+                return action == '提交视频后期审核'
+        return False
     except Exception as e:
         # 记录异常而非静默吞掉：DB 故障不应被当作"无待审核"放行审核门禁
         logger.error(f"查询工单{order_id}待审核状态失败: {e}")

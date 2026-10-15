@@ -282,7 +282,7 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
         "--include-module=codecs",
         f"--include-data-files={icon_png}={icon_png}",
         f"--include-data-files={icon_ico}={icon_ico}" if os.path.exists(icon_ico) else "",
-        "--include-data-files=.env=.env" if os.path.exists(".env") else "",
+        "--include-data-files=.env.example=.env.example" if os.path.exists(".env.example") else "",
         "--lto=no",
     ]
     cmd = [c for c in cmd if c]
@@ -333,9 +333,9 @@ def run_single_build(python_exe, is_onefile: bool, debug_console: bool):
                     if os.path.exists(final_folder):
                         shutil.rmtree(final_folder)
                     shutil.move(raw_dist, final_folder)
-                    # 将 .env 拷贝一份进绿色文件夹
-                    if os.path.exists(".env"):
-                        shutil.copy(".env", os.path.join(final_folder, ".env"))
+                    # 安全修复：仅将环境模板 .env.example 拷贝进绿色文件夹供用户配置，严禁拷贝真实凭据 .env
+                    if os.path.exists(".env.example"):
+                        shutil.copy(".env.example", os.path.join(final_folder, ".env.example"))
                     # 压缩成 zip
                     zip_path = os.path.join("dist", f"WorkOrder_System_{APP_VERSION}{folder_suffix}.zip")
                     zip_directory(final_folder, zip_path)

@@ -73,8 +73,9 @@ if bundle_icon:
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-ENV_FILE = os.path.join(PROJECT_ROOT, '.env')
-DATA_FILES = [(ENV_FILE, '.')] if os.path.exists(ENV_FILE) else []
+# 安全修复：严禁将包含真实凭据的 .env 打包进客户端分发包，仅保留环境配置模板
+ENV_EXAMPLE = os.path.join(PROJECT_ROOT, '.env.example')
+DATA_FILES = [(ENV_EXAMPLE, '.')] if os.path.exists(ENV_EXAMPLE) else []
 if os.path.exists(ICON_PNG):
     DATA_FILES.append((ICON_PNG, '.'))
 if os.path.exists(ICON_ICNS):

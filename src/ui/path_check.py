@@ -235,7 +235,7 @@ class _PathScanWorker(QThread):
             if self.isInterruptionRequested():
                 return
             # 每项带超时：网络盘阻塞（os.walk 全目录遍历）时最多等待 8 秒，超时标记"超时"后继续
-            result = _check_with_timeout(lambda: _inspect_path(path))
+            result = _check_with_timeout(lambda p=path: _inspect_path(p))
             if result is None:
                 result = {
                     'exists': False, 'file_count': 0, 'mtime': '--',

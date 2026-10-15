@@ -96,7 +96,7 @@ DB_CONFIG_1 = {
     'user': 'mcs_by_takuya',
     'password': _env('DB1_PASSWORD'),
     'charset': 'utf8mb4',
-    'autocommit': True
+    'autocommit': False
 }
 
 # 数据库配置2 - cs1
@@ -106,7 +106,7 @@ DB_CONFIG_2 = {
     'user': 'cs1',
     'password': _env('DB2_PASSWORD'),
     'charset': 'utf8mb4',
-    'autocommit': True
+    'autocommit': False
 }
 
 # 根据开关选择当前使用的数据库配置

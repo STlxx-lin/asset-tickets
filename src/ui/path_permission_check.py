@@ -244,7 +244,7 @@ class _PermissionScanWorker(QThread):
             if self.isInterruptionRequested():
                 return
             # 每项带超时：网络盘阻塞时最多等待 2 秒，超时按"无权限"处理（响应超时视为不可用）
-            result = _check_with_timeout(lambda: check_path_permission(path, need_write), timeout=2)
+            result = _check_with_timeout(lambda p=path, nw=need_write: check_path_permission(p, nw), timeout=2)
             if result is None:
                 result = (False, False, False, "无权限")
             self.item_done.emit(row, result)
